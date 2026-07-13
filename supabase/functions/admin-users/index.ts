@@ -7,9 +7,9 @@
 // 'rahbar' may create a user or reset a password, and it does so with
 // the service_role key (never exposed to the browser).
 //
-// Actions (POST body: { action: 'create_user' | 'reset_password', ... }):
-//   create_user:    { phone, password, role, full_name }
-//   reset_password: { phone, new_password }
+// Actions (POST body: { action: 'create-user' | 'reset-password', ... }):
+//   create-user:    { phone, password, role, full_name }
+//   reset-password: { phone, new_password } or { user_id, new_password }
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
     return json({ error: 'Invalid JSON body' }, 400)
   }
 
-  if (body.action === 'create_user') {
+  if (body.action === 'create-user') {
     const { phone, password, role, full_name } = body as Record<string, string>
     if (!phone || !password || !role || !full_name) {
       return json({ error: 'phone, password, role, full_name are required' }, 400)
@@ -94,20 +94,24 @@ Deno.serve(async (req) => {
     return json({ id: created.user.id })
   }
 
-  if (body.action === 'reset_password') {
-    const { phone, new_password } = body as Record<string, string>
-    if (!phone || !new_password) {
-      return json({ error: 'phone and new_password are required' }, 400)
+  if (body.action === 'reset-password') {
+    const { phone, user_id, new_password } = body as Record<string, string>
+    if (!new_password || (!phone && !user_id)) {
+      return json({ error: 'new_password and one of phone / user_id are required' }, 400)
     }
 
-    const { data: target, error: findErr } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('phone', phone)
-      .single()
-    if (findErr || !target) return json({ error: 'No user with that phone number' }, 404)
+    let targetId = user_id
+    if (!targetId) {
+      const { data: target, error: findErr } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('phone', phone)
+        .single()
+      if (findErr || !target) return json({ error: 'No user with that phone number' }, 404)
+      targetId = target.id
+    }
 
-    const { error: updateErr } = await admin.auth.admin.updateUserById(target.id, {
+    const { error: updateErr } = await admin.auth.admin.updateUserById(targetId, {
       password: new_password,
     })
     if (updateErr) return json({ error: updateErr.message }, 400)

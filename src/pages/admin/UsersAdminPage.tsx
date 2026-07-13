@@ -30,7 +30,7 @@ function CreateUserForm() {
     setLoading(true)
 
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'create_user', phone, password, role, full_name: fullName },
+      body: { action: 'create-user', phone, password, role, full_name: fullName },
     })
 
     setLoading(false)
@@ -84,8 +84,10 @@ function CreateUserForm() {
   )
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function ResetPasswordForm() {
-  const [phone, setPhone] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; message: string } | null>(null)
   const [loading, setLoading] = useState(false)
@@ -95,8 +97,14 @@ function ResetPasswordForm() {
     setStatus(null)
     setLoading(true)
 
+    const identifierField = UUID_PATTERN.test(identifier.trim()) ? 'user_id' : 'phone'
+
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'reset_password', phone, new_password: newPassword },
+      body: {
+        action: 'reset-password',
+        [identifierField]: identifier.trim(),
+        new_password: newPassword,
+      },
     })
 
     setLoading(false)
@@ -105,7 +113,7 @@ function ResetPasswordForm() {
       return
     }
     setStatus({ kind: 'ok', message: 'Parol yangilandi.' })
-    setPhone('')
+    setIdentifier('')
     setNewPassword('')
   }
 
@@ -113,7 +121,12 @@ function ResetPasswordForm() {
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 p-6 dark:border-slate-800">
       <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Parolni tiklash</h2>
 
-      <Field label="Telefon raqami" value={phone} onChange={setPhone} type="tel" placeholder="998901234567" />
+      <Field
+        label="Telefon raqami yoki foydalanuvchi ID"
+        value={identifier}
+        onChange={setIdentifier}
+        placeholder="998901234567"
+      />
       <Field label="Yangi parol" value={newPassword} onChange={setNewPassword} type="password" />
 
       {status && (

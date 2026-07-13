@@ -43,3 +43,13 @@ Format per entry:
   - `reset_password`: `{ phone, new_password }` → looks up the id by `profiles.phone`, then `auth.admin.updateUserById`.
 - Added a **"Foydalanuvchilar"** nav item + screen (`src/pages/admin/UsersAdminPage.tsx`), visible only when `profile.role === 'rahbar'`, with the two forms above calling the Edge Function via `supabase.functions.invoke`.
 - This is the first role-gated screen, so `App.tsx`/`HomePage.tsx` now fetch the caller's `profiles` row (`useProfile` hook) after login. Still no router — the rahbar's home/users toggle is local `useState`, same reasoning as the earlier "no router yet" decision. Full per-role home screens and a route guard are still deferred to the dedicated auth/roles step.
+
+## 2026-07-12 — Routing: react-router-dom, one route tree per role
+**Context:** Implementing per-role home screens (SPEC §1.1) and a route guard, now that there's more than one screen (`HomePage` + the rahbar-only Foydalanuvchilar admin page). The earlier "no router yet" decision was explicitly scoped to "revisit when more than one component needs session state" — this is that point.
+**Decision:**
+- Reintroduced `react-router-dom`. `App.tsx` now wraps everything in `AuthProvider` (a small context wrapping `useSession` + `useProfile` so both are fetched once, not once per page) and a `<Routes>` tree.
+- One placeholder home route per role: `/rahbar`, `/menejer`, `/qorovul`, `/ombor`, `/laborator`. `/rahbar` is a nested route (`RahbarLayout` + `Outlet`) so `/rahbar/foydalanuvchilar` (the existing admin screen) shares its header/nav; the other four roles have nothing to nest yet, so they're flat routes for now.
+- `RoleRoute` (`src/routes/RoleRoute.tsx`) is the guard: it reads `profile.role` from `useAuth()` and renders `<Navigate to={\`/${profile.role}\`} />` if the current route's `allow` list doesn't include it — e.g. a `qorovul` hitting `/ombor` bounces straight to `/qorovul`. Logged-out users bounce to `/login`.
+- `/` and any unmatched path redirect to the caller's own role home (or `/login` if signed out); `/login` itself redirects to the role home if already authenticated, so there's no dead end in either direction.
+- 🔒 This client-side guard is a UX nicety, not the security boundary — the actual enforcement is server-side RLS (§2.12, `0007_rls.sql`), which already refuses cross-role writes regardless of what the UI lets you navigate to.
+- Extracted the shared header/sign-out chrome all five role pages needed into `src/components/RoleShell.tsx`, and deleted the old single `HomePage.tsx` now that each role has its own page.

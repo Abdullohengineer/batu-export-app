@@ -13,6 +13,15 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+// --- TEMPORARY DIAGNOSTIC — remove once the CORS fix is confirmed live ---
+// Proves which bundle is actually deployed. Logged once at module load
+// (cold start) so it shows up in `supabase functions logs admin-users`
+// even for requests that never make it into the Deno.serve handler, and
+// echoed back as a response header on every request so `curl -i` shows it
+// directly without needing log access.
+const DIAG_VERSION = 'admin-users-diag-2026-07-13a'
+console.log(`[admin-users] module loaded — ${DIAG_VERSION}`)
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 // Named SERVICE_ROLE_KEY, not SUPABASE_SERVICE_ROLE_KEY — the Supabase CLI
 // rejects secrets with the SUPABASE_ prefix (see docs/DECISIONS.md).
@@ -31,6 +40,8 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  // TEMPORARY DIAGNOSTIC — remove alongside DIAG_VERSION above.
+  'X-Admin-Users-Diag': DIAG_VERSION,
 }
 
 function json(body: unknown, status = 200) {
@@ -45,6 +56,13 @@ function phoneToAuthEmail(phone: string) {
 }
 
 Deno.serve(async (req) => {
+  // TEMPORARY DIAGNOSTIC — first line of the handler, before any routing.
+  // If this log line / the X-Admin-Users-Diag header never shows up for a
+  // request, the request isn't reaching this function's code at all (wrong
+  // project, stale deploy, something upstream intercepting it) — the bug
+  // isn't in this file.
+  console.log(`[admin-users] entry: ${req.method} ${req.url} — ${DIAG_VERSION}`)
+
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 

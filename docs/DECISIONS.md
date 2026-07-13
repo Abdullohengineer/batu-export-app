@@ -82,3 +82,13 @@ Format per entry:
 - The same marker echoed as an `X-Admin-Users-Diag` response header on **every** response (added to `CORS_HEADERS`, which both `json()` and the OPTIONS branch already use) — so `curl -i` shows it directly without needing log access.
 - A `console.log` as the literal first line inside `Deno.serve`, before the OPTIONS check, logging method + URL + the version string.
 If `curl -i -X OPTIONS <url>` still comes back without `X-Admin-Users-Diag` after redeploying this version, the request is not reaching this function's code at all — the problem is upstream (project link, deploy target, routing), not in this file. If the header *is* present but still 405, the bug is genuinely inside this handler and needs a different fix. Remove this block once the real CORS behavior is confirmed working.
+
+## 2026-07-13 — Supabase client exposed on window in dev, for manual RLS testing
+**Context:** Needed a fast way to run ad-hoc `supabase.from(...).insert(...)` / `.select(...)` calls from the browser console — signed in as whatever role is currently logged in — to manually confirm RLS actually refuses/allows what §2.12 and `0007_rls.sql` say it should, without writing a throwaway test harness for it.
+**Decision:** In `src/lib/supabase.ts`, added:
+```ts
+if (import.meta.env.DEV) {
+  (window as unknown as { supabase: typeof supabase }).supabase = supabase
+}
+```
+right after the client is created, marked `TEMPORARY DIAGNOSTIC` (search that string to find/remove it later, same convention as the Edge Function markers above). `import.meta.env.DEV` is a Vite build-time constant, so this isn't just hidden behind a runtime check — verified the production build (`npm run build`) contains **zero** trace of `window.supabase` or the `DEV` branch (Vite dead-code-eliminates it entirely), and separately confirmed in a running dev server that `window.supabase.from` is actually callable. Nothing here changes what the anon-key client is allowed to do — RLS is still the only thing standing between this console access and the database, which is the whole point of exposing it this way rather than, say, a debug-only service-role shortcut.

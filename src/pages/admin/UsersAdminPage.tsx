@@ -6,7 +6,7 @@ const ROLES: UserRole[] = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator']
 
 export function UsersAdminPage() {
   return (
-    <div className="mx-auto max-w-xl space-y-8 px-4 py-8">
+    <div className="max-w-xl space-y-8">
       <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
         Foydalanuvchilar
       </h1>

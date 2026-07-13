@@ -27,7 +27,7 @@ export function RoleShell({ title, nav, children }: { title: string; nav?: React
         </div>
       </header>
 
-      <main>{children}</main>
+      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
     </div>
   )
 }

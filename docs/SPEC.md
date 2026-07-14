@@ -1,8 +1,8 @@
 # BATU EXPORT — Ombor & Logistika App
 ## Master Design Specification
 
-**Version:** 1.8
-**Date:** 10 July 2026
+**Version:** 1.9
+**Date:** 14 July 2026
 **Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED · Rahbar (business owner) — DESIGNED
 
 ---
@@ -39,13 +39,14 @@ MANAGER KIRIM order → serial DDMMYY-NNN (Kutilmoqda)
   → STORAGE §4 scan Barcode #2 pallets → manifest → loaded
   → QOROVUL stage-2 (Гружёный + photos + doc photo) → Olib ketildi / Yakunlandi
 ```
+🔒 One truck-trip may run several of these lifecycles in parallel — one per type, one per serial (§2.1). The gate stages are shared (one weighing per truck); everything from STORAGE §1 onward is per-serial.
 
 ---
 
 ## 2. Global decisions 🔒
 
 ### 2.1 Serial format 🔒
-`DDMMYY-NNN` (e.g. `120826-003`). Resets daily. Auto-generated on manager KIRIM submit; shown, never typed.
+`DDMMYY-NNN` (e.g. `120826-003`). Resets daily. 🔒 **One serial per product type, not per truck.** A KIRIM order is a *delivery envelope* (one truck, one trip); each **type line** on it is minted its own serial by `next_serial()` on manager submit. A truck carrying Subxon + Isfara produces two serials; a single-type truck is simply the N=1 case. Consequence: **a serial is always single-type** — which is what makes Barcode #1 per type-pile (§5.1), single-sample lab results (§5.5), and per-type storage stock (§8) correct rather than approximate. Shown, never typed.
 
 ### 2.2 Barcodes 🔒 (updated)
 | | #1 (raw serial) | #2 (physical pallet) |
@@ -53,7 +54,7 @@ MANAGER KIRIM order → serial DDMMYY-NNN (Kutilmoqda)
 | Printed when | Storage §1 confirms raw load | Storage §3 saves a finished receipt — **one sticker per physical pallet** |
 | Encodes | serial + turi + egasi + sana | sticker ID + parent seriya + **turi** + kalibr + og'irlik + egasi |
 | ID format | — | `PLT-<serial>-<calibre>` (Konditirskiy → `…-KN`) |
-| Notes | multi-type serial → one #1 per type-pile | **Barcode #2 carries type** (needed to tell Subxon-K4 from Isfara-K4 on a mixed serial). 🔒 **A pallet is atomic — never split.** It is loaded whole or not at all (§5.4) |
+| Notes | 🔒 one #1 per serial. Since a serial is single-type (§2.1), this is inherently one per type-pile. | **Barcode #2** carries type for scan-time confirmation and dispatch matching; the parent serial already determines the type (§2.1). 🔒 **A pallet is atomic — never split.** It is loaded whole or not at all (§5.4) |
 
 ### 2.3 Product master data 🔒
 `MAHSULOT_TURLARI`: category (O'rik / Mayiz / Prune…) + type name + calibre-applies? + **calibre set**. Every dropdown reads from it; owner edits in-app.
@@ -117,7 +118,7 @@ Exception rules are **settings, not hardcoded** — editable in Administration (
 🔒 **The database is the source of truth, not the app.** Rules that must never break live in Postgres, not React — because there will eventually be multiple clients (phone, desktop, future finance module) and a rule in React can be bypassed by any of them.
 
 🔒 **Serial generation happens in the DATABASE** (§2.1). A Postgres function (`next_serial()`) mints `DDMMYY-NNN` atomically, using the **Asia/Tashkent** timezone for the daily reset. JavaScript generation is forbidden — two phones would collide.
-- *Consequence:* an **offline-created** KIRIM order receives its serial **on sync**, not at submit. UI shows `seriya: kutilmoqda` until then.
+- *Consequence:* an **offline-created** KIRIM order receives **its serials** (one per type line, §2.1) **on sync**, not at submit. UI shows `seriya: kutilmoqda` until then.
 
 🔒 **RLS (Row Level Security) enforces §2.12, from day one.** Enabled on **every** table. Hiding buttons in the UI is not security — the database must refuse the write.
 - `rahbar` → SELECT everything; INSERT/UPDATE **only** on admin tables (owners, products, calibres, users, limits). No operational write policy exists for rahbar — that absence *is* the enforcement.
@@ -138,7 +139,8 @@ Exception rules are **settings, not hardcoded** — editable in Administration (
 
 ### 3.1 Operational window — TABBED 🔒
 Segmented **`KIRIM | CHIQIM`** tabs switch the screen. Each = create button + live status list.
-- **KIRIM form:** Sana · Moshina raqami · Haydovchi ismi · Buyurtmachi (OWNERS) · **repeatable Tur + Miqdori rows** (multi-product; one truck, several types; "+ Tur qo'shish"; **Jami avto**; **no calibre** — raw isn't graded yet) · auto **Seriya** (one per delivery; each type-pile → own Barcode #1) · Hujjat rasmi (compressed). Status **Kutilmoqda → Qabul qilindi** (🔒 flips at gate **Yakunlandi**, i.e. when net weight is known — not at stage-1 arrival).
+- **KIRIM form:** Sana · Moshina raqami · Haydovchi ismi · Buyurtmachi (OWNERS) · **repeatable Tur + Miqdori rows** (multi-product; one truck, several types; "+ Tur qo'shish"; **Jami avto**; **no calibre** — raw isn't graded yet) · 🔒 **auto Seriya per type row** (`next_serial()` called once per line; N types → N serials, all displayed back on save; each type-pile → own Barcode #1) · Hujjat rasmi (compressed). Status **Kutilmoqda → Qabul qilindi** (🔒 flips at gate **Yakunlandi**, i.e. when net weight is known — not at stage-1 arrival).
+  - 🔒 **Declared vs actual.** The quantities on this form are the manager's **declared** figures (what the client says is coming). They are never overwritten. The **actual** per-type weight is entered later by the Storage Manager (§5.1). The gap between declared and actual is what "Kam chiqdi" means.
 - **CHIQIM form:** Sana · Moshina · Haydovchi · Buyurtmachi · **repeatable Tur + Kalibr + Miqdori rows** (calibre set incl. Konditirskiy) · Jami avto. **No serial, no doc photo.** Status **Kutilmoqda → Olib ketildi**.
   - 🔒 **Whole-pallet soft warning:** since pallets are atomic (§5.4), the form checks each requested quantity against available whole pallets. If it doesn't map cleanly, it **soft-warns and suggests the nearest workable figures** so the manager confirms the exact number with the client **before the truck is sent**. **Never blocks** — the manager can save anyway and handle it. This is where dispatch discipline is enforced, keeping partial loads off the floor.
 
@@ -153,14 +155,14 @@ Add categories / types / calibres (incl. Konditirskiy) → `MAHSULOT_TURLARI`.
 ### 3.4 Kuzatuv — traceability 🔒 (desktop)
 Lenses: **Seriya / Mashina / Mijoz bo'yicha**. Search + date + Excel.
 - **Seriya bo'yicha:** row per serial with pipeline balances + **Yo'qotish %**; → **Seriya pasporti**.
-- **Seriya pasporti:** one serial's whole life — intake by type; Moyka batches; finished by calibre incl. Konditirskiy + loss %; dispatches (date · truck · client) with **hamroh seriyalar**; balance in stock. "Mijoz hisoboti" export.
+- **Seriya pasporti:** one serial's whole life — intake (single-type by construction, §2.1); Moyka batches; finished by calibre incl. Konditirskiy + loss %; dispatches (date · truck · client) with **hamroh seriyalar**; balance in stock. "Mijoz hisoboti" export.
 - **Mashina bo'yicha:** every trip in/out + serials carried (many-to-many); Manifest opens pallet list.
 - **Mijoz bo'yicha:** running in/out/stock per buyurtmachi; entry to client report.
 
 ### 3.5 Client report — "Mijoz hisoboti" 🔒
 Generated doc: client + date range → one click. **PDF + Excel.** **Uz/Ru toggle.** Sample: `BATU-Mijoz-Hisoboti-namuna.pdf`.
 - **Summary:** raw received · finished · **loss % + kg (shown; toggle-able)** · dispatched · in storage (loss on processed portion only).
-- **A — Kelgan seriyalar va sifat:** per serial — kelgan sana, tur(lar), brutto/tara/netto, **namligi %**, **SO₂ mg/kg** (natural = "Yo'q"). **Document is an attached photo, no typed number.**
+- **A — Kelgan seriyalar va sifat:** per serial — kelgan sana, tur, brutto/tara/netto, **namligi %**, **SO₂ mg/kg** (natural = "Yo'q"). **Document is an attached photo, no typed number.**
 - **B — Tayyor mahsulot:** per serial, calibre breakdown incl. Konditirskiy, jami, xom netto, yo'qotish.
 - **C — Jo'natmalar (in body):** grouped **by trip** (vehicle header + serials underneath); columns seriya · kalibr tarkibi · netto; departure doc = **attached photo**. Serial is first-class for origin tracing.
 - **D — Balans:** per serial — kelgan, **oxirgi chiqish** ("qisman" until fully shipped), omborda qolgan (raw/finished), holat.
@@ -187,6 +189,9 @@ Two **tabs** `KIRIM | CHIQIM`. Header counters `Kutilmoqda · Kirdi·bo'shatilmo
 
 🔒 **Both stages, both directions require a weight-reading (tarozi) photo** alongside the weight. On Yakunlash: net auto-computed, line → Window 2; manager KIRIM → **Qabul qilindi** (🔒 at Yakunlandi), manager CHIQIM → **Olib ketildi**. No soft warnings. Departure doc is a **photo**, no typed number.
 
+- 🔒 **Multi-serial trips — display only, no workflow change.** A KIRIM order may carry several types, each with its own serial (§2.1). The gate still weighs **the truck**, twice, exactly as before — one Гружёный, one Пустой, one net. The line simply lists the order's types + serials for reference. Qorovul never enters a per-type figure.
+- 🔒 **Gate net is a truck-level total, and is never split.** One physical weighing yields one net for the whole load, regardless of how many types or serials it carries. That net is reconciled against the manager's declared **Jami avto** (§3.1) — truck total against truck total. It is **not** apportioned across serials. Per-type weights are entered by the Storage Manager at §5.1, where the piles are physically separated. No weight in the system is ever derived from a split.
+
 ---
 
 ## 5. Role: STORAGE MANAGER (Ombor menejeri) 🟡 (all four designed)
@@ -194,13 +199,18 @@ Two **tabs** `KIRIM | CHIQIM`. Header counters `Kutilmoqda · Kirdi·bo'shatilmo
 **Nav:** 4 sections + universal **"Skanerlash"** lookup (scan any #1/#2 → read-only serial history). Language toggle + compressed photos throughout.
 
 ### 5.1 Skladga KIRIM 🟡
-Arrives pre-filled after gate Yakunlandi. Storage adds namligi + pile photo + optional komment; **namligi + oltingugurt** are entered by the **Laborator** (§5.5), not here; prints **Barcode #1** → Skladda turibdi. Two-window list; ⋯ weight detail with per-tur reconciliation; shortfall = red "Kam chiqdi" + cross-role note. `File: BATU (skladga-kirim mockup)`.
+Arrives pre-filled after gate Yakunlandi — showing the trip's serials (one per type, §2.1) and the gate's truck-level net. 🔒 **Storage enters the actual weight per serial** on "Qabul qilish" — this is the measured per-type figure, entered by the person who physically separates the piles. Storage adds pile photo + optional komment; **namligi + oltingugurt** are entered by the **Laborator** (§5.5), not here; prints **Barcode #1 per serial** → Skladda turibdi.
+- 🔒 **Two reconciliations, both against measured figures:** (a) the sum of entered per-serial weights against the **gate net** (truck-level check); (b) each serial's entered weight against the manager's **declared qty** (§3.1) — a shortfall here is the red **"Kam chiqdi"** + cross-role note.
+- Two-window list; ⋯ weight detail with per-serial reconciliation. `File: BATU (skladga-kirim mockup)`.
+- 🔒 **Declared is always visible next to actual.** The Qabul qilish form lists one row per serial on the trip, each showing: Seriya · Tur · **Buyurtma (kutilgan, kg)** — the manager's declared_qty, read-only — and **Aniq (kg)** — the storage manager's measured input. He confirms against a number he can see, while the pile is in front of him.
+- 🔒 **Live variance per row.** As he types the actual, the row shows the difference against declared (kg and %). A negative variance beyond the configured limit (§2.14) flags red **"Kam chiqdi"** on save. Never blocks — he can save a shortfall; it becomes a note for the manager (§5.1).
+- The declared figure is **never editable here** (§3.1 — declared is the manager's record and is never overwritten). Storage records what he measured; the gap between the two is the finding, not an error to be corrected away.
 
 ### 5.2 Moykaga Chiqarish 🟡
 Send raw to production; **partial sends** accumulate; no new barcode (#1 travels). Two-window; send form with live "qoladi"; ⋯ per-send history; Qaydlar qo'shish.
 
 ### 5.3 Tayyor Mahsulot / Skladga KIRIM 🟡 (updated)
-Serials in Moyka awaiting output. `+ Qabul qilish` → **daily receipt form: one pallet per save** — **Tur** (needed for mixed serials) + **Kalibr** (incl. Konditirskiy) + **Og'irlik** → auto-prints **Barcode #2** (`PLT-<serial>-<calibre>`, `…-KN` for Konditirskiy) to stick. `Tugallash` → summary of all receipts + running totals, **double-confirm**, locks final **yield-loss**, files to history. Per-serial totals: **Yuborilgan / Qabul qilingan / Jarayonda** (neutral, not "loss" until finished).
+Serials in Moyka awaiting output. `+ Qabul qilish` → **daily receipt form: one pallet per save** — **Tur** (🔒 read-only, auto-filled from the parent serial — a serial is single-type by construction (§2.1); shown as a floor-level confirmation that the right pile is being stickered, never editable) + **Kalibr** (incl. Konditirskiy) + **Og'irlik** → auto-prints **Barcode #2** (`PLT-<serial>-<calibre>`, `…-KN` for Konditirskiy) to stick. `Tugallash` → summary of all receipts + running totals, **double-confirm**, locks final **yield-loss**, files to history. Per-serial totals: **Yuborilgan / Qabul qilingan / Jarayonda** (neutral, not "loss" until finished).
 - 🔒 **Re-wash (§2.13):** three-dot on a serial → **"Moykaga qayta yuborish"** (confirm). Voids that serial's finished receipts + Barcode #2s + loss figure (`bekor qilindi`), returns everything **except Konditirskiy** to Moyka, and the serial re-enters the §5.2 → §5.3 flow. New barcodes on the second output; KN is additive; final loss recalculated at the second Tugallash.
 - 🔒 **Moyka idle flag:** a serial sitting in Moyka beyond the configured threshold (§2.14) is flagged here **and** on the Rahbar's exceptions list (§6.2). `File: BATU-Storage-S3-Tayyor-Mahsulot-v1.pdf`.
 
@@ -283,10 +293,11 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 ## 8. Provisional data model
 - **OWNERS** — id, name
 - **MAHSULOT_TURLARI** — id, category, type_name, calibre_applies, calibre_set (incl. `Konditirskiy`)
-- **KIRIM_ORDERS** — serial (PK), sana, plate, driver, owner_id, doc_photo, status · **KIRIM_LINES** — serial, type_id, qty
+- **KIRIM_ORDERS** — order_id (PK), sana, plate, driver, owner_id, doc_photo, declared_total, status — *delivery envelope; one truck-trip. No serial.*
+- **KIRIM_LINES** — serial (PK, from `next_serial()`), order_id, type_id, declared_qty — *🔒 one line = one type = one serial. A serial is single-type by construction. `declared_qty` is the manager's figure and is never overwritten; the actual weight lives on STORAGE_STOCK.*
 - **CHIQIM_REQUESTS** — id, sana, plate, driver, owner_id, status (no goods-serial) · **CHIQIM_LINES** — request_id, type_id, calibre, qty
-- **GATE_WEIGHINGS** — ref, direction, gruzheny, pustoy, net, stage1_photo, stage1_scale_photo, stage2_photo, stage2_scale_photo, departure_doc_photo, status
-- **STORAGE_STOCK** — serial, namligi, sulfur(pending), pile_photo, barcode1, available_qty, sent_to_moyka_qty, status
+- **GATE_WEIGHINGS** — id (PK), ref (🔒 `order_id` for KIRIM / `request_id` for CHIQIM — **a weighing belongs to a truck-trip, never to a serial**), direction, gruzheny, pustoy, net (generated), stage1_photo, stage1_scale_photo, stage2_photo, stage2_scale_photo, departure_doc_photo, status — *🔒 one weighing per trip. Net is the whole truck's, and is never split across the trip's serials (§4).*
+- **STORAGE_STOCK** — serial (PK), actual_qty (🔒 **measured** — entered by Storage at §5.1), namligi, sulfur(pending), pile_photo, barcode1, sent_to_moyka_qty, available_qty (derived), status — *serial is single-type, so this row is inherently per-type. No compound key needed.*
 - **MOYKA_SENDS** — serial, date, qty
 - **FINISHED_PALLETS** — barcode2 (PK), parent_serial, type_id, calibre, weight, owner, wash_cycle (1,2…), status (in_stock / dispatched / **bekor_qilindi**) — *atomic; never split. Voided barcodes must fail loudly on scan (§2.13)*
 - **DISPATCH_MANIFEST** — request_id, scanned barcode2[] (whole pallets only), shortfall_note
@@ -303,6 +314,7 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 ## 9. Changelog
 | Version | Date | Change |
 |---|---|---|
+| 1.9 | 2026-07-14 | 🔒 **Serial is now per type-line, not per truck.** Serial moves from `KIRIM_ORDERS` to `KIRIM_LINES`; `next_serial()` called once per type row. A serial is therefore **always single-type**, which retroactively makes three existing rules *correct* rather than approximate: Barcode #1 per type-pile (§3.1/§5.1), Laborator's "one sample → whole parent serial" (§5.5), and `STORAGE_STOCK` keyed by serial (§8). 🔒 **Qorovul unchanged** — still one truck, two weighings, one truck-level net; multi-serial trips are display-only. 🔒 **No pro-rata apportionment**: the gate net is reconciled against the manager's declared *Jami avto* (truck total vs truck total), and **per-type actual weights are entered by Storage at §5.1**, where the piles are physically separated. Every weight in the system is measured, never derived. `GATE_WEIGHINGS.ref` re-pointed from serial → **order_id/request_id** (a weighing belongs to a truck-trip). §5.3 receipt-form `Tur` field kept but made **read-only**, auto-filled from the parent serial. |
 | 1.0 | 2026-07-10 | Consolidated chat-1 decisions. |
 | 1.1 | 2026-07-10 | Manager tabbed; multi-product KIRIM; Kuzatuv + Seriya pasporti; Konditirskiy; Client report; global Uz/Ru toggle; image compression. Qorovul redesign in review. |
 | 1.2 | 2026-07-10 | **Qorovul LOCKED** (tabbed two-window; stage-1 & stage-2 both require weight-reading photo). **Barcode #2 = physical pallet, now carries type**. **Storage §3** — receipt per pallet, type + calibre + weight. **Storage §4** — no serial on request, live total, Yuklashni yakunlash always enabled, manifest by serial, gate reconciliation. All four storage sections designed. |

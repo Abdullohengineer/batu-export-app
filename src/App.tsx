@@ -7,7 +7,11 @@ import { RahbarHome } from './pages/rahbar/RahbarHome'
 import { UsersAdminPage } from './pages/admin/UsersAdminPage'
 import { MenejerHome } from './pages/menejer/MenejerHome'
 import { QorovulHome } from './pages/qorovul/QorovulHome'
+import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
+import { QorovulHisobotlar } from './pages/qorovul/QorovulHisobotlar'
 import { OmborHome } from './pages/ombor/OmborHome'
+import { OmborIntakeTab } from './pages/ombor/OmborIntakeTab'
+import { OmborHisobotlar } from './pages/ombor/OmborHisobotlar'
 import { LaboratorHome } from './pages/laborator/LaboratorHome'
 
 function App() {
@@ -58,7 +62,10 @@ function AppRoutes() {
             <QorovulHome />
           </RoleRoute>
         }
-      />
+      >
+        <Route index element={<QorovulKirimTab />} />
+        <Route path="hisobotlar" element={<QorovulHisobotlar />} />
+      </Route>
       <Route
         path="/ombor"
         element={
@@ -66,7 +73,10 @@ function AppRoutes() {
             <OmborHome />
           </RoleRoute>
         }
-      />
+      >
+        <Route index element={<OmborIntakeTab />} />
+        <Route path="hisobotlar" element={<OmborHisobotlar />} />
+      </Route>
       <Route
         path="/laborator"
         element={

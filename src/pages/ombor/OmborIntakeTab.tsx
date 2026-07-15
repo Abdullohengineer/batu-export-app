@@ -140,7 +140,17 @@ export function OmborIntakeTab() {
                   {line.intake.status}
                 </span>
                 <div className="flex items-center gap-2">
-                  {line.intake.barcode1 && <Barcode1Display code={line.intake.barcode1} />}
+                  {line.intake.barcode1 && (
+                    <Barcode1Display
+                      data={{
+                        serial: line.intake.barcode1,
+                        type: typeName(line.type_id),
+                        owner: ownerName(line.owner_id),
+                        weightKg: line.intake.actual_qty,
+                        date: line.order_date,
+                      }}
+                    />
+                  )}
                   <button
                     onClick={() => setExpandedSerial(expandedSerial === line.serial ? null : line.serial)}
                     className="rounded-md px-2 py-1 text-slate-500 hover:text-slate-700 dark:text-slate-400"

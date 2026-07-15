@@ -61,7 +61,15 @@ export function IntakeDetailView({
         )}
         {line.intake.barcode1 && (
           <div className="mt-2">
-            <Barcode1Display code={line.intake.barcode1} />
+            <Barcode1Display
+              data={{
+                serial: line.intake.barcode1,
+                type: typeName,
+                owner: ownerName,
+                weightKg: line.intake.actual_qty,
+                date: line.order_date,
+              }}
+            />
           </div>
         )}
       </div>

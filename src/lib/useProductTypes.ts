@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 export interface ProductType {
   id: string
   name: string
+  category_id: string // needed to filter calibres to a type's category (§5.3)
 }
 
 export function useProductTypes() {
@@ -13,7 +14,7 @@ export function useProductTypes() {
   useEffect(() => {
     supabase
       .from('product_types')
-      .select('id, name')
+      .select('id, name, category_id')
       .eq('active', true)
       .order('name')
       .then(({ data }) => {

@@ -13,6 +13,7 @@ export function OmborHome() {
         <RoleTabs
           tabs={[
             { to: '/ombor', label: 'Skladga KIRIM', end: true },
+            { to: '/ombor/moyka', label: 'Moykaga Chiqarish' },
             { to: '/ombor/hisobotlar', label: 'Hisobotlar' },
           ]}
         />

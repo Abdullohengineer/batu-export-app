@@ -11,6 +11,7 @@ import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
 import { QorovulHisobotlar } from './pages/qorovul/QorovulHisobotlar'
 import { OmborHome } from './pages/ombor/OmborHome'
 import { OmborIntakeTab } from './pages/ombor/OmborIntakeTab'
+import { OmborMoykaTab } from './pages/ombor/OmborMoykaTab'
 import { OmborHisobotlar } from './pages/ombor/OmborHisobotlar'
 import { LaboratorHome } from './pages/laborator/LaboratorHome'
 
@@ -75,6 +76,7 @@ function AppRoutes() {
         }
       >
         <Route index element={<OmborIntakeTab />} />
+        <Route path="moyka" element={<OmborMoykaTab />} />
         <Route path="hisobotlar" element={<OmborHisobotlar />} />
       </Route>
       <Route

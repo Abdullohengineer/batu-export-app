@@ -28,18 +28,26 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
 
   useEffect(() => {
     if (!profile) return
-    setLoading(true)
-    supabase
-      .from('kirim_orders')
-      .select(
-        'order_id, order_date, plate, driver, declared_total, status, kirim_lines(serial, type_id, declared_qty)',
-      )
-      .eq('created_by', profile.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
+    const profileId = profile.id
+
+    async function load() {
+      setLoading(true)
+      try {
+        const { data } = await supabase
+          .from('kirim_orders')
+          .select(
+            'order_id, order_date, plate, driver, declared_total, status, kirim_lines(serial, type_id, declared_qty)',
+          )
+          .eq('created_by', profileId)
+          .order('created_at', { ascending: false })
+
         setOrders((data as KirimOrder[] | null) ?? [])
+      } finally {
         setLoading(false)
-      })
+      }
+    }
+
+    load()
   }, [profile, refreshKey])
 
   function toggle(orderId: string) {

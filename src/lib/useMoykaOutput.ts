@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { jarayonda, ortiqcha } from './tayyorCompletion'
+
+export { computeFinalLossPct, isCycleComplete } from './tayyorCompletion'
 
 export interface FinishedPallet {
   barcode2: string
@@ -15,7 +18,8 @@ export interface OutputSerial {
   owner_id: string
   sent: number // Yuborilgan — Σ moyka_sends.qty_kg (derived)
   received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void (derived)
-  inProcess: number // Jarayonda — sent − received (neutral, not "loss" until Tugallash)
+  inProcess: number // Jarayonda — max(0, sent − received); never negative (see DECISIONS)
+  excess: number // Ortiqcha — max(0, received − sent); non-blocking overage flag
   pallets: FinishedPallet[]
 }
 
@@ -88,7 +92,8 @@ export function useMoykaOutput() {
             owner_id: order.owner_id,
             sent,
             received,
-            inProcess: sent - received,
+            inProcess: jarayonda(sent, received),
+            excess: ortiqcha(sent, received),
             pallets: serialPallets,
           }
         })

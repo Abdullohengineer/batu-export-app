@@ -4,21 +4,30 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useMoykaSerials, type MoykaSerial } from '../../lib/useMoykaSerials'
-import { sortByDateDesc } from '../../lib/sortByDate'
+import { useMoykaOutput, type OutputSerial } from '../../lib/useMoykaOutput'
+import { hasRawRemainder } from '../../lib/stageMembership'
 import { MoykaSendForm } from './MoykaSendForm'
 import { EntityNotes } from '../../components/EntityNotes'
 
-// §5.2 Moykaga Chiqarish. Two windows matching the Steps 2-3 pattern
-// (Faol/Yakunlangan-style): "Yuborish uchun" (serials with available balance
-// > 0, the send form lives here) and "To'liq yuborilgan" (fully sent, sorted
-// newest-first by last send date — DECISIONS "History list ordering"). The
-// spec's "⋯ per-send history" is a per-serial expand within either window
-// (send log + Qaydlar), not a third window — see PR/DECISIONS.
+// §5.2 Moykaga Chiqarish. Two windows — section mirroring (SPEC.md §5 intro;
+// DECISIONS.md "Section mirroring / derived stage membership"), NOT two
+// independent conditions:
+// - Window 1 "Yuborish uchun" = §5.1 KIRIM's Window 2 (raw remainder > 0,
+//   hasRawRemainder) — the send form lives here.
+// - Window 2 (updated 2026-07-16) = §5.3 Tayyor's Window 1: reuses
+//   useMoykaOutput's `serials` directly (sent > 0, not yet finalized) instead
+//   of the old "fully sent" (available <= 0) reading, which excluded a
+//   partial-send serial from ever showing as "in Moyka". A partial-send
+//   serial now legitimately appears in BOTH windows at once — expected.
+// The spec's "⋯ per-send history" is a per-serial expand within Window 1
+// only (send log + Qaydlar); Window 2 is a read-only mirror of Tayyor's
+// active list, so it has no send action or expand of its own.
 export function OmborMoykaTab() {
   const { profile } = useAuth()
   const { productTypes } = useProductTypes()
   const { owners } = useOwners()
   const { serials, loading, refresh } = useMoykaSerials()
+  const { serials: processing, loading: processingLoading } = useMoykaOutput()
   const [activeSerial, setActiveSerial] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -43,13 +52,9 @@ export function OmborMoykaTab() {
     refresh()
   }
 
-  if (loading) return null
+  if (loading || processingLoading) return null
 
-  const toSend = serials.filter((s) => s.available > 0)
-  const fullySent = sortByDateDesc(
-    serials.filter((s) => s.available <= 0 && s.sent > 0),
-    (s) => s.lastSentDate,
-  )
+  const toSend = serials.filter((s) => hasRawRemainder(s.actual_qty, s.sent))
 
   function serialDetail(s: MoykaSerial) {
     return (
@@ -78,7 +83,7 @@ export function OmborMoykaTab() {
     )
   }
 
-  function row(s: MoykaSerial, canSend: boolean) {
+  function row(s: MoykaSerial) {
     const isActive = activeSerial === s.serial
     return (
       <div key={s.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
@@ -90,7 +95,7 @@ export function OmborMoykaTab() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {canSend && !isActive && (
+            {!isActive && (
               <button
                 onClick={() => setActiveSerial(s.serial)}
                 className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -118,21 +123,46 @@ export function OmborMoykaTab() {
     )
   }
 
+  // Window 2 — read-only mirror of §5.3 Tayyor's Window 1 (same hook, same
+  // set). No send action, no expand: managing what's happening in Moyka is
+  // Tayyor Mahsulot's job (§5.3); this is just visibility that it's there.
+  function processingRow(s: OutputSerial) {
+    return (
+      <div key={s.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+        <div>
+          <span className="font-mono text-slate-900 dark:text-slate-100">{s.serial}</span>
+          <span className="ml-2 text-slate-500 dark:text-slate-400">
+            {typeName(s.type_id)} · {ownerName(s.owner_id)}
+          </span>
+        </div>
+        <div className="mt-1 text-slate-500 dark:text-slate-400">
+          Yuborilgan: {s.sent.toLocaleString()} kg · Jarayonda:{' '}
+          <span className="font-medium text-slate-900 dark:text-slate-100">{s.inProcess.toLocaleString()} kg</span>
+          {s.excess > 0 && (
+            <span className="ml-2 font-medium text-amber-600 dark:text-amber-400">
+              Ortiqcha: +{s.excess.toLocaleString()} kg
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yuborish uchun</h2>
         <div className="mt-2 space-y-2">
           {toSend.length === 0 && <p className="text-sm text-slate-400">Yuboriladigan serial yo'q.</p>}
-          {toSend.map((s) => row(s, true))}
+          {toSend.map((s) => row(s))}
         </div>
       </div>
 
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">To'liq yuborilgan</h2>
+        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Moykada — jarayonda</h2>
         <div className="mt-2 space-y-2">
-          {fullySent.length === 0 && <p className="text-sm text-slate-400">Hali to'liq yuborilgan serial yo'q.</p>}
-          {fullySent.map((s) => row(s, false))}
+          {processing.length === 0 && <p className="text-sm text-slate-400">Moykada jarayondagi serial yo'q.</p>}
+          {processing.map((s) => processingRow(s))}
         </div>
       </div>
     </div>

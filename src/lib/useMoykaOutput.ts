@@ -23,13 +23,31 @@ export interface OutputSerial {
   pallets: FinishedPallet[]
 }
 
-// §5.3 data: serials in Moyka awaiting output — sent to Moyka (Step 5) and
-// NOT yet finalized (no wash_cycles row with status='final' for cycle 1).
-// All totals DERIVED (CLAUDE.md "derive, don't store"): sent from
-// moyka_sends, received from finished_pallets. wash_cycle = 1 throughout
-// (re-wash §2.13 is a later step and doesn't exist yet).
+// §5.3 Window 2 (Tugallangan): a serial whose cycle 1 has a wash_cycles row
+// with status='final' — auto-completed (received ≥ sent) or manually closed
+// via Tugallash. lossPct is the LOCKED figure from wash_cycles.final_loss_pct
+// (source of truth once finalized, not recomputed) — sent/received/excess
+// stay derived like the active list, for display and for the Ortiqcha badge.
+export interface CompletedCycle {
+  serial: string
+  type_id: string
+  owner_id: string
+  sent: number
+  received: number
+  lossPct: number // locked wash_cycles.final_loss_pct, floored at 0 (see tayyorCompletion.ts)
+  excess: number // Ortiqcha — max(0, received − sent); picks the badge treatment
+  pallets: FinishedPallet[]
+}
+
+// §5.3 data: serials sent to Moyka (Step 5) split into two windows — active
+// (no final cycle-1 row yet) and completed (Tugallangan: a final row exists,
+// auto or manual). All totals DERIVED (CLAUDE.md "derive, don't store")
+// except the locked final_loss_pct itself: sent from moyka_sends, received
+// from finished_pallets. wash_cycle = 1 throughout (re-wash §2.13 is a later
+// step and doesn't exist yet).
 export function useMoykaOutput() {
   const [serials, setSerials] = useState<OutputSerial[]>([])
+  const [completed, setCompleted] = useState<CompletedCycle[]>([])
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
@@ -38,7 +56,7 @@ export function useMoykaOutput() {
       const [{ data: sends }, { data: pallets }, { data: cycles }] = await Promise.all([
         supabase.from('moyka_sends').select('serial, qty_kg'),
         supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, status'),
-        supabase.from('wash_cycles').select('serial, cycle_no, status'),
+        supabase.from('wash_cycles').select('serial, cycle_no, status, final_loss_pct'),
       ])
 
       // Sent totals per serial (only serials that have been sent appear).
@@ -46,19 +64,26 @@ export function useMoykaOutput() {
       for (const s of sends ?? []) sentBySerial.set(s.serial, (sentBySerial.get(s.serial) ?? 0) + s.qty_kg)
 
       const serialList = [...sentBySerial.keys()]
-      const finalized = new Set(
-        (cycles ?? []).filter((c) => c.cycle_no === 1 && c.status === 'final').map((c) => c.serial),
-      )
-      const activeSerials = serialList.filter((s) => !finalized.has(s))
-      if (activeSerials.length === 0) {
+      const finalCycles = (cycles ?? []).filter((c) => c.cycle_no === 1 && c.status === 'final')
+      const lossPctBySerial = new Map(finalCycles.map((c) => [c.serial, c.final_loss_pct ?? 0]))
+      const finalizedSerials = new Set(finalCycles.map((c) => c.serial))
+      const activeSerials = serialList.filter((s) => !finalizedSerials.has(s))
+      const completedSerials = serialList.filter((s) => finalizedSerials.has(s))
+
+      // Only bail early if there is truly nothing sent yet — NOT just when
+      // activeSerials is empty, which would silently drop Window 2 (the bug
+      // this fixes: every serial could be finalized and Tugallangan would
+      // still render empty).
+      if (serialList.length === 0) {
         setSerials([])
+        setCompleted([])
         return
       }
 
       const { data: kLines } = await supabase
         .from('kirim_lines')
         .select('serial, order_id, type_id')
-        .in('serial', activeSerials)
+        .in('serial', serialList)
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
       const [{ data: orders }, { data: types }] = await Promise.all([
         supabase.from('kirim_orders').select('order_id, owner_id').in('order_id', orderIds),
@@ -76,30 +101,46 @@ export function useMoykaOutput() {
         palletsBySerial.set(p.serial, list)
       }
 
+      // Shared join/derivation for both windows — avoids fetching or
+      // computing sent/received/pallets twice for the same serial shape.
+      function baseRow(serial: string) {
+        const line = lineBySerial.get(serial)
+        if (!line) return null
+        const order = orderById.get(line.order_id)
+        if (!order) return null
+        const serialPallets = palletsBySerial.get(serial) ?? []
+        const sent = sentBySerial.get(serial) ?? 0
+        const received = serialPallets.reduce((sum, p) => sum + p.weight_kg, 0)
+        return { serial, type_id: line.type_id, owner_id: order.owner_id, sent, received, pallets: serialPallets }
+      }
+
       const combined: OutputSerial[] = activeSerials
         .map((serial): OutputSerial | null => {
-          const line = lineBySerial.get(serial)
-          if (!line) return null
-          const order = orderById.get(line.order_id)
-          if (!order) return null
-          const serialPallets = palletsBySerial.get(serial) ?? []
-          const sent = sentBySerial.get(serial) ?? 0
-          const received = serialPallets.reduce((sum, p) => sum + p.weight_kg, 0)
+          const base = baseRow(serial)
+          if (!base) return null
           return {
-            serial,
-            type_id: line.type_id,
-            category_id: categoryByType.get(line.type_id) ?? '',
-            owner_id: order.owner_id,
-            sent,
-            received,
-            inProcess: jarayonda(sent, received),
-            excess: ortiqcha(sent, received),
-            pallets: serialPallets,
+            ...base,
+            category_id: categoryByType.get(base.type_id) ?? '',
+            inProcess: jarayonda(base.sent, base.received),
+            excess: ortiqcha(base.sent, base.received),
           }
         })
         .filter((s): s is OutputSerial => s !== null)
 
+      const completedRows: CompletedCycle[] = completedSerials
+        .map((serial): CompletedCycle | null => {
+          const base = baseRow(serial)
+          if (!base) return null
+          return {
+            ...base,
+            lossPct: lossPctBySerial.get(serial) ?? 0,
+            excess: ortiqcha(base.sent, base.received),
+          }
+        })
+        .filter((c): c is CompletedCycle => c !== null)
+
       setSerials(combined)
+      setCompleted(completedRows)
     } finally {
       setLoading(false)
     }
@@ -109,5 +150,5 @@ export function useMoykaOutput() {
     refresh()
   }, [refresh])
 
-  return { serials, loading, refresh }
+  return { serials, completed, loading, refresh }
 }

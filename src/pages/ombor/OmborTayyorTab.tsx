@@ -4,8 +4,8 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useCalibres } from '../../lib/useCalibres'
-import { useMoykaOutput, type OutputSerial } from '../../lib/useMoykaOutput'
-import { computeFinalLossPct, isCycleComplete } from '../../lib/tayyorCompletion'
+import { useMoykaOutput, type OutputSerial, type FinishedPallet } from '../../lib/useMoykaOutput'
+import { computeFinalLossPct, isCycleComplete, completionBadge } from '../../lib/tayyorCompletion'
 import { FinishedReceiptForm, type ReceiptValues } from './FinishedReceiptForm'
 import { Barcode2Display } from './Barcode2Display'
 
@@ -16,15 +16,20 @@ import { Barcode2Display } from './Barcode2Display'
 // once Qabul qilingan reaches/exceeds Yuborilgan, that submit auto-finalizes
 // the cycle into wash_cycles and the serial files to history. Manual
 // Tugallash (double-confirm) remains for closing a real shortfall out early.
+// Window 2 (Tugallangan, added — see DECISIONS "Tugallangan window"): finalized
+// cycle-1 serials (auto or manual), ⋯ expand reusing the same pallet-list
+// pattern as Window 1, with a loss/gain badge (Ortiqcha wins over a negative
+// loss reading, same as Window 1's non-blocking overage treatment).
 export function OmborTayyorTab() {
   const { profile } = useAuth()
   const { productTypes } = useProductTypes()
   const { owners } = useOwners()
   const { calibres } = useCalibres()
-  const { serials, loading, refresh } = useMoykaOutput()
+  const { serials, completed, loading, refresh } = useMoykaOutput()
   const [activeForm, setActiveForm] = useState<string | null>(null)
   const [lastBarcode, setLastBarcode] = useState<Record<string, string>>({})
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [expandedCompleted, setExpandedCompleted] = useState<string | null>(null)
 
   function typeName(id: string) {
     return productTypes.find((t) => t.id === id)?.name ?? id
@@ -34,6 +39,50 @@ export function OmborTayyorTab() {
   }
   function calibreLabel(id: string) {
     return calibres.find((c) => c.id === id)?.label ?? id
+  }
+
+  // Shared with both windows — one pallet per row, its Barcode #2 reprintable.
+  function palletList(serial: string, typeId: string, ownerId: string, pallets: FinishedPallet[]) {
+    if (pallets.length === 0) return null
+    return (
+      <ul className="mt-2 space-y-1">
+        {pallets.map((p) => (
+          <li key={p.barcode2} className="flex items-center justify-between gap-2">
+            <span className="text-slate-600 dark:text-slate-400">
+              <span className="font-mono">{p.barcode2}</span> · {calibreLabel(p.calibre_id)} ·{' '}
+              {p.weight_kg.toLocaleString()} kg
+            </span>
+            <Barcode2Display
+              data={{
+                barcode2: p.barcode2,
+                serial,
+                type: typeName(typeId),
+                calibre: calibreLabel(p.calibre_id),
+                weightKg: p.weight_kg,
+                owner: ownerName(ownerId),
+              }}
+            />
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  // Window 2 badge — decision logic lives in tayyorCompletion.ts (pure,
+  // unit-tested); this just renders whichever kind it picks.
+  function lossBadge(lossPct: number, excess: number) {
+    const badge = completionBadge(lossPct, excess)
+    if (badge.kind === 'ortiqcha') {
+      return (
+        <span className="font-medium text-amber-600 dark:text-amber-400">Ortiqcha: +{badge.excessKg.toLocaleString()} kg</span>
+      )
+    }
+    return (
+      <span className={badge.pct > 0 ? 'font-medium text-red-600 dark:text-red-400' : 'font-medium text-slate-500 dark:text-slate-400'}>
+        {badge.pct > 0 ? '-' : ''}
+        {badge.pct.toFixed(1)}%
+      </span>
+    )
   }
 
   // §5.3: one pallet per save → one finished_pallets row + its Barcode #2.
@@ -134,28 +183,7 @@ export function OmborTayyorTab() {
             </div>
 
             {/* pallets received so far, each with its Barcode #2 */}
-            {s.pallets.length > 0 && (
-              <ul className="mt-2 space-y-1">
-                {s.pallets.map((p) => (
-                  <li key={p.barcode2} className="flex items-center justify-between gap-2">
-                    <span className="text-slate-600 dark:text-slate-400">
-                      <span className="font-mono">{p.barcode2}</span> · {calibreLabel(p.calibre_id)} ·{' '}
-                      {p.weight_kg.toLocaleString()} kg
-                    </span>
-                    <Barcode2Display
-                      data={{
-                        barcode2: p.barcode2,
-                        serial: s.serial,
-                        type: typeName(s.type_id),
-                        calibre: calibreLabel(p.calibre_id),
-                        weightKg: p.weight_kg,
-                        owner: ownerName(s.owner_id),
-                      }}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
+            {palletList(s.serial, s.type_id, s.owner_id, s.pallets)}
 
             {/* §5.3 fix: form always closes on submit (no auto-reopen) — a new
                 entry needs the "+ Yana qo'shish" click above. The last
@@ -223,6 +251,38 @@ export function OmborTayyorTab() {
           </div>
         )
       })}
+
+      {/* Window 2 — Tugallangan: finalized cycle-1 serials (auto or manual
+          Tugallash). ⋯ expand reuses the Window 1 pallet-list pattern; badge
+          is Ortiqcha (non-blocking overage, wins) or the locked loss %. */}
+      <div>
+        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Tugallangan</h2>
+        <div className="mt-2 space-y-2">
+          {completed.length === 0 && <p className="text-sm text-slate-400">Tugallangan serial yo'q.</p>}
+          {completed.map((c) => (
+            <div key={c.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setExpandedCompleted(expandedCompleted === c.serial ? null : c.serial)}
+                className="flex w-full items-center justify-between text-left"
+              >
+                <div>
+                  <span className="font-mono text-slate-900 dark:text-slate-100">{c.serial}</span>
+                  <span className="ml-2 text-slate-500 dark:text-slate-400">
+                    {ownerName(c.owner_id)} · {typeName(c.type_id)}
+                  </span>
+                </div>
+                <span className="text-slate-500 dark:text-slate-400">⋯</span>
+              </button>
+              <div className="mt-1 text-slate-500 dark:text-slate-400">
+                Yuborilgan {c.sent.toLocaleString()} → tayyor {c.received.toLocaleString()} kg ·{' '}
+                {lossBadge(c.lossPct, c.excess)}
+              </div>
+              {expandedCompleted === c.serial && palletList(c.serial, c.type_id, c.owner_id, c.pallets)}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

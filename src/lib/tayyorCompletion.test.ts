@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { computeFinalLossPct, isCycleComplete, jarayonda, ortiqcha } from './tayyorCompletion.ts'
+import { computeFinalLossPct, isCycleComplete, jarayonda, ortiqcha, completionBadge } from './tayyorCompletion.ts'
 
 // Exact-match completion: sent === received.
 test('exact match: cycle completes, zero loss, zero jarayonda, zero ortiqcha', () => {
@@ -48,4 +48,24 @@ test('degenerate: sent = 0 never reports complete and never divides by zero', ()
   assert.equal(computeFinalLossPct(0, 0), 0)
   assert.equal(jarayonda(0, 0), 0)
   assert.equal(ortiqcha(0, 0), 0)
+})
+
+// Window 2 (Tugallangan) badge — the three required cases: exact-match shows
+// 0%, overage shows Ortiqcha (never a negative loss), shortfall shows the
+// correct positive loss %. lossPct here is the LOCKED wash_cycles figure
+// (computeFinalLossPct's output), excess is the derived Ortiqcha figure —
+// mirroring exactly what useMoykaOutput hands the component.
+test('completion badge: exact-match serial displays 0% (loss kind, not ortiqcha)', () => {
+  const badge = completionBadge(computeFinalLossPct(2200, 2200), ortiqcha(2200, 2200))
+  assert.deepEqual(badge, { kind: 'loss', pct: 0 })
+})
+
+test('completion badge: overage serial displays Ortiqcha, never a negative loss', () => {
+  const badge = completionBadge(computeFinalLossPct(2200, 2500), ortiqcha(2200, 2500))
+  assert.deepEqual(badge, { kind: 'ortiqcha', excessKg: 300 })
+})
+
+test('completion badge: shortfall/manual-Tugallash serial displays correct loss %', () => {
+  const badge = completionBadge(computeFinalLossPct(2200, 1800), ortiqcha(2200, 1800))
+  assert.deepEqual(badge, { kind: 'loss', pct: 18.2 })
 })

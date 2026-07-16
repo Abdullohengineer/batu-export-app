@@ -5,13 +5,17 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useCalibres } from '../../lib/useCalibres'
 import { useMoykaOutput, type OutputSerial } from '../../lib/useMoykaOutput'
+import { computeFinalLossPct, isCycleComplete } from '../../lib/tayyorCompletion'
 import { FinishedReceiptForm, type ReceiptValues } from './FinishedReceiptForm'
 import { Barcode2Display } from './Barcode2Display'
 
 // §5.3 Tayyor Mahsulot: serials in Moyka awaiting output. Daily receipt form
-// (one pallet per save → Barcode #2), per-serial totals (Yuborilgan / Qabul
-// qilingan / Jarayonda — neutral until Tugallash), and Tugallash (double-
-// confirm → locks final yield-loss into wash_cycles, files to history).
+// (one pallet per save → Barcode #2, form closes on every submit — no
+// auto-reopen), per-serial totals (Yuborilgan / Qabul qilingan / Jarayonda,
+// floored at 0, with non-blocking Ortiqcha on overage). No fixed tolerance:
+// once Qabul qilingan reaches/exceeds Yuborilgan, that submit auto-finalizes
+// the cycle into wash_cycles and the serial files to history. Manual
+// Tugallash (double-confirm) remains for closing a real shortfall out early.
 export function OmborTayyorTab() {
   const { profile } = useAuth()
   const { productTypes } = useProductTypes()
@@ -33,6 +37,11 @@ export function OmborTayyorTab() {
   }
 
   // §5.3: one pallet per save → one finished_pallets row + its Barcode #2.
+  // The form always closes on submit (no auto-reopen — see DECISIONS "Tayyor
+  // Mahsulot completion"); a new entry needs an explicit button click.
+  // No fixed tolerance: the moment cumulative received reaches or exceeds
+  // sent, this same submit auto-finalizes the cycle (no manual confirm) —
+  // reusing the Tugallash upsert so it stays idempotent either way.
   async function handleReceipt(serial: OutputSerial, values: ReceiptValues) {
     const { error } = await supabase.from('finished_pallets').insert({
       barcode2: values.barcode2,
@@ -44,21 +53,42 @@ export function OmborTayyorTab() {
       created_by: profile?.id,
     })
     if (error) throw error
+
+    const newReceived = serial.received + values.weightKg
+    if (isCycleComplete(serial.sent, newReceived)) {
+      const { error: finalizeError } = await supabase.from('wash_cycles').upsert(
+        {
+          serial: serial.serial,
+          cycle_no: 1,
+          status: 'final',
+          final_loss_pct: computeFinalLossPct(serial.sent, newReceived),
+        },
+        { onConflict: 'serial,cycle_no' },
+      )
+      if (finalizeError) throw finalizeError
+    }
+
     setLastBarcode((m) => ({ ...m, [serial.serial]: values.barcode2 }))
+    setActiveForm(null)
     refresh()
   }
 
-  // §5.3 Tugallash: locks final yield-loss into wash_cycles (status='final').
-  // Derived: (sent − received) / sent × 100. Idempotent upsert on (serial,
-  // cycle_no). Double-confirmed in the UI before this runs.
+  // §5.3 manual Tugallash: closes a serial out early, before Qabul qilingan
+  // reaches Yuborilgan, accepting the shortfall as the final loss. Once
+  // received ≥ sent, handleReceipt already auto-finalizes and the serial
+  // leaves the active list, so this path is only reachable for a real
+  // shortfall. Idempotent upsert on (serial, cycle_no); double-confirmed
+  // in the UI before this runs.
   async function handleTugallash(serial: OutputSerial) {
-    const lossPct = serial.sent > 0 ? Math.round(((serial.sent - serial.received) / serial.sent) * 1000) / 10 : 0
-    const { error } = await supabase
-      .from('wash_cycles')
-      .upsert(
-        { serial: serial.serial, cycle_no: 1, status: 'final', final_loss_pct: lossPct },
-        { onConflict: 'serial,cycle_no' },
-      )
+    const { error } = await supabase.from('wash_cycles').upsert(
+      {
+        serial: serial.serial,
+        cycle_no: 1,
+        status: 'final',
+        final_loss_pct: computeFinalLossPct(serial.sent, serial.received),
+      },
+      { onConflict: 'serial,cycle_no' },
+    )
     if (error) throw error
     setConfirming(null)
     refresh()
@@ -72,7 +102,7 @@ export function OmborTayyorTab() {
       {serials.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan serial yo'q.</p>}
 
       {serials.map((s) => {
-        const lossPct = s.sent > 0 ? ((s.sent - s.received) / s.sent) * 100 : 0
+        const lossPct = computeFinalLossPct(s.sent, s.received)
         const lastB = lastBarcode[s.serial]
         return (
           <div key={s.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
@@ -88,7 +118,7 @@ export function OmborTayyorTab() {
                   onClick={() => setActiveForm(s.serial)}
                   className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
-                  + Qabul qilish
+                  {s.pallets.length === 0 ? '+ Qabul qilish' : "+ Yana qo'shish"}
                 </button>
               )}
             </div>
@@ -96,6 +126,11 @@ export function OmborTayyorTab() {
             <div className="mt-1 text-slate-500 dark:text-slate-400">
               Yuborilgan: {s.sent.toLocaleString()} kg · Qabul qilingan: {s.received.toLocaleString()} kg · Jarayonda:{' '}
               <span className="font-medium text-slate-900 dark:text-slate-100">{s.inProcess.toLocaleString()} kg</span>
+              {s.excess > 0 && (
+                <span className="ml-2 font-medium text-amber-600 dark:text-amber-400">
+                  Ortiqcha: +{s.excess.toLocaleString()} kg
+                </span>
+              )}
             </div>
 
             {/* pallets received so far, each with its Barcode #2 */}
@@ -122,32 +157,34 @@ export function OmborTayyorTab() {
               </ul>
             )}
 
+            {/* §5.3 fix: form always closes on submit (no auto-reopen) — a new
+                entry needs the "+ Yana qo'shish" click above. The last
+                sticker stays visible/printable after close, independent of
+                activeForm (see DECISIONS "Tayyor Mahsulot completion"). */}
             {activeForm === s.serial && (
-              <>
-                <FinishedReceiptForm
-                  serial={s}
-                  typeName={typeName(s.type_id)}
-                  calibres={calibres}
-                  onCancel={() => setActiveForm(null)}
-                  onSubmit={(values) => handleReceipt(s, values)}
+              <FinishedReceiptForm
+                serial={s}
+                typeName={typeName(s.type_id)}
+                calibres={calibres}
+                onCancel={() => setActiveForm(null)}
+                onSubmit={(values) => handleReceipt(s, values)}
+              />
+            )}
+            {lastB && (
+              <div className="mt-2">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Oxirgi Barcode #2:</div>
+                <Barcode2Display
+                  defaultOpen
+                  data={{
+                    barcode2: lastB,
+                    serial: s.serial,
+                    type: typeName(s.type_id),
+                    calibre: calibreLabel(s.pallets.find((p) => p.barcode2 === lastB)?.calibre_id ?? ''),
+                    weightKg: s.pallets.find((p) => p.barcode2 === lastB)?.weight_kg ?? 0,
+                    owner: ownerName(s.owner_id),
+                  }}
                 />
-                {lastB && (
-                  <div className="mt-2">
-                    <div className="text-xs text-slate-500 dark:text-slate-400">Oxirgi Barcode #2:</div>
-                    <Barcode2Display
-                      defaultOpen
-                      data={{
-                        barcode2: lastB,
-                        serial: s.serial,
-                        type: typeName(s.type_id),
-                        calibre: calibreLabel(s.pallets.find((p) => p.barcode2 === lastB)?.calibre_id ?? ''),
-                        weightKg: s.pallets.find((p) => p.barcode2 === lastB)?.weight_kg ?? 0,
-                        owner: ownerName(s.owner_id),
-                      }}
-                    />
-                  </div>
-                )}
-              </>
+              </div>
             )}
 
             {/* Tugallash with double-confirm */}

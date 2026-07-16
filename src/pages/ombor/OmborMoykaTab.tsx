@@ -4,12 +4,14 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useMoykaSerials, type MoykaSerial } from '../../lib/useMoykaSerials'
+import { sortByDateDesc } from '../../lib/sortByDate'
 import { MoykaSendForm } from './MoykaSendForm'
 import { EntityNotes } from '../../components/EntityNotes'
 
 // §5.2 Moykaga Chiqarish. Two windows matching the Steps 2-3 pattern
 // (Faol/Yakunlangan-style): "Yuborish uchun" (serials with available balance
-// > 0, the send form lives here) and "To'liq yuborilgan" (fully sent). The
+// > 0, the send form lives here) and "To'liq yuborilgan" (fully sent, sorted
+// newest-first by last send date — DECISIONS "History list ordering"). The
 // spec's "⋯ per-send history" is a per-serial expand within either window
 // (send log + Qaydlar), not a third window — see PR/DECISIONS.
 export function OmborMoykaTab() {
@@ -44,7 +46,10 @@ export function OmborMoykaTab() {
   if (loading) return null
 
   const toSend = serials.filter((s) => s.available > 0)
-  const fullySent = serials.filter((s) => s.available <= 0 && s.sent > 0)
+  const fullySent = sortByDateDesc(
+    serials.filter((s) => s.available <= 0 && s.sent > 0),
+    (s) => s.lastSentDate,
+  )
 
   function serialDetail(s: MoykaSerial) {
     return (

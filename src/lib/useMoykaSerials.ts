@@ -18,6 +18,10 @@ export interface MoykaSerial {
   sent: number // Σ moyka_sends.qty_kg — derived, not stored (§2.15)
   available: number // actual_qty − sent ("qoladi" after all sends so far)
   sends: MoykaSend[] // per-send history, chronological
+  lastSentDate: string | null // most recent sends[].sent_date — used to sort the "To'liq
+  // yuborilgan" completed window newest-first (DECISIONS "History list ordering"); this
+  // hook's own array order is left as-is since it also serves the active "Yuborish uchun"
+  // window, which isn't a completed/history list.
 }
 
 // §5.2 data: serials received into storage that have raw material to send to
@@ -84,6 +88,7 @@ export function useMoykaSerials() {
             sent,
             available: intake.actual_qty - sent,
             sends: serialSends,
+            lastSentDate: serialSends.length > 0 ? serialSends[serialSends.length - 1].sent_date : null,
           }
         })
         .filter((s): s is MoykaSerial => s !== null)

@@ -53,7 +53,7 @@ MANAGER KIRIM order → serial DDMMYY-NNN (Kutilmoqda)
 |---|---|---|
 | Printed when | Storage §1 confirms raw load | Storage §3 saves a finished receipt — **one sticker per physical pallet** |
 | Encodes | serial + turi + egasi + sana | sticker ID + parent seriya + **turi** + kalibr + og'irlik + egasi |
-| ID format | — | `PLT-<serial>-<calibre>` (Konditirskiy → `…-KN`) |
+| ID format | — | ~~`PLT-<serial>-<calibre>`~~ → **`PLT-<serial>-<calibre>-<seq>`** (Konditirskiy → `…-KN-<seq>`). *Updated 2026-07-15 (Step 6): the original format collides when a serial yields multiple pallets of the same calibre — which "one sticker per physical pallet" + atomic pallets require — since `barcode2` is the PK. `<seq>` is a per-(serial,calibre) 1-based counter. See DECISIONS.md.* |
 | Notes | 🔒 one #1 per serial. Since a serial is single-type (§2.1), this is inherently one per type-pile. | **Barcode #2** carries type for scan-time confirmation and dispatch matching; the parent serial already determines the type (§2.1). 🔒 **A pallet is atomic — never split.** It is loaded whole or not at all (§5.4) |
 
 ### 2.3 Product master data 🔒

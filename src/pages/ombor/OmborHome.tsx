@@ -14,6 +14,7 @@ export function OmborHome() {
           tabs={[
             { to: '/ombor', label: 'Skladga KIRIM', end: true },
             { to: '/ombor/moyka', label: 'Moykaga Chiqarish' },
+            { to: '/ombor/tayyor', label: 'Tayyor Mahsulot' },
             { to: '/ombor/hisobotlar', label: 'Hisobotlar' },
           ]}
         />

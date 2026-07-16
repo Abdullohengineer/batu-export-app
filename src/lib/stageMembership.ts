@@ -10,8 +10,14 @@ export function hasRawRemainder(actualQty: number, sent: number): boolean {
   return actualQty - sent > 0
 }
 
-// §5.2 Moyka Window 2 = §5.3 Tayyor Window 1: a serial sent to Moyka at
-// all, not yet finalized (Tugallash, auto or manual).
-export function isInMoyka(sent: number, finalized: boolean): boolean {
-  return sent > 0 && !finalized
+// §5.2 Moyka Window 2 = §5.3 Tayyor Window 1: a serial with unreceived sent
+// material — total_sent > total_received, serial-level (ignores wash_cycle
+// number and wash_cycles.status entirely; see DECISIONS.md "Serial-level
+// in-process visibility"). wash_cycles.status='final' still governs
+// graduation to §5.3 Window 2 (Tugallangan) — that's a separate, unchanged
+// concern. A serial can legitimately be in-process here AND already have a
+// final cycle-1 row (more was sent after that cycle closed) — both are true
+// at once, and both windows should say so.
+export function isProcessing(totalSent: number, totalReceived: number): boolean {
+  return totalSent - totalReceived > 0
 }

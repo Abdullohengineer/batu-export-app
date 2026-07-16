@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { jarayonda, ortiqcha } from './tayyorCompletion'
+import { sortByDateDesc } from './sortByDate'
 
 export { computeFinalLossPct, isCycleComplete } from './tayyorCompletion'
 
@@ -37,6 +38,10 @@ export interface CompletedCycle {
   lossPct: number // locked wash_cycles.final_loss_pct, floored at 0 (see tayyorCompletion.ts)
   excess: number // Ortiqcha — max(0, received − sent); picks the badge treatment
   pallets: FinishedPallet[]
+  lastReceivedDate: string | null // max finished_pallets.received_date — wash_cycles has no
+  // finalized_at timestamp (see DECISIONS "Tayyor Mahsulot completion"), so the last receipt
+  // date is the closest real signal for "when this cycle was completed"; used to sort
+  // Window 2 newest-first (DECISIONS "History list ordering").
 }
 
 // §5.3 data: serials sent to Moyka (Step 5) split into two windows — active
@@ -131,16 +136,21 @@ export function useMoykaOutput() {
         .map((serial): CompletedCycle | null => {
           const base = baseRow(serial)
           if (!base) return null
+          const lastReceivedDate = base.pallets.reduce<string | null>(
+            (max, p) => (!max || p.received_date > max ? p.received_date : max),
+            null,
+          )
           return {
             ...base,
             lossPct: lossPctBySerial.get(serial) ?? 0,
             excess: ortiqcha(base.sent, base.received),
+            lastReceivedDate,
           }
         })
         .filter((c): c is CompletedCycle => c !== null)
 
       setSerials(combined)
-      setCompleted(completedRows)
+      setCompleted(sortByDateDesc(completedRows, (c) => c.lastReceivedDate))
     } finally {
       setLoading(false)
     }

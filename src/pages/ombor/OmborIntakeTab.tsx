@@ -5,6 +5,7 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { useIntakeLines, type IntakeLine, type IntakeRecord } from '../../lib/useIntakeLines'
+import { sortByDateDesc } from '../../lib/sortByDate'
 import { IntakeAcceptForm, type IntakeAcceptValues } from './IntakeAcceptForm'
 import { IntakeDetailView } from './IntakeDetailView'
 import { Barcode1Display } from './Barcode1Display'
@@ -58,7 +59,15 @@ export function OmborIntakeTab() {
   if (loading) return null
 
   const pending = lines.filter((l) => !l.intake)
-  const received = lines.filter((l): l is IntakeLine & { intake: IntakeRecord } => l.intake !== null)
+  // Newest-first by confirmed_at (DECISIONS "History list ordering") — the
+  // underlying lines aren't reliably ordered (useIntakeLines builds them by
+  // mapping over kirim_lines, which has no .order(), not over the
+  // already-sorted orders query), so this window needs its own sort rather
+  // than trusting the source array's order.
+  const received = sortByDateDesc(
+    lines.filter((l): l is IntakeLine & { intake: IntakeRecord } => l.intake !== null),
+    (l) => l.intake.confirmed_at,
+  )
 
   const pendingByOrder = new Map<string, IntakeLine[]>()
   for (const line of pending) {

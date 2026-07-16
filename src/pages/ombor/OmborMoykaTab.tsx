@@ -14,14 +14,18 @@ import { EntityNotes } from '../../components/EntityNotes'
 // independent conditions:
 // - Window 1 "Yuborish uchun" = §5.1 KIRIM's Window 2 (raw remainder > 0,
 //   hasRawRemainder) — the send form lives here.
-// - Window 2 (updated 2026-07-16) = §5.3 Tayyor's Window 1: reuses
-//   useMoykaOutput's `serials` directly (sent > 0, not yet finalized) instead
-//   of the old "fully sent" (available <= 0) reading, which excluded a
-//   partial-send serial from ever showing as "in Moyka". A partial-send
-//   serial now legitimately appears in BOTH windows at once — expected.
-// The spec's "⋯ per-send history" is a per-serial expand within Window 1
-// only (send log + Qaydlar); Window 2 is a read-only mirror of Tayyor's
-// active list, so it has no send action or expand of its own.
+// - Window 2 = §5.3 Tayyor's Window 1: reuses useMoykaOutput's `serials`
+//   directly — total_sent > total_received, SERIAL-LEVEL (isProcessing;
+//   updated 2026-07-16, see DECISIONS.md "Serial-level in-process
+//   visibility"). Ignores wash_cycles.status entirely, so a serial with
+//   unreceived material stays here even if an earlier cycle already
+//   finalized (more was sent after that cycle closed) — it can be in this
+//   window AND in §5.3's Tugallangan at the same time; both facts are real.
+// A partial-send serial can legitimately appear in BOTH this tab's windows
+// at once (raw remainder AND unreceived sent material) — expected, not a
+// bug. The spec's "⋯ per-send history" is a per-serial expand within
+// Window 1 only (send log + Qaydlar); Window 2 is a read-only mirror of
+// Tayyor's active list, so it has no send action or expand of its own.
 export function OmborMoykaTab() {
   const { profile } = useAuth()
   const { productTypes } = useProductTypes()

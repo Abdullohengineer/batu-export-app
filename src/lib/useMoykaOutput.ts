@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { jarayonda, ortiqcha } from './tayyorCompletion'
 import { sortByDateDesc } from './sortByDate'
-import { isInMoyka } from './stageMembership'
+import { isProcessing } from './stageMembership'
 
 export { computeFinalLossPct, isCycleComplete } from './tayyorCompletion'
 
@@ -46,11 +46,16 @@ export interface CompletedCycle {
 }
 
 // §5.3 data: serials sent to Moyka (Step 5) split into two windows — active
-// (no final cycle-1 row yet) and completed (Tugallangan: a final row exists,
-// auto or manual). All totals DERIVED (CLAUDE.md "derive, don't store")
-// except the locked final_loss_pct itself: sent from moyka_sends, received
-// from finished_pallets. wash_cycle = 1 throughout (re-wash §2.13 is a later
-// step and doesn't exist yet).
+// (unreceived sent material: total_sent > total_received, serial-level —
+// see stageMembership.ts isProcessing) and completed (Tugallangan: a final
+// wash_cycles row exists for cycle 1, auto or manual Tugallash). These two
+// are independent now, not mutually exclusive: a serial can be active AND
+// completed at once if more was sent after an earlier cycle finalized (see
+// DECISIONS "Serial-level in-process visibility"). All totals DERIVED
+// (CLAUDE.md "derive, don't store") except the locked final_loss_pct
+// itself: sent from moyka_sends, received from finished_pallets. wash_cycle
+// number is ignored for in-process visibility (serial-level, intentional —
+// re-wash/multi-cycle numbering is deferred, §2.13).
 export function useMoykaOutput() {
   const [serials, setSerials] = useState<OutputSerial[]>([])
   const [completed, setCompleted] = useState<CompletedCycle[]>([])
@@ -69,14 +74,43 @@ export function useMoykaOutput() {
       const sentBySerial = new Map<string, number>()
       for (const s of sends ?? []) sentBySerial.set(s.serial, (sentBySerial.get(s.serial) ?? 0) + s.qty_kg)
 
+      // Pallets (and their received total) per serial — built early because
+      // §5.2 Window 2 / §5.3 Window 1 membership needs total_received now,
+      // not just total_sent (see stageMembership.ts isProcessing).
+      const palletsBySerial = new Map<string, FinishedPallet[]>()
+      for (const p of pallets ?? []) {
+        if (p.status === 'bekor_qilindi') continue // voided pallets don't count (re-wash, future)
+        const list = palletsBySerial.get(p.serial) ?? []
+        list.push({ barcode2: p.barcode2, calibre_id: p.calibre_id, weight_kg: p.weight_kg, received_date: p.received_date })
+        palletsBySerial.set(p.serial, list)
+      }
+      const receivedBySerial = new Map<string, number>()
+      for (const [serial, serialPallets] of palletsBySerial) {
+        receivedBySerial.set(
+          serial,
+          serialPallets.reduce((sum, p) => sum + p.weight_kg, 0),
+        )
+      }
+
       const serialList = [...sentBySerial.keys()]
       const finalCycles = (cycles ?? []).filter((c) => c.cycle_no === 1 && c.status === 'final')
       const lossPctBySerial = new Map(finalCycles.map((c) => [c.serial, c.final_loss_pct ?? 0]))
       const finalizedSerials = new Set(finalCycles.map((c) => c.serial))
-      // §5.2 Moyka Window 2 = this list exactly (section mirroring, see
-      // stageMembership.ts) — isInMoyka is the shared, tested predicate both
-      // sides of that boundary use, not two independently-written filters.
-      const activeSerials = serialList.filter((s) => isInMoyka(sentBySerial.get(s) ?? 0, finalizedSerials.has(s)))
+      // §5.2 Moyka Window 2 = §5.3 Tayyor Window 1 (section mirroring) —
+      // isProcessing is the shared, tested, SERIAL-LEVEL predicate: a serial
+      // with unreceived sent material is "in process" even if an earlier
+      // cycle already has a final wash_cycles row (see DECISIONS "Serial-
+      // level in-process visibility" — this replaces isInMoyka, which hid a
+      // serial the moment ANY cycle-1 final row existed, regardless of
+      // newer unreceived material — the live bug this fixes).
+      const activeSerials = serialList.filter((s) =>
+        isProcessing(sentBySerial.get(s) ?? 0, receivedBySerial.get(s) ?? 0),
+      )
+      // §5.3 Window 2 (Tugallangan) membership is UNCHANGED — still governed
+      // by wash_cycles.status='final'. A serial can be in BOTH activeSerials
+      // (more unreceived material) and completedSerials (an earlier cycle's
+      // yield-loss already locked) at once — both facts are real, so both
+      // windows show it.
       const completedSerials = serialList.filter((s) => finalizedSerials.has(s))
 
       // Only bail early if there is truly nothing sent yet — NOT just when
@@ -102,13 +136,6 @@ export function useMoykaOutput() {
       const lineBySerial = new Map((kLines ?? []).map((l) => [l.serial, l]))
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
       const categoryByType = new Map((types ?? []).map((t) => [t.id, t.category_id]))
-      const palletsBySerial = new Map<string, FinishedPallet[]>()
-      for (const p of pallets ?? []) {
-        if (p.status === 'bekor_qilindi') continue // voided pallets don't count (re-wash, future)
-        const list = palletsBySerial.get(p.serial) ?? []
-        list.push({ barcode2: p.barcode2, calibre_id: p.calibre_id, weight_kg: p.weight_kg, received_date: p.received_date })
-        palletsBySerial.set(p.serial, list)
-      }
 
       // Shared join/derivation for both windows — avoids fetching or
       // computing sent/received/pallets twice for the same serial shape.
@@ -117,10 +144,9 @@ export function useMoykaOutput() {
         if (!line) return null
         const order = orderById.get(line.order_id)
         if (!order) return null
-        const serialPallets = palletsBySerial.get(serial) ?? []
         const sent = sentBySerial.get(serial) ?? 0
-        const received = serialPallets.reduce((sum, p) => sum + p.weight_kg, 0)
-        return { serial, type_id: line.type_id, owner_id: order.owner_id, sent, received, pallets: serialPallets }
+        const received = receivedBySerial.get(serial) ?? 0
+        return { serial, type_id: line.type_id, owner_id: order.owner_id, sent, received, pallets: palletsBySerial.get(serial) ?? [] }
       }
 
       const combined: OutputSerial[] = activeSerials

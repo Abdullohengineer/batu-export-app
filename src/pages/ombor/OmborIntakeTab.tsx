@@ -5,7 +5,9 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { useIntakeLines, type IntakeLine, type IntakeRecord } from '../../lib/useIntakeLines'
+import { useMoykaSerials } from '../../lib/useMoykaSerials'
 import { sortByDateDesc } from '../../lib/sortByDate'
+import { hasRawRemainder } from '../../lib/stageMembership'
 import { IntakeAcceptForm, type IntakeAcceptValues } from './IntakeAcceptForm'
 import { IntakeDetailView } from './IntakeDetailView'
 import { Barcode1Display } from './Barcode1Display'
@@ -23,6 +25,7 @@ export function OmborIntakeTab() {
   const { owners } = useOwners()
   const { limits } = useSettingsLimits()
   const { lines, loading, refresh } = useIntakeLines()
+  const { serials: moykaSerials, loading: moykaLoading } = useMoykaSerials()
   const [activeSerial, setActiveSerial] = useState<string | null>(null)
   const [expandedSerial, setExpandedSerial] = useState<string | null>(null)
 
@@ -56,16 +59,33 @@ export function OmborIntakeTab() {
     refresh()
   }
 
-  if (loading) return null
+  if (loading || moykaLoading) return null
 
   const pending = lines.filter((l) => !l.intake)
+
+  // §5.1 Window 2 = §5.2 Moyka's Window 1 (section mirroring, SPEC.md §5
+  // intro; DECISIONS.md "Section mirroring / derived stage membership"):
+  // a confirmed serial stays here only while it still has raw remainder —
+  // hasRawRemainder is the SAME predicate useMoykaSerials' own "Yuborish
+  // uchun" window filters by, via the same useMoykaSerials query (reused,
+  // not reimplemented). Previously this filtered on `intake !== null` alone
+  // — presence of a storage_intake row, forever — so a fully-sent serial
+  // never left this window (the `skladda_turibdi` bug: its row kept showing
+  // a status that was true the day it was accepted and never updated
+  // since). Falls back to 0 (nothing sent) if a serial is somehow missing
+  // from moykaSerials — defensive only, should not happen since
+  // useMoykaSerials fetches every storage_intake row unfiltered.
+  const sentBySerial = new Map(moykaSerials.map((s) => [s.serial, s.sent]))
   // Newest-first by confirmed_at (DECISIONS "History list ordering") — the
   // underlying lines aren't reliably ordered (useIntakeLines builds them by
   // mapping over kirim_lines, which has no .order(), not over the
   // already-sorted orders query), so this window needs its own sort rather
   // than trusting the source array's order.
   const received = sortByDateDesc(
-    lines.filter((l): l is IntakeLine & { intake: IntakeRecord } => l.intake !== null),
+    lines.filter(
+      (l): l is IntakeLine & { intake: IntakeRecord } =>
+        l.intake !== null && hasRawRemainder(l.intake.actual_qty, sentBySerial.get(l.serial) ?? 0),
+    ),
     (l) => l.intake.confirmed_at,
   )
 
@@ -141,12 +161,14 @@ export function OmborIntakeTab() {
         <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Qabul qilingan mahsulotlar</h2>
         <div className="mt-2 space-y-2">
           {received.length === 0 && <p className="text-sm text-slate-400">Hali qabul qilingan yo'q.</p>}
-          {received.map((line) => (
+          {received.map((line) => {
+            const remaining = line.intake.actual_qty - (sentBySerial.get(line.serial) ?? 0)
+            return (
             <div key={line.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
               <div className="flex items-center justify-between">
                 <span className="text-slate-900 dark:text-slate-100">
-                  {line.serial} · {typeName(line.type_id)} · {line.intake.actual_qty.toLocaleString()} kg ·{' '}
-                  {line.intake.status}
+                  {line.serial} · {typeName(line.type_id)} · {line.intake.actual_qty.toLocaleString()} kg · Qoldiq:{' '}
+                  {remaining.toLocaleString()} kg
                 </span>
                 <div className="flex items-center gap-2">
                   {line.intake.barcode1 && (
@@ -173,7 +195,8 @@ export function OmborIntakeTab() {
                 <IntakeDetailView line={line} ownerName={ownerName(line.owner_id)} typeName={typeName(line.type_id)} />
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>

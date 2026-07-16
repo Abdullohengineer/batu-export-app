@@ -28,6 +28,10 @@ Read both, relevant sections only, before every task.
 - Top-tab per-role navigation: pattern from Step 4 (QorovulHome/OmborHome).
 - Two-window list pattern (Faol/Yakunlangan-style) for queues.
 - Barcode rendering: JsBarcode/Code128, `src/lib/barcodeLabel.ts`, 50x30mm.
+- **Section mirroring** (SPEC.md §5 intro, `src/lib/stageMembership.ts`): a
+  section's Window N is the same underlying set as the next section's
+  Window N−1 — reuse the same query/hook across that boundary, never
+  reimplement it. Cite this by name instead of restating the table.
 
 ## Workflow
 - Feature branch off `main` per task. Open PR. Never merge — user reviews.

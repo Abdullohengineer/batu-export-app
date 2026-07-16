@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { jarayonda, ortiqcha } from './tayyorCompletion'
 import { sortByDateDesc } from './sortByDate'
+import { isInMoyka } from './stageMembership'
 
 export { computeFinalLossPct, isCycleComplete } from './tayyorCompletion'
 
@@ -72,7 +73,10 @@ export function useMoykaOutput() {
       const finalCycles = (cycles ?? []).filter((c) => c.cycle_no === 1 && c.status === 'final')
       const lossPctBySerial = new Map(finalCycles.map((c) => [c.serial, c.final_loss_pct ?? 0]))
       const finalizedSerials = new Set(finalCycles.map((c) => c.serial))
-      const activeSerials = serialList.filter((s) => !finalizedSerials.has(s))
+      // §5.2 Moyka Window 2 = this list exactly (section mirroring, see
+      // stageMembership.ts) — isInMoyka is the shared, tested predicate both
+      // sides of that boundary use, not two independently-written filters.
+      const activeSerials = serialList.filter((s) => isInMoyka(sentBySerial.get(s) ?? 0, finalizedSerials.has(s)))
       const completedSerials = serialList.filter((s) => finalizedSerials.has(s))
 
       // Only bail early if there is truly nothing sent yet — NOT just when

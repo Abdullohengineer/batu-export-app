@@ -1,17 +1,24 @@
-import { useState } from 'react'
+import { Outlet } from 'react-router-dom'
 import { RoleShell } from '../../components/RoleShell'
-import { KirimForm } from './KirimForm'
-import { KirimOrdersList } from './KirimOrdersList'
+import { RoleTabs } from '../../components/RoleTabs'
 
+// Layout for Menejer's screens: header tabs + the active tab via <Outlet/>
+// (§1.1 — segmented KIRIM|CHIQIM tabs), same nested-route shape Qorovul/Ombor
+// already use. Previously a flat page (KIRIM only, no CHIQIM existed yet).
 export function MenejerHome() {
-  const [refreshKey, setRefreshKey] = useState(0)
-
   return (
-    <RoleShell title="Menejer">
-      <div className="max-w-2xl space-y-8">
-        <KirimForm onSaved={() => setRefreshKey((k) => k + 1)} />
-        <KirimOrdersList refreshKey={refreshKey} />
-      </div>
+    <RoleShell
+      title="Menejer"
+      nav={
+        <RoleTabs
+          tabs={[
+            { to: '/menejer', label: 'KIRIM', end: true },
+            { to: '/menejer/chiqim', label: 'CHIQIM' },
+          ]}
+        />
+      }
+    >
+      <Outlet />
     </RoleShell>
   )
 }

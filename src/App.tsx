@@ -6,6 +6,8 @@ import { RahbarLayout } from './pages/rahbar/RahbarLayout'
 import { RahbarHome } from './pages/rahbar/RahbarHome'
 import { UsersAdminPage } from './pages/admin/UsersAdminPage'
 import { MenejerHome } from './pages/menejer/MenejerHome'
+import { MenejerKirimTab } from './pages/menejer/MenejerKirimTab'
+import { MenejerChiqimTab } from './pages/menejer/MenejerChiqimTab'
 import { QorovulHome } from './pages/qorovul/QorovulHome'
 import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
 import { QorovulHisobotlar } from './pages/qorovul/QorovulHisobotlar'
@@ -56,7 +58,10 @@ function AppRoutes() {
             <MenejerHome />
           </RoleRoute>
         }
-      />
+      >
+        <Route index element={<MenejerKirimTab />} />
+        <Route path="chiqim" element={<MenejerChiqimTab />} />
+      </Route>
       <Route
         path="/qorovul"
         element={

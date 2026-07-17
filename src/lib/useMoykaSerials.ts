@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { sortByDateDesc } from './sortByDate'
 
 export interface MoykaSend {
   id: string
@@ -88,7 +89,12 @@ export function useMoykaSerials() {
         })
         .filter((s): s is MoykaSerial => s !== null)
 
-      setSerials(combined)
+      // Universal sort rule (DECISIONS "Universal sort rule", SPEC.md §5
+      // intro): every stage list sorts newest-first, by order_date here —
+      // the batch's own arrival date, meaningful whether or not it's been
+      // sent yet. Sorted once at the hook so §5.2 Window 1 ("Yuborish
+      // uchun", filtered from this same array) inherits it automatically.
+      setSerials(sortByDateDesc(combined, (s) => s.order_date))
     } finally {
       setLoading(false)
     }

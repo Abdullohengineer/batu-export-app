@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { sortByDateDesc } from './sortByDate.ts'
+import { sortByDateDesc, maxDate } from './sortByDate.ts'
 
 test('newest-first: reorders an out-of-order list ascending by date to descending', () => {
   const items = [{ id: 'a', d: '2026-07-01' }, { id: 'b', d: '2026-07-15' }, { id: 'c', d: '2026-07-10' }]
@@ -36,4 +36,18 @@ test('full timestamps (not just dates) compare correctly, same-day newest first'
   ]
   const sorted = sortByDateDesc(items, (i) => i.d)
   assert.deepEqual(sorted.map((i) => i.id), ['evening', 'noon', 'morning'])
+})
+
+test('maxDate: picks the later of two dates', () => {
+  assert.equal(maxDate('2026-07-01', '2026-07-15'), '2026-07-15')
+  assert.equal(maxDate('2026-07-15', '2026-07-01'), '2026-07-15')
+})
+
+test('maxDate: either side null falls back to the other', () => {
+  assert.equal(maxDate(null, '2026-07-15'), '2026-07-15')
+  assert.equal(maxDate('2026-07-15', null), '2026-07-15')
+})
+
+test('maxDate: both null is null', () => {
+  assert.equal(maxDate(null, null), null)
 })

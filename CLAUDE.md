@@ -32,6 +32,13 @@ Read both, relevant sections only, before every task.
   section's Window N is the same underlying set as the next section's
   Window N−1 — reuse the same query/hook across that boundary, never
   reimplement it. Cite this by name instead of restating the table.
+- **Universal sort rule** (SPEC.md §5 intro named invariant): every stage
+  and history list sorts newest-first via the shared `sortByDateDesc`
+  (`src/lib/sortByDate.ts`), sorted once inside the hook that owns the data
+  so every consumer inherits it — never sorted again per-component, and
+  never skipped on a new list in this family. Exempt: append-only event
+  timelines (Qaydlar/notes, per-serial send-history) and raw FIFO arrival
+  queues (pending trucks/gate trips) — see the named invariant for why.
 
 ## Workflow
 - Feature branch off `main` per task. Open PR. Never merge — user reviews.

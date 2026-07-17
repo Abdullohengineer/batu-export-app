@@ -13,19 +13,23 @@ import { EntityNotes } from '../../components/EntityNotes'
 // DECISIONS.md "Section mirroring / derived stage membership"), NOT two
 // independent conditions:
 // - Window 1 "Yuborish uchun" = §5.1 KIRIM's Window 2 (raw remainder > 0,
-//   hasRawRemainder) — the send form lives here.
+//   hasRawRemainder) — the send form lives here. Sorted newest-first by
+//   order_date (DECISIONS "Universal sort rule"), inherited from
+//   useMoykaSerials rather than sorted again here.
 // - Window 2 = §5.3 Tayyor's Window 1: reuses useMoykaOutput's `serials`
-//   directly — total_sent > total_received, SERIAL-LEVEL (isProcessing;
-//   updated 2026-07-16, see DECISIONS.md "Serial-level in-process
-//   visibility"). Ignores wash_cycles.status entirely, so a serial with
-//   unreceived material stays here even if an earlier cycle already
-//   finalized (more was sent after that cycle closed) — it can be in this
-//   window AND in §5.3's Tugallangan at the same time; both facts are real.
+//   directly — sent at all, not yet manually finished (isAwaitingTugallash;
+//   updated 2026-07-16, see DECISIONS.md "Manual-only finishing"). No
+//   quantity comparison at all: an over-received serial stays visible here
+//   exactly as long as an under-received one does, until Tugallash. Also
+//   ignores wash_cycles.status independently of quantity, so a serial with
+//   more sent after an earlier Tugallash can be in this window AND in
+//   §5.3's Tugallangan at the same time; both facts are real. Sorted
+//   newest-first by last activity, inherited from useMoykaOutput.
 // A partial-send serial can legitimately appear in BOTH this tab's windows
-// at once (raw remainder AND unreceived sent material) — expected, not a
-// bug. The spec's "⋯ per-send history" is a per-serial expand within
-// Window 1 only (send log + Qaydlar); Window 2 is a read-only mirror of
-// Tayyor's active list, so it has no send action or expand of its own.
+// at once (raw remainder AND not yet finished) — expected, not a bug. The
+// spec's "⋯ per-send history" is a per-serial expand within Window 1 only
+// (send log + Qaydlar); Window 2 is a read-only mirror of Tayyor's active
+// list, so it has no send action or expand of its own.
 export function OmborMoykaTab() {
   const { profile } = useAuth()
   const { productTypes } = useProductTypes()

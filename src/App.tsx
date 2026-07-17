@@ -6,6 +6,8 @@ import { RahbarLayout } from './pages/rahbar/RahbarLayout'
 import { RahbarHome } from './pages/rahbar/RahbarHome'
 import { UsersAdminPage } from './pages/admin/UsersAdminPage'
 import { MenejerHome } from './pages/menejer/MenejerHome'
+import { MenejerKirimTab } from './pages/menejer/MenejerKirimTab'
+import { MenejerChiqimTab } from './pages/menejer/MenejerChiqimTab'
 import { QorovulHome } from './pages/qorovul/QorovulHome'
 import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
 import { QorovulHisobotlar } from './pages/qorovul/QorovulHisobotlar'
@@ -13,6 +15,7 @@ import { OmborHome } from './pages/ombor/OmborHome'
 import { OmborIntakeTab } from './pages/ombor/OmborIntakeTab'
 import { OmborMoykaTab } from './pages/ombor/OmborMoykaTab'
 import { OmborTayyorTab } from './pages/ombor/OmborTayyorTab'
+import { OmborChiqimTab } from './pages/ombor/OmborChiqimTab'
 import { OmborHisobotlar } from './pages/ombor/OmborHisobotlar'
 import { LaboratorHome } from './pages/laborator/LaboratorHome'
 
@@ -56,7 +59,10 @@ function AppRoutes() {
             <MenejerHome />
           </RoleRoute>
         }
-      />
+      >
+        <Route index element={<MenejerKirimTab />} />
+        <Route path="chiqim" element={<MenejerChiqimTab />} />
+      </Route>
       <Route
         path="/qorovul"
         element={
@@ -79,6 +85,7 @@ function AppRoutes() {
         <Route index element={<OmborIntakeTab />} />
         <Route path="moyka" element={<OmborMoykaTab />} />
         <Route path="tayyor" element={<OmborTayyorTab />} />
+        <Route path="chiqim" element={<OmborChiqimTab />} />
         <Route path="hisobotlar" element={<OmborHisobotlar />} />
       </Route>
       <Route

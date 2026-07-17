@@ -15,6 +15,7 @@ export function OmborHome() {
             { to: '/ombor', label: 'Skladga KIRIM', end: true },
             { to: '/ombor/moyka', label: 'Moykaga Chiqarish' },
             { to: '/ombor/tayyor', label: 'Tayyor Mahsulot' },
+            { to: '/ombor/chiqim', label: 'Skladdan CHIQIM' },
             { to: '/ombor/hisobotlar', label: 'Hisobotlar' },
           ]}
         />

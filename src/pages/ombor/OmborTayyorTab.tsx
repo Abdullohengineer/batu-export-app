@@ -37,6 +37,7 @@ export function OmborTayyorTab() {
   const [activeForm, setActiveForm] = useState<string | null>(null)
   const [lastBarcode, setLastBarcode] = useState<Record<string, string>>({})
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [expandedActive, setExpandedActive] = useState<string | null>(null)
   const [expandedCompleted, setExpandedCompleted] = useState<string | null>(null)
 
   function typeName(id: string) {
@@ -164,24 +165,27 @@ export function OmborTayyorTab() {
         const lossPct = computeFinalLossPct(s.sent, s.received)
         const lastB = lastBarcode[s.serial]
         const warnings = tugallashWarningText(s)
+        const isExpanded = expandedActive === s.serial
         return (
           <div key={s.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
-            <div className="flex items-center justify-between">
+            {/* Collapsed by default (density fix) — reuses the same
+                toggle-button + minimal-identifying-info pattern already
+                used by Window 2 (Tugallangan) below: serial · type · owner
+                plus the totals line stay visible collapsed; pallets, the
+                receipt form, and Tugallash move behind the expand. */}
+            <button
+              type="button"
+              onClick={() => setExpandedActive(isExpanded ? null : s.serial)}
+              className="flex w-full items-center justify-between text-left"
+            >
               <div>
                 <span className="font-mono text-slate-900 dark:text-slate-100">{s.serial}</span>
                 <span className="ml-2 text-slate-500 dark:text-slate-400">
                   {typeName(s.type_id)} · {ownerName(s.owner_id)}
                 </span>
               </div>
-              {activeForm !== s.serial && (
-                <button
-                  onClick={() => setActiveForm(s.serial)}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  {s.pallets.length === 0 ? '+ Qabul qilish' : "+ Yana qo'shish"}
-                </button>
-              )}
-            </div>
+              <span className="text-slate-500 dark:text-slate-400">⋯</span>
+            </button>
 
             <div className="mt-1 text-slate-500 dark:text-slate-400">
               Yuborilgan: {s.sent.toLocaleString()} kg · Qabul qilingan: {s.received.toLocaleString()} kg · Jarayonda:{' '}
@@ -193,80 +197,93 @@ export function OmborTayyorTab() {
               )}
             </div>
 
-            {/* pallets received so far, each with its Barcode #2 */}
-            {palletList(s.serial, s.type_id, s.owner_id, s.pallets)}
+            {isExpanded && (
+              <>
+                {activeForm !== s.serial && (
+                  <button
+                    onClick={() => setActiveForm(s.serial)}
+                    className="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {s.pallets.length === 0 ? '+ Qabul qilish' : "+ Yana qo'shish"}
+                  </button>
+                )}
 
-            {/* §5.3 fix: form always closes on submit (no auto-reopen) — a new
-                entry needs the "+ Yana qo'shish" click above. The last
-                sticker stays visible/printable after close, independent of
-                activeForm (see DECISIONS "Tayyor Mahsulot completion"). */}
-            {activeForm === s.serial && (
-              <FinishedReceiptForm
-                serial={s}
-                typeName={typeName(s.type_id)}
-                calibres={calibres}
-                onCancel={() => setActiveForm(null)}
-                onSubmit={(values) => handleReceipt(s, values)}
-              />
-            )}
-            {lastB && (
-              <div className="mt-2">
-                <div className="text-xs text-slate-500 dark:text-slate-400">Oxirgi Barcode #2:</div>
-                <Barcode2Display
-                  defaultOpen
-                  data={{
-                    barcode2: lastB,
-                    serial: s.serial,
-                    type: typeName(s.type_id),
-                    calibre: calibreLabel(s.pallets.find((p) => p.barcode2 === lastB)?.calibre_id ?? ''),
-                    weightKg: s.pallets.find((p) => p.barcode2 === lastB)?.weight_kg ?? 0,
-                    owner: ownerName(s.owner_id),
-                  }}
-                />
-              </div>
-            )}
+                {/* pallets received so far, each with its Barcode #2 */}
+                {palletList(s.serial, s.type_id, s.owner_id, s.pallets)}
 
-            {/* Tugallash: always clickable (DECISIONS "Manual-only finishing")
-                — enablement never depends on Jarayonda/remaining. Soft
-                warning (never blocks) when raw remainder remains and/or
-                loss exceeds 10%. */}
-            <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">
-              {confirming === s.serial ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-slate-700 dark:text-slate-300">
-                    Yakuniy hisobot — {s.pallets.length} ta pallet, jami {s.received.toLocaleString()} kg qabul qilindi.
-                    Yo'qotish <span className="font-medium">{lossPct.toFixed(1)}%</span> deb qulflanadi.
-                  </p>
-                  {warnings.length > 0 && (
-                    <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
-                      {warnings.join(' · ')}. Baribir davom etilsinmi?
-                    </p>
-                  )}
-                  {warnings.length === 0 && <p className="text-sm text-slate-700 dark:text-slate-300">Davom etilsinmi?</p>}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleTugallash(s)}
-                      className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"
-                    >
-                      Ha, tugallash
-                    </button>
-                    <button
-                      onClick={() => setConfirming(null)}
-                      className="rounded-md px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
-                    >
-                      Bekor qilish
-                    </button>
+                {/* §5.3 fix: form always closes on submit (no auto-reopen) — a new
+                    entry needs the "+ Yana qo'shish" click above. The last
+                    sticker stays visible/printable after close, independent of
+                    activeForm (see DECISIONS "Tayyor Mahsulot completion"). */}
+                {activeForm === s.serial && (
+                  <FinishedReceiptForm
+                    serial={s}
+                    typeName={typeName(s.type_id)}
+                    calibres={calibres}
+                    onCancel={() => setActiveForm(null)}
+                    onSubmit={(values) => handleReceipt(s, values)}
+                  />
+                )}
+                {lastB && (
+                  <div className="mt-2">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">Oxirgi Barcode #2:</div>
+                    <Barcode2Display
+                      defaultOpen
+                      data={{
+                        barcode2: lastB,
+                        serial: s.serial,
+                        type: typeName(s.type_id),
+                        calibre: calibreLabel(s.pallets.find((p) => p.barcode2 === lastB)?.calibre_id ?? ''),
+                        weightKg: s.pallets.find((p) => p.barcode2 === lastB)?.weight_kg ?? 0,
+                        owner: ownerName(s.owner_id),
+                      }}
+                    />
                   </div>
+                )}
+
+                {/* Tugallash: always clickable (DECISIONS "Manual-only finishing")
+                    — enablement never depends on Jarayonda/remaining. Soft
+                    warning (never blocks) when raw remainder remains and/or
+                    loss exceeds 10%. */}
+                <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">
+                  {confirming === s.serial ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        Yakuniy hisobot — {s.pallets.length} ta pallet, jami {s.received.toLocaleString()} kg qabul qilindi.
+                        Yo'qotish <span className="font-medium">{lossPct.toFixed(1)}%</span> deb qulflanadi.
+                      </p>
+                      {warnings.length > 0 && (
+                        <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
+                          {warnings.join(' · ')}. Baribir davom etilsinmi?
+                        </p>
+                      )}
+                      {warnings.length === 0 && <p className="text-sm text-slate-700 dark:text-slate-300">Davom etilsinmi?</p>}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleTugallash(s)}
+                          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"
+                        >
+                          Ha, tugallash
+                        </button>
+                        <button
+                          onClick={() => setConfirming(null)}
+                          className="rounded-md px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                        >
+                          Bekor qilish
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirming(s.serial)}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      Tugallash
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <button
-                  onClick={() => setConfirming(s.serial)}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  Tugallash
-                </button>
-              )}
-            </div>
+              </>
+            )}
           </div>
         )
       })}

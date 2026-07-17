@@ -16,6 +16,12 @@ dev-dist
 .env.*
 !.env.example
 
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

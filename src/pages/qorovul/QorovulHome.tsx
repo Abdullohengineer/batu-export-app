@@ -13,6 +13,7 @@ export function QorovulHome() {
         <RoleTabs
           tabs={[
             { to: '/qorovul', label: 'KIRIM', end: true },
+            { to: '/qorovul/chiqim', label: 'CHIQIM' },
             { to: '/qorovul/hisobotlar', label: 'Hisobotlar' },
           ]}
         />

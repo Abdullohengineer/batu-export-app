@@ -5,27 +5,44 @@ export interface GateStageValues {
   weightKg: number
   platePhoto?: File
   scalePhoto: File
+  departureDocPhoto?: File
 }
 
 // §4: both stages, both directions require a weight-reading (tarozi) photo.
 // No soft warnings here — just required-field checks (submit is blocked
 // until the required photos are attached).
+//
+// `dir` and `requireDepartureDoc` default to KIRIM's original behavior —
+// added so this same form (not a new one) also serves CHIQIM's gate flow,
+// which reverses which stage records which weight and adds a third
+// mandatory photo at stage 2. Existing KIRIM call sites need no changes.
 export function GateStageForm({
   stage,
+  dir = 'kirim',
+  requireDepartureDoc = false,
   onCancel,
   onSubmit,
 }: {
   stage: 1 | 2
+  dir?: 'kirim' | 'chiqim'
+  requireDepartureDoc?: boolean
   onCancel: () => void
   onSubmit: (values: GateStageValues) => Promise<void>
 }) {
   const [weightKg, setWeightKg] = useState('')
   const [platePhoto, setPlatePhoto] = useState<File | null>(null)
   const [scalePhoto, setScalePhoto] = useState<File | null>(null)
+  const [departureDocPhoto, setDepartureDocPhoto] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const weightLabel = stage === 1 ? 'Yuk bilan vazn (Гружёный)' : "Bo'sh vazn (Пустой)"
+  // KIRIM: stage 1 = loaded arrival (Гружёный), stage 2 = empty departure
+  // (Пустой). CHIQIM reverses this — stage 1 = empty arrival (Пустой),
+  // stage 2 = loaded departure (Гружёный) — confirmed from SPEC §4's table,
+  // not assumed.
+  const loaded = 'Yuk bilan vazn (Гружёный)'
+  const empty = "Bo'sh vazn (Пустой)"
+  const weightLabel = dir === 'kirim' ? (stage === 1 ? loaded : empty) : stage === 1 ? empty : loaded
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -44,10 +61,19 @@ export function GateStageForm({
       setError('Tarozi rasmi majburiy.')
       return
     }
+    if (requireDepartureDoc && !departureDocPhoto) {
+      setError('Chiqish hujjati rasmi majburiy.')
+      return
+    }
 
     setSubmitting(true)
     try {
-      await onSubmit({ weightKg: weight, platePhoto: platePhoto ?? undefined, scalePhoto })
+      await onSubmit({
+        weightKg: weight,
+        platePhoto: platePhoto ?? undefined,
+        scalePhoto,
+        departureDocPhoto: departureDocPhoto ?? undefined,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {
@@ -76,6 +102,10 @@ export function GateStageForm({
       </div>
 
       <PhotoField label="Tarozi rasmi" required onChange={setScalePhoto} />
+
+      {requireDepartureDoc && (
+        <PhotoField label="Chiqish hujjati rasmi" required onChange={setDepartureDocPhoto} />
+      )}
 
       {error && (
         <p className="text-sm text-red-600 dark:text-red-400" role="alert">

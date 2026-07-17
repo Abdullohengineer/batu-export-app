@@ -53,6 +53,47 @@ Read both, relevant sections only, before every task.
 - Don't leave debug code, temp routes, or test dependencies in the final
   diff — verify, then revert.
 
+## Testing workflow
+Automated (Playwright) end-to-end tests exist from Step 7 onward. See
+`docs/DECISIONS.md` "Step 7 testing infra" for the full history, including
+why this section reads the way it does.
+
+- 🚩 **Plan limitation, not the original design.** Supabase dev branching
+  (isolated per-task databases) was the intended approach but **this
+  project's plan does not support branching** (`create_branch` returns
+  `PaymentRequiredException: Branching is supported only on the Pro plan or
+  above`). Everything below is a workaround for that limitation — if the
+  project ever upgrades to Pro, branch-per-task is the better design and
+  should replace this section, not sit alongside it.
+- **No branch. Tests run directly against the main Supabase project.**
+  Because of that, every automated test run MUST:
+  1. **Create only `TEST-`-prefixed fixtures.** Any row an automated test
+     creates for itself — serials, request IDs, owners, anything — gets a
+     `TEST-` prefix (already the manual convention from prior sessions'
+     fixture work; see DECISIONS.md "Voided 4 confirmed-artifact serials").
+     This is what makes test data trivially filterable and distinguishable
+     from real business data at a glance, in any list or query.
+  2. **Clean up its own fixtures at the end of the run — void, never
+     DELETE**, matching the app's own `never DELETE, only void` rule
+     (SPEC.md §2.15). A test that creates a `TEST-` wash cycle voids it
+     (`wash_cycles.status='voided'`) when done, the same way a real re-wash
+     would be voided, not removed from the audit trail.
+  3. **Never touch or modify any non-`TEST-`-prefixed record.** No test may
+     read-then-write real business data, even incidentally. If a test needs
+     to check availability/feasibility against real stock, it may read that
+     data, but any row it writes must carry the prefix.
+- **Test-role accounts** are dedicated, permanent Supabase Auth accounts
+  (not throwaway, not real users) — one per `profiles.role` value, phone
+  numbers `900000001`–`900000005`, full names prefixed `TEST `. Credentials
+  live in `.env.test` (gitignored — confirmed covered by the `.env.*` glob
+  before it was ever written to; never commit it). Since these are real rows
+  on the main project (no branch to isolate them on), they are themselves
+  exempt from the void-on-cleanup rule above — they're infrastructure, not
+  per-run fixtures, and persist across test runs by design.
+- Template/example: `tests/e2e/smoke.spec.ts` + `tests/e2e/helpers/login.ts`
+  — proves the pipeline (real login, real navigation, zero console errors),
+  not feature coverage. Feature-specific tests build on this pattern.
+
 ## Scope discipline
 - Build only what the task specifies. Explicitly flag (don't silently fix
   or silently skip) anything adjacent that's broken, missing, or ambiguous.

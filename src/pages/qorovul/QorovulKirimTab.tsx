@@ -44,7 +44,8 @@ export function QorovulKirimTab() {
       gruzheny_kg: values.weightKg,
       stage1_plate_photo: platePath,
       stage1_scale_photo: scalePath,
-      created_by: profile?.id,
+      stage1_created_by: profile?.id,
+      stage1_completed_at: new Date().toISOString(),
     })
     if (error) throw error
 
@@ -60,6 +61,7 @@ export function QorovulKirimTab() {
       .update({
         pustoy_kg: values.weightKg,
         stage2_scale_photo: scalePath,
+        stage2_created_by: profile?.id,
         completed_at: new Date().toISOString(),
       })
       .eq('id', trip.weighing!.id)

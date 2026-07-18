@@ -10,6 +10,7 @@ import { MenejerKirimTab } from './pages/menejer/MenejerKirimTab'
 import { MenejerChiqimTab } from './pages/menejer/MenejerChiqimTab'
 import { QorovulHome } from './pages/qorovul/QorovulHome'
 import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
+import { QorovulChiqimTab } from './pages/qorovul/QorovulChiqimTab'
 import { QorovulHisobotlar } from './pages/qorovul/QorovulHisobotlar'
 import { OmborHome } from './pages/ombor/OmborHome'
 import { OmborIntakeTab } from './pages/ombor/OmborIntakeTab'
@@ -72,6 +73,7 @@ function AppRoutes() {
         }
       >
         <Route index element={<QorovulKirimTab />} />
+        <Route path="chiqim" element={<QorovulChiqimTab />} />
         <Route path="hisobotlar" element={<QorovulHisobotlar />} />
       </Route>
       <Route

@@ -1,0 +1,174 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { test, expect } from '@playwright/test'
+import { loginAs } from './helpers/login'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
+const PLATE = 'TEST-CHIQIM-08'
+const BARCODE_1 = `PLT-${PLATE}-06-1`
+const BARCODE_2 = `PLT-${PLATE}-06-2`
+
+// Ombor "undo scan" — a real DELETE on dispatch_manifest, available from
+// request creation up to Qorovul's gate stage-2 completion, enforced by the
+// ombor_deletes RLS policy (0021), not just UI hiding. Fixture pallets
+// (PLT-TEST-CHIQIM-08-06-*, 2x 2000kg Subxon/Kalibr 6) seeded via direct SQL
+// through the full kirim_orders->...->finished_pallets chain — same
+// established pattern as TEST-CHIQIM-01/04 (see DECISIONS.md), since driving
+// three unrelated roles' screens just to produce two finished pallets isn't
+// what this test is about. (TEST-CHIQIM-05/-06/-07 were this test's own
+// earlier attempts — -05 hit a real transient login timeout after the full
+// chain had already completed successfully; -06 exposed a real app bug,
+// fixed in OmborChiqimTab.tsx's handleUndoScan (a DELETE blocked by an RLS
+// USING clause returns success with zero rows, not a 42501 error — needed
+// `.select()` after the delete to detect the no-op); -07 exposed the same
+// gap in this test's own direct-RLS-check assertion, fixed the same way.
+// Each was switched away from rather than debugged against its own
+// leftover claimed-pallet state, same fix prompt 3's test authoring used.
+// -05/-06/-07 left in place per void-not-delete, not cleaned up mid-run.)
+test('Ombor undoes a post-finish scan, pallet becomes available again, then a post-stage-2 undo is blocked by RLS', async ({ page }) => {
+  const consoleErrors: string[] = []
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text())
+  })
+  page.on('pageerror', (err) => consoleErrors.push(err.message))
+
+  // --- Menejer: create the request, confirm the pallets are NOT yet flagged
+  // unavailable (feasibility hint should be silent — exact match). ---
+  await loginAs(page, 'MENEJER')
+  await page.getByRole('link', { name: 'CHIQIM' }).click()
+  await expect(page.getByRole('heading', { name: 'Yangi CHIQIM' })).toBeVisible()
+
+  await page.locator('div:has(> label:text-is("Moshina raqami")) > input').fill(PLATE)
+  await page.locator('div:has(> label:text-is("Haydovchi ismi")) > input').fill('TEST Driver')
+  const menejerSelects = page.locator('form:has-text("Yangi CHIQIM") select')
+  await expect(page.getByRole('option', { name: 'Test Client A' })).toBeAttached()
+  await menejerSelects.nth(0).selectOption({ label: 'Test Client A' })
+  await menejerSelects.nth(1).selectOption({ label: 'Subxon' })
+  await menejerSelects.nth(2).selectOption({ label: 'Kalibr 6' })
+  await page.locator('input[placeholder="Miqdori (kg)"]').fill('4000')
+  // Exact match against the two 2000kg fixture pallets — no soft-warning
+  // hint should render.
+  await expect(page.getByRole('status')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Saqlash' }).click()
+  await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
+
+  // --- Qorovul: stage 1 (empty truck arrives) ---
+  await page.getByRole('button', { name: 'Chiqish' }).click()
+  await page.waitForURL('**/login')
+  await loginAs(page, 'QOROVUL')
+  await page.getByRole('link', { name: 'CHIQIM' }).click()
+
+  const faol = page.getByRole('heading', { name: 'Faol' }).locator('xpath=following-sibling::div[1]')
+  const qorovulRow = faol.locator('.rounded-md', { hasText: PLATE })
+  await expect(qorovulRow).toBeVisible()
+  await qorovulRow.getByRole('button', { name: 'Qabul qilish' }).click()
+  await qorovulRow.locator('div:has(> label:text-is("Moshina raqami rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+  await qorovulRow.locator('div:has(> label:text-is("Bo\'sh vazn (Пустой)")) input[type="number"]').fill('8000')
+  await qorovulRow.locator('div:has(> label:text-is("Tarozi rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+  await qorovulRow.getByRole('button', { name: 'Qabul qilish' }).click()
+  await expect(faol.locator('.rounded-md.border-red-300', { hasText: PLATE })).toBeVisible()
+
+  // --- Ombor: scan both pallets, finish loading ---
+  await page.getByRole('button', { name: 'Chiqish' }).click()
+  await page.waitForURL('**/login')
+  await loginAs(page, 'OMBOR')
+  await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
+
+  const omborW1 = page.getByRole('heading', { name: "Yuklash uchun so'rovlar" }).locator('xpath=following-sibling::div[1]')
+  const omborRequest = omborW1.getByRole('button', { name: new RegExp(PLATE) })
+  await expect(omborRequest).toBeVisible()
+  await omborRequest.click()
+
+  const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
+  await barcodeInput.fill(BARCODE_1)
+  await page.getByRole('button', { name: 'Skanerlash' }).click()
+  await barcodeInput.fill(BARCODE_2)
+  await page.getByRole('button', { name: 'Skanerlash' }).click()
+  await expect(page.getByText('✓ Aniq mos keldi')).toBeVisible()
+  await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
+  await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
+  await expect(omborRequest).not.toBeVisible()
+
+  // --- Undo one scanned pallet from W2 (real DELETE, pre-stage-2) ---
+  const omborW2 = page.getByRole('heading', { name: 'Yuklandi' }).locator('xpath=following-sibling::div[1]')
+  const finishedRow = omborW2.getByRole('button', { name: new RegExp(PLATE) })
+  await expect(finishedRow).toBeVisible()
+  await finishedRow.click()
+
+  const manifestItem1 = page.locator('li', { hasText: BARCODE_1 })
+  await expect(manifestItem1).toBeVisible()
+  await manifestItem1.getByRole('button', { name: 'Skanerlashni bekor qilish' }).click()
+  await expect(manifestItem1).not.toBeVisible()
+  // The other scanned pallet is untouched.
+  await expect(page.locator('li', { hasText: BARCODE_2 })).toBeVisible()
+
+  // --- Confirm BARCODE_1 is available again — via a real remount, since
+  // useAvailableFinishedStock has no refetch (agreed out of scope). Menejer
+  // re-requesting the exact same 2000kg Subxon/Kalibr6 amount that BARCODE_1
+  // alone satisfies should show no shortage hint. ---
+  await page.getByRole('button', { name: 'Chiqish' }).click()
+  await page.waitForURL('**/login')
+  await loginAs(page, 'MENEJER')
+  await page.getByRole('link', { name: 'CHIQIM' }).click()
+  await expect(page.getByRole('heading', { name: 'Yangi CHIQIM' })).toBeVisible()
+
+  const menejerSelects2 = page.locator('form:has-text("Yangi CHIQIM") select')
+  await menejerSelects2.nth(1).selectOption({ label: 'Subxon' })
+  await menejerSelects2.nth(2).selectOption({ label: 'Kalibr 6' })
+  await page.locator('input[placeholder="Miqdori (kg)"]').fill('2000')
+  await expect(page.getByRole('status')).toHaveCount(0)
+
+  // --- Drive the trip to completion: Qorovul stage 2 ---
+  await page.getByRole('button', { name: 'Chiqish' }).click()
+  await page.waitForURL('**/login')
+  await loginAs(page, 'QOROVUL')
+  await page.getByRole('link', { name: 'CHIQIM' }).click()
+
+  const faol2 = page.getByRole('heading', { name: 'Faol' }).locator('xpath=following-sibling::div[1]')
+  const qorovulRow2 = faol2.locator('.rounded-md', { hasText: PLATE })
+  await expect(qorovulRow2).toBeVisible()
+  await qorovulRow2.getByRole('button', { name: 'Yakunlash' }).click()
+  await qorovulRow2.locator('div:has(> label:text-is("Yuk bilan vazn (Гружёный)")) input[type="number"]').fill('10000')
+  await qorovulRow2.locator('div:has(> label:text-is("Tarozi rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+  await qorovulRow2.locator('div:has(> label:text-is("Chiqish hujjati rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+  await qorovulRow2.getByRole('button', { name: 'Yakunlash' }).click()
+
+  const yakunlangan = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
+  await expect(yakunlangan.locator('.rounded-md', { hasText: PLATE })).toBeVisible()
+
+  // --- Post-stage-2: undo attempt must be refused at the RLS level, not
+  // just hidden in the UI — call the same delete the UI would issue,
+  // directly via the dev-only window.supabase client while still signed in
+  // as ombor, bypassing whatever the button itself does. ---
+  await page.getByRole('button', { name: 'Chiqish' }).click()
+  await page.waitForURL('**/login')
+  await loginAs(page, 'OMBOR')
+  await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
+
+  const finishedRow2 = omborW2.getByRole('button', { name: new RegExp(PLATE) })
+  await expect(finishedRow2).toBeVisible()
+  await finishedRow2.click()
+  const manifestItem2 = page.locator('li', { hasText: BARCODE_2 })
+  await expect(manifestItem2).toBeVisible()
+  await manifestItem2.getByRole('button', { name: 'Skanerlashni bekor qilish' }).click()
+  await expect(page.getByText('Bu so\'rov allaqachon qorovul tomonidan yakunlangan')).toBeVisible()
+  // Still there — the delete was refused, not silently applied.
+  await expect(manifestItem2).toBeVisible()
+
+  // A DELETE blocked by an RLS USING clause doesn't raise a Postgres error
+  // (that's an INSERT/WITH-CHECK thing) — the row is just excluded from the
+  // deletable set, so PostgREST reports success with zero rows affected.
+  // `.select()` is what surfaces that distinction: an empty array here,
+  // for a barcode we independently confirmed exists in dispatch_manifest,
+  // can only mean RLS filtered it out, not "already gone."
+  const directDeleteResult = await page.evaluate(async (barcode) => {
+    const w = window as unknown as { supabase: { from: (t: string) => any } }
+    const { data, error } = await w.supabase.from('dispatch_manifest').delete().eq('barcode2', barcode).select('id')
+    return { rowsDeleted: data?.length ?? null, error: error?.message ?? null }
+  }, BARCODE_2)
+  expect(directDeleteResult.error).toBeNull()
+  expect(directDeleteResult.rowsDeleted).toBe(0)
+
+  expect(consoleErrors, `Console errors during the flow: ${consoleErrors.join('\n')}`).toEqual([])
+})

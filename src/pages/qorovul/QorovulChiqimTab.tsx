@@ -58,7 +58,8 @@ export function QorovulChiqimTab() {
       pustoy_kg: values.weightKg, // empty truck arrives — reversed from KIRIM stage 1
       stage1_plate_photo: platePath,
       stage1_scale_photo: scalePath,
-      created_by: profile?.id,
+      stage1_created_by: profile?.id,
+      stage1_completed_at: new Date().toISOString(),
     })
     if (error) throw error
 
@@ -78,6 +79,7 @@ export function QorovulChiqimTab() {
         gruzheny_kg: values.weightKg, // loaded truck leaves — reversed from KIRIM stage 2
         stage2_scale_photo: scalePath,
         departure_doc_photo: docPath,
+        stage2_created_by: profile?.id,
         completed_at: new Date().toISOString(),
       })
       .eq('id', trip.weighing!.id)

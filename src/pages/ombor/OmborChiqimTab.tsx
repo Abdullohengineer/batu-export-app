@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useOmborChiqimRequests, type ChiqimRequest } from '../../lib/useOmborChiqimRequests'
+import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { resolveScan, lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimScan'
 
 interface ScannedPallet {
@@ -24,6 +26,7 @@ interface ScannedPallet {
 // chiqim_lines row gets its own scanned-kg total and its own exact/
 // shortfall/overage status.
 export function OmborChiqimTab() {
+  const { profile } = useAuth()
   const { owners } = useOwners()
   const { productTypes } = useProductTypes()
   const { calibres } = useCalibres()
@@ -40,6 +43,9 @@ export function OmborChiqimTab() {
   const [confirming, setConfirming] = useState<string | null>(null)
   const [finishError, setFinishError] = useState<string | null>(null)
   const [finishing, setFinishing] = useState(false)
+  const [undoError, setUndoError] = useState<string | null>(null)
+  const [undoingId, setUndoingId] = useState<string | null>(null)
+  const { lines: manifestLines, loading: manifestLoading, refresh: refreshManifest } = useDispatchManifestLines(expandedFinished)
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -124,6 +130,36 @@ export function OmborChiqimTab() {
     }))
   }
 
+  // Undo a scan that already made it into dispatch_manifest (post-finish,
+  // pre-gate-stage-2). A real DELETE, not a void — these are Ombor's own
+  // in-progress scans, not finalized records (see this session's task).
+  // The RLS policy (ombor_deletes, 0021) is the actual enforcement: once
+  // Qorovul's stage 2 completes, PostgREST doesn't raise 42501 for a
+  // DELETE's USING clause the way it would for an INSERT's WITH CHECK —
+  // a row outside the policy's visible set is just silently excluded from
+  // the delete, returning success with zero rows affected. `.select()`
+  // after the delete is what surfaces that: an empty array means "matched
+  // nothing" (either already gone, or RLS-filtered), which for a manifest
+  // row we can see in the UI can only mean the latter.
+  async function handleUndoScan(manifestId: string) {
+    setUndoError(null)
+    setUndoingId(manifestId)
+    try {
+      const { data, error } = await supabase.from('dispatch_manifest').delete().eq('id', manifestId).select('id')
+      if (error) {
+        setUndoError(error.message)
+        return
+      }
+      if (!data || data.length === 0) {
+        setUndoError('Bu so\'rov allaqachon qorovul tomonidan yakunlangan — skanerlashni bekor qilib bo\'lmaydi.')
+        return
+      }
+      await refreshManifest()
+    } finally {
+      setUndoingId(null)
+    }
+  }
+
   // §5.4: `Yuklashni yakunlash` is always enabled and never blocks on a
   // shortfall (SPEC §5.4, §3.1's same "never blocks" philosophy) — this is
   // the acceptance click itself (placement-vs-acceptance, pattern 2).
@@ -148,7 +184,7 @@ export function OmborChiqimTab() {
 
       const { error: reqErr } = await supabase
         .from('chiqim_requests')
-        .update({ ombor_finished_at: new Date().toISOString() })
+        .update({ ombor_finished_at: new Date().toISOString(), ombor_finished_by: profile?.id })
         .eq('id', request.id)
       if (reqErr) throw reqErr
 
@@ -337,7 +373,10 @@ export function OmborChiqimTab() {
             <div key={request.id} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
               <button
                 type="button"
-                onClick={() => setExpandedFinished(expandedFinished === request.id ? null : request.id)}
+                onClick={() => {
+                  setExpandedFinished(expandedFinished === request.id ? null : request.id)
+                  setUndoError(null)
+                }}
                 className="flex w-full items-center justify-between text-left"
               >
                 <div>
@@ -361,6 +400,49 @@ export function OmborChiqimTab() {
                       <span className="text-slate-600 dark:text-slate-400">{line.qty_kg.toLocaleString()} kg</span>
                     </div>
                   ))}
+
+                  {/* Scanned pallets, flat (not regrouped by line) — see
+                      useDispatchManifestLines: dispatch_manifest doesn't
+                      persist which line a pallet was assigned to. Undo here
+                      is a real DELETE, enforced server-side by the
+                      ombor_deletes RLS policy (0021) up to gate stage 2. */}
+                  <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                      <span>Skanerlangan palletlar</span>
+                      <span>
+                        {manifestLines.reduce((sum, l) => sum + l.weight_kg, 0).toLocaleString()} kg
+                      </span>
+                    </div>
+                    {manifestLoading && <p className="mt-1 text-xs text-slate-400">Yuklanmoqda…</p>}
+                    {!manifestLoading && manifestLines.length === 0 && (
+                      <p className="mt-1 text-xs text-slate-400">Skanerlangan pallet yo'q.</p>
+                    )}
+                    {manifestLines.length > 0 && (
+                      <ul className="mt-1 space-y-0.5">
+                        {manifestLines.map((m) => (
+                          <li key={m.id} className="flex items-center justify-between text-xs">
+                            <span className="font-mono text-slate-600 dark:text-slate-400">
+                              {m.barcode2} · {typeName(m.type_id)} · {calibreLabel(m.calibre_id)} · {m.weight_kg.toLocaleString()} kg
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleUndoScan(m.id)}
+                              disabled={undoingId === m.id}
+                              aria-label="Skanerlashni bekor qilish"
+                              className="text-slate-400 hover:text-red-600 disabled:opacity-50"
+                            >
+                              ✕
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {undoError && (
+                      <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+                        {undoError}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

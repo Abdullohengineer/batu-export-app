@@ -1,9 +1,9 @@
 # BATU EXPORT — Ombor & Logistika App
 ## Master Design Specification
 
-**Version:** 1.11
-**Date:** 17 July 2026
-**Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED · Rahbar (business owner) — DESIGNED
+**Version:** 1.12
+**Date:** 18 July 2026
+**Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED (redesigned v1.9; §5.5.5 re-wash re-entry quantity basis OPEN) · Rahbar (business owner) — DESIGNED
 
 ---
 
@@ -25,7 +25,7 @@ Single source of truth. Keep it in the Claude **Project knowledge base**. Any ne
 | Gate guard | Qorovul | Two-stage truck weighing on arrival & departure |
 | Storage manager | Ombor menejeri | 4 sections: raw intake → send to wash → finished intake → dispatch |
 | Business owner | **Rahbar** | 🔒 Oversight / Exceptions / Reports / Administration (§6). **Read-only on all operations**, write rights on admin. Multiple Rahbar accounts supported. See §2.10 naming |
-| Lab | Laborator | 🔒 Own window (§5.5): KIRIM & CHIQIM, identical workflow — namligi then SO₂; sample one pallet → applies to whole parent serial |
+| Lab | Laborator | 🔒 Own window (§5.5): KIRIM **descriptive** check on intake; CHIQIM **decisive** check on Moyka output. Verdict gates dispatch and flags material for Ombor to re-wash. Sample one pallet → applies to whole parent serial |
 
 ### 1.2 Lifecycle of one serial
 ```
@@ -94,9 +94,10 @@ Applies to: manager's Tarix, all three Kuzatuv lenses, and every Rahbar list. *(
 Roles have explicit write scopes. **Rahbar is read-only on ALL operational records** (orders, weighings, receipts, dispatches, lab results) and may open **any other role's screens read-only**. Write rights only in Administration (§6.4).
 Rationale: if the owner can edit an operational record, the audit trail loses meaning. Corrections happen via **append-only notes** (§2.5) or by the responsible role redoing the action — never by silent owner edits. Enforce server-side, not just by hiding buttons.
 
-### 2.13 Re-wash loop (Qayta yuvish) 🔒 (NEW — rare but supported)
+### 2.13 Re-wash loop (Qayta yuvish) 🔒 (NEW — rare but supported; AMENDED v1.9 — see §5.5.4)
 A serial whose lab result is **out of spec** (e.g. SO₂ too high) can be sent back through Moyka.
-- **Trigger:** three-dot on the serial → **"Moykaga qayta yuborish"**. Confirmation required.
+- 🔒 **Trigger (v1.9): a `Qayta yuvish` lab verdict** (§5.5.3) is now the primary route — the lab flags a batch on its CHIQIM check the moment Moyka produces it, not at dispatch time. Ombor's three-dot **"Moykaga qayta yuborish"** on the serial remains available as a manual path (e.g. a floor-level judgement call outside the lab's own flow) but is no longer the primary trigger.
+- 🔒 **The void is Ombor's action, not the lab's** (§5.5.4). The lab's verdict changes no stored state — it only flags. Ombor performs the actual void + re-send, the same explicit, confirmed, human-clicked action described below, regardless of which of the two triggers above started it.
 - **Scope: the WHOLE serial.** All of that serial's finished pallets return to Moyka — **except Konditirskiy, which stays in storage.**
 - 🔒 **VOID, never delete.** The first wash's finished receipts, their Barcode #2s and its recorded yield-loss are marked **`bekor qilindi` (voided)**: they stop counting toward every live total (finished qty → 0, old loss cleared, barcodes dead). Operationally a clean slate — but the record survives in the audit log, and the **serial passport shows `1-yuvish (bekor qilindi) → 2-yuvish`**.
 - 🔒 **Voided barcodes must fail loudly if scanned** (e.g. at dispatch): *"bekor qilindi — qayta yuvilgan"*. A stale sticker is still physically on the pallet, so a silent "unknown code" is not acceptable.
@@ -141,6 +142,7 @@ Exception rules are **settings, not hardcoded** — editable in Administration (
 Segmented **`KIRIM | CHIQIM`** tabs switch the screen. Each = create button + live status list.
 - **KIRIM form:** Sana · Moshina raqami · Haydovchi ismi · Buyurtmachi (OWNERS) · **repeatable Tur + Miqdori rows** (multi-product; one truck, several types; "+ Tur qo'shish"; **Jami avto**; **no calibre** — raw isn't graded yet) · 🔒 **auto Seriya per type row** (`next_serial()` called once per line; N types → N serials, all displayed back on save; each type-pile → own Barcode #1) · Hujjat rasmi (compressed). Status **Kutilmoqda → Qabul qilindi** (🔒 flips at gate **Yakunlandi**, i.e. when net weight is known — not at stage-1 arrival).
   - 🔒 **Declared vs actual.** The quantities on this form are the manager's **declared** figures (what the client says is coming). They are never overwritten. The **actual** per-type weight is entered later by the Storage Manager (§5.1). The gap between declared and actual is what "Kam chiqdi" means.
+  - 🔒 **Client quality targets, per line (NEW, v1.9).** Each Tur + Miqdori row also carries two optional fields: **Talab: Namligi %** (the client's target moisture) and **Talab: SO₂ mg/kg** (leave blank for a natural/unsulfured product). Targets live on `KIRIM_LINES`, not `KIRIM_ORDERS` — one truck may carry two products with different requirements — and flow down the lineage to every pallet produced from that serial. Entered once at intake, never re-entered at dispatch. 🔒 **A blank SO₂ target is a meaningful value, not a missing one** — it is what tells the Laborator there is no sulfur to measure (§5.5.1) and what makes the client report print "Yo'q · naturel"; it must never be treated as an incomplete form. *Rationale: the client states what they want back at the moment they hand over the goods — no one re-keys it days later at test time.*
 - **CHIQIM form:** Sana · Moshina · Haydovchi · Buyurtmachi · **repeatable Tur + Kalibr + Miqdori rows** (calibre set incl. Konditirskiy) · Jami avto. **No serial, no doc photo.** Status **Kutilmoqda → Olib ketildi**.
   - 🔒 **Whole-pallet soft warning:** since pallets are atomic (§5.4), the form checks each requested quantity against available whole pallets. If it doesn't map cleanly, it **soft-warns and suggests the nearest workable figures** so the manager confirms the exact number with the client **before the truck is sent**. **Never blocks** — the manager can save anyway and handle it. This is where dispatch discipline is enforced, keeping partial loads off the floor.
 
@@ -162,8 +164,8 @@ Lenses: **Seriya / Mashina / Mijoz bo'yicha**. Search + date + Excel.
 ### 3.5 Client report — "Mijoz hisoboti" 🔒
 Generated doc: client + date range → one click. **PDF + Excel.** **Uz/Ru toggle.** Sample: `BATU-Mijoz-Hisoboti-namuna.pdf`.
 - **Summary:** raw received · finished · **loss % + kg (shown; toggle-able)** · dispatched · in storage (loss on processed portion only).
-- **A — Kelgan seriyalar va sifat:** per serial — kelgan sana, tur, brutto/tara/netto, **namligi %**, **SO₂ mg/kg** (natural = "Yo'q"). **Document is an attached photo, no typed number.**
-- **B — Tayyor mahsulot:** per serial, calibre breakdown incl. Konditirskiy, jami, xom netto, yo'qotish.
+- **A — Kelgan seriyalar va sifat:** per serial — kelgan sana, tur, brutto/tara/netto, **namligi %**, **SO₂ mg/kg** (natural = "Yo'q") **+ talab qilingan (AMENDED v1.9)** — the client's own target for each metric, printed alongside the reading (or "Talab yo'q" if none). **Document is an attached photo, no typed number.**
+- **B — Tayyor mahsulot:** per serial, calibre breakdown incl. Konditirskiy, jami, xom netto, yo'qotish, **+ chiqqan namligi %/SO₂ + verdict + yuvish sikli where >1 (AMENDED v1.9)** — the finished-goods lab reading, the `O'tdi`/`Qayta yuvish` verdict, and the wash-cycle number when a batch went through re-wash. *Rationale: the client's own requirement printed beside the delivered result is the single most useful line in a toll-processing report — it is the contract and the proof in one row.*
 - **C — Jo'natmalar (in body):** grouped **by trip** (vehicle header + serials underneath); columns seriya · kalibr tarkibi · netto; departure doc = **attached photo**. Serial is first-class for origin tracing.
 - **D — Balans:** per serial — kelgan, **oxirgi chiqish** ("qisman" until fully shipped), omborda qolgan (raw/finished), holat.
 - **Appendix (optional):** chronological ledger.
@@ -234,14 +236,18 @@ Visible **immediately on manager KIRIM submit** (Kutilmoqda), read-only, so stor
 - 🔒 **Live variance per row.** As he types the actual, the row shows the difference against declared (kg and %). A negative variance beyond the configured limit (§2.14) flags red **"Kam chiqdi"** on save. Never blocks — he can save a shortfall; it becomes a note for the manager (§5.1).
 - The declared figure is **never editable here** (§3.1 — declared is the manager's record and is never overwritten). Storage records what he measured; the gap between the two is the finding, not an error to be corrected away.
 
-### 5.2 Moykaga Chiqarish 🟡 (updated 2026-07-16 — see DECISIONS.md "Section mirroring / derived stage membership", "Manual-only finishing")
+### 5.2 Moykaga Chiqarish 🟡 (updated 2026-07-16 — see DECISIONS.md "Section mirroring / derived stage membership", "Manual-only finishing"; AMENDED v1.9 — see §5.5.5)
 Send raw to production; **partial sends** accumulate; no new barcode (#1 travels). **Window 1 ("Yuborish uchun")** is the identical set as §5.1's Window 2 (confirmed, raw remainder > 0 — section mirroring); send form with live "qoladi", ⋯ per-send history, Qaydlar qo'shish all live here, unchanged. Sorted newest-first by order_date (§5 intro named invariant). ~~Window 2 was unreceived sent material, `total_sent − total_received > 0`~~ 🔒 **Window 2 is sent, not yet manually finished** — `sent > 0 AND` no `final` `wash_cycles` row for cycle 1, independent of received/sent quantities entirely (updated 2026-07-16 — see DECISIONS.md "Manual-only finishing": since finishing is always a deliberate Tugallash click now, not an automatic quantity threshold, "not yet finished" is the correct membership test, not a quantity comparison). Window 2 is the identical set §5.3 Tayyor's Window 1 already computes (section mirroring again: `useMoykaOutput` is consumed directly here, not reimplemented). A partially-sent serial shows in **both** windows at once — still has raw remainder to send (Window 1) **and** hasn't been finished yet (Window 2) — expected, not a bug; the same serial can *also* simultaneously show in §5.3's Tugallangan if an earlier Tugallash already finalized a prior batch and more was sent since. Window 2 is read-only (no send action, no ⋯ expand): managing what happens to a serial once it's in Moyka is §5.3's job, this is just visibility that it's there.
+
+🔒 **Re-wash material, NEW route (v1.9, see §5.5.4–5).** Window 1 also lists pallets flagged `Qayta yuvish` by the lab, visually distinguished from first-wash raw and carrying their cycle number, alongside the existing raw-remainder set. **❓ OPEN — quantity basis, do not build around it:** §5.2 sends raw material by weight against a serial's remaining balance; re-wash material arrives as a set of finished pallets with known individual weights. Whether the re-send is expressed as "these specific voided barcodes" or collapses back into a plain kg figure against the serial affects §5.3's yield-loss maths across cycles — unresolved, out of scope for this prompt (§5.5.5).
 
 ### 5.3 Tayyor Mahsulot / Skladga KIRIM 🟡 (updated 2026-07-16 — see DECISIONS.md "Tayyor Mahsulot completion", "Tugallangan window", "Manual-only finishing")
 Serials in Moyka awaiting output. `+ Qabul qilish` → **daily receipt form: one pallet per save** — **Tur** (🔒 read-only, auto-filled from the parent serial — a serial is single-type by construction (§2.1); shown as a floor-level confirmation that the right pile is being stickered, never editable) + **Kalibr** (incl. Konditirskiy) + **Og'irlik** → auto-prints **Barcode #2** (`PLT-<serial>-<calibre>`, `…-KN` for Konditirskiy) to stick. ~~`Tugallash` → summary of all receipts + running totals, double-confirm, locks final yield-loss, files to history.~~ 🔒 **The form closes on every submit — no auto-reopen.** A new entry needs an explicit **"+ Yana qo'shish"** click (the same button, relabeled once at least one pallet exists); the last pallet's Barcode #2 stays visible/printable after the form closes. Per-serial totals: **Yuborilgan / Qabul qilingan / Jarayonda** (neutral, not "loss" until finished; **floored at 0 — never negative**).
 - 🔒 **Finishing is always manual (named invariant, see §5 intro)** — ~~the moment Qabul qilingan reaches or exceeds Yuborilgan, that same submit auto-completes the cycle~~ **removed 2026-07-16: real workflows pack a serial's output across several days, and the operator — not a quantity threshold — decides when it's done.** Saving a receipt never locks anything; the serial stays in Window 1 regardless of Jarayonda's value — positive, zero, or negative (over-received, which now shows as **`Ortiqcha: +N kg`** next to Jarayonda, same display philosophy as **Kam chiqdi** §5.1, and stays in Window 1 just like an under-received serial — no auto-graduation). `Tugallash` is **always clickable**, never disabled by any quantity, and locks the final yield-loss into `wash_cycles` (floored at 0% — an overage is never a negative "loss") on confirm. Confirming shows a **non-blocking soft warning** stating the specific reason(s) when either applies: raw remainder still in storage (`hasRawRemainder`, same predicate §5.1/§5.2 use), or the loss about to be locked exceeds 10% — never blocks, the operator can always proceed.
 - 🔒 **Window 2 — Tugallangan.** A serial whose cycle 1 has a `final` `wash_cycles` row (always via Tugallash) files here — matching the two-window (Faol/Yakunlangan-style) pattern already used at §5.1/§5.2/gate. Row: **Seriya · Buyurtmachi · Tur · "Yuborilgan X → tayyor Y kg"** and a badge — the locked loss % (red, e.g. `-18.2%`) or, if the serial overshot, **`Ortiqcha: +N kg`** in the same non-alarming Ortiqcha styling (never both — an overage always shows Ortiqcha, never a negative-looking loss reading). ⋯ expand reuses the Window 1 pallet list (barcode2 · kalibr · og'irlik, each reprintable). Sorted newest-first (§5 intro named invariant).
-- 🔒 **Re-wash (§2.13):** three-dot on a serial → **"Moykaga qayta yuborish"** (confirm). Voids that serial's finished receipts + Barcode #2s + loss figure (`bekor qilindi`), returns everything **except Konditirskiy** to Moyka, and the serial re-enters the §5.2 → §5.3 flow. New barcodes on the second output; KN is additive; final loss recalculated at the second Tugallash.
+- 🔒 **Re-wash (§2.13):** three-dot on a serial → **"Moykaga qayta yuborish"** (confirm) remains the manual path. Voids that serial's finished receipts + Barcode #2s + loss figure (`bekor qilindi`), returns everything **except Konditirskiy** to Moyka, and the serial re-enters the §5.2 → §5.3 flow. New barcodes on the second output; KN is additive; final loss recalculated at the second Tugallash. **v1.9: the primary trigger is now a lab `Qayta yuvish` verdict, not this menu** — see the next two bullets and §5.5.4.
+- 🔒 **NEW (v1.9) — Laborator CHIQIM Window 1 placement.** On `Tugallash`, produced pallets additionally appear in **Laborator CHIQIM Window 1** (§5.5.3), the moment the wash cycle completes — not on dispatch. Storage takes no extra action; this is a derived placement window, exactly like every other §5 cross-section boundary (section mirroring), not a handoff.
+- 🔒 **NEW (v1.9) — Qayta yuvish flag + action here.** A pallet whose parent serial's current cycle carries a `Qayta yuvish` lab verdict displays **red** in this section with a "Qayta yuvish kerak" flag, and exposes the void + re-send action described above (§5.5.4) — this is where Ombor actually executes what the lab flagged. **Pallets are not dispatchable until lab-passed** (v1.9) — §5.4's scan screen will not find them, because it reads the same derived availability truth as Menejer's feasibility checker (§8).
 - 🔒 **Moyka idle flag:** a serial sitting in Moyka beyond the configured threshold (§2.14) is flagged here **and** on the Rahbar's exceptions list (§6.2). `File: BATU-Storage-S3-Tayyor-Mahsulot-v1.pdf`.
 
 ### 5.4 Skladdan CHIQIM 🟡 (updated)
@@ -253,20 +259,84 @@ Triggered by CHIQIM request + gate stage-1 (empty truck on-site).
 - **Manifest + handoff:** scanned list grouped **by serial** (traceability); each pallet **deducted from its serial's stock**; `Qorovulga topshirish` → gate stage-2 (Гружёный). **Gate net reconciles against manifest total** = the closing safety check.
 - 🔒 **Dispatch discipline lives on the order form, not the floor** — see §3.1. `File: BATU-Storage-S4-Skladdan-CHIQIM-v2.pdf`.
 
-### 5.5 LABORATOR (separate role) 🔒 (NEW)
-Own window, **same shape as the gate**: tabs `KIRIM | CHIQIM`, counters, then lists. Language toggle. `File: BATU-Laborator-Screens-v1.pdf` (KIRIM screens shown; CHIQIM is identical in design and workflow).
+### 5.5 LABORATOR (separate role) 🔒 (REVISED v1.9 — replaces the v1.5 design wholesale; see DECISIONS.md "Laborator v1.9 redesign")
 
-🔒 **KIRIM and CHIQIM are identical in form design and workflow.** Both test **namligi (moisture) first**, then **oltingugurt (SO₂) added later** (~1-day wait). Same three-window shape, same two-step flow, same forms. The only difference is *what* is sampled: raw intake on KIRIM, finished goods before dispatch on CHIQIM.
+Own window, same shape as the gate: tabs `KIRIM | CHIQIM`, counters, then windows. Language toggle. Photos compressed (§2.9).
 
-**Shared workflow (both tabs):**
-- **Window 1 — Tahlil kutilmoqda:** items awaiting sampling → **"Tahlil"**.
-- 🔒 **Sample ONE pallet → result applies to the WHOLE parent serial.** Every calibre under that serial (K4/K6/K8/Konditirskiy) **inherits** its namligi + sera. No per-calibre testing.
-- **Tahlil form:** pre-filled details · sampled pallet (dropdown) · sana · **Namligi %** · **Oltingugurt (SO₂)** left blank · optional sample photo. Save → moves to Window 2.
-- **Window 2 — Sera kutilmoqda (amber):** moisture in, sulfur pending → **"Sera kiritish"** → single-field form: **SO₂ in mg/kg**, or dropdown **"Sulfatlanmagan (naturel)"** (this is what makes the client report print "Yo'q · naturel"). On save → analysis complete.
-- **Window 3 — Yakunlangan:** completed, showing both values.
+🔒 **KIRIM and CHIQIM are NO LONGER identical (v1.9 — supersedes the v1.5 "identical workflow" design).** They differ in purpose, trigger, and outcome:
 
-**KIRIM specifics:** subject = raw serials (Barcode #1) that reached storage. Feeds **Section A of the client report** and the serial passport.
-**CHIQIM specifics:** subject = finished goods on a dispatch request, sampled before it ships. Results attach to the dispatch, travel with it, and can be shown to the client.
+| | KIRIM check | CHIQIM check |
+|---|---|---|
+| Subject | Raw intake (Barcode #1 serial) | Finished pallets from a wash cycle (Barcode #2) |
+| Trigger | Ombor records actual received weight (§5.1) | Moyka wash cycle produces finished pallets (§5.3) — **not** a dispatch request |
+| Purpose | **Descriptive** — record condition as received | **Decisive** — pass/fail against the client's target |
+| Verdict | None | `O'tdi` / `Qayta yuvish` (two states only) |
+| Consequence | Informs washing; supplier/price evidence | Hard gate on dispatch availability + flags for Ombor |
+
+🔒 **Sample ONE pallet → result applies to the WHOLE parent serial.** Unchanged from v1.5. Every calibre under that serial (K4/K6/K8/Konditirskiy) inherits its namligi + sera. No per-calibre testing.
+
+#### 5.5.1 Sulfur is conditional, not always asked 🔒 (NEW v1.9)
+
+**If Menejer entered no SO₂ target for that product line (§3.1), the lab form shows no sulfur field at all** — not a blank one, not a "pending" state. The product is natural/unsulfured; there is nothing to measure and nothing to wait for.
+
+- **Sulfured products** keep the two-step flow: moisture entered first, SO₂ added ~1 day later (lab physics — the wait is real). These pass through the amber **Sera kutilmoqda** window.
+- **Natural products skip step two entirely.** Moisture is saved and the check is complete in one action. They never enter the amber window, and they must never appear in a "Sera kechikdi" (sulfur overdue) alert — the absence of a sulfur reading is correct, not late.
+- The client report prints **"Yo'q · naturel"** for these, driven by the absent target rather than by a separate flag.
+
+#### 5.5.2 KIRIM tab — descriptive check 🔒 (v1.9)
+
+- **Window 1 — Tahlil kutilmoqda:** serials awaiting sampling, appearing the moment Ombor records actual intake weight. **FIFO order** (arrival queue — exempt from the newest-first universal sort, same exemption class as the gate's own queues, §5 intro). Row: seriya · buyurtmachi · tur · e'lon qilingan/haqiqiy kg · kelgan sana → **"Tahlil"**.
+- **Tahlil form:** pre-filled details · sampled pallet (dropdown) · sana · **Namligi %** · **Oltingugurt (SO₂)** *only if a target exists* (§5.5.1) · optional sample photo · optional defect/foreign-matter note.
+- **Window 2 — Sera kutilmoqda (amber):** sulfured products only, moisture in / sulfur pending → **"Sera kiritish"** → single field **SO₂ mg/kg**.
+- **Window 3 — Yakunlangan:** all values recorded.
+
+**No verdict on KIRIM.** Raw material is not expected to meet client spec — that is the point of washing. The client's target is displayed here **for reference only**, greyed, with no pass/fail treatment. Nothing on this tab gates anything.
+
+**Feeds:** Section A of the client report; the serial passport; the washing decision.
+
+#### 5.5.3 CHIQIM tab — decisive check 🔒 (v1.9)
+
+- **Window 1 — Tahlil kutilmoqda:** finished batches awaiting sampling, appearing when a wash cycle produces pallets (§5.3 `Tugallash`). FIFO. Row: parent seriya · buyurtmachi · tur · pallet soni · jami kg · ishlab chiqarilgan sana · **yuvish sikli (1/2…)**.
+- **Client target is shown next to the reading**, inherited from the parent serial's `KIRIM_LINES` (§3.1), per metric. No sulfur target → no sulfur row on screen at all.
+- **Tahlil form / amber window:** as KIRIM, subject to §5.5.1.
+- **Verdict step:** once all applicable metrics are in, Laborator selects **`O'tdi`** or **`Qayta yuvish`**. The verdict is an **explicit click — never auto-derived from the numbers**, even when the reading obviously meets or misses target (finishing-is-always-manual invariant, §5 intro). The form may soft-warn that a reading misses target; it never decides.
+- **Window 3 — Yakunlangan:** values + verdict + cycle number.
+
+🔒 **Hard gate.** A finished pallet is available for dispatch only when it is `in_stock`, **not** in `dispatch_manifest`, **and** its parent serial's current wash cycle carries an `O'tdi` verdict. Untested and re-wash-flagged stock is invisible to Menejer's feasibility checker and Ombor's scan screen alike — **one derived truth, all consumers** (§8).
+
+**Operational consequence, accepted deliberately:** if the lab falls behind, dispatch stops. Correct for a quality-gated toll operation, but it makes Laborator a bottleneck **by design, not by accident**. Staffing must reflect it.
+
+**Two verdicts only — there is no write-off path.** Every failed batch is assumed recoverable by re-washing. If a load is ever genuinely unsellable the app cannot express it, and the batch will sit in re-wash limbo. Known and accepted; revisit if it happens in practice.
+
+#### 5.5.4 What `Qayta yuvish` actually does — the lab FLAGS, Ombor EXECUTES 🔒 (NEW v1.9)
+
+**The lab verdict changes no stored state on pallets.** It does not void barcodes, does not move stock, does not send anything to Moyka. It records a judgement and raises a flag. Ombor performs every physical and destructive action, because Ombor is the one standing in front of the pallets.
+
+Sequence:
+1. Laborator saves verdict `Qayta yuvish` on a parent serial's current cycle.
+2. Those pallets immediately become **unavailable for dispatch** (derived, automatic — the hard gate above; no human action, no stored change).
+3. They appear in Ombor's storage view **flagged red** — "Qayta yuvish kerak" — identifying exactly which physical barcodes to pull (§5.3). This is the whole reason the verdict is per-serial rather than per-pallet: on a floor holding hundreds of stickered pallets, Ombor needs the system to name them, not describe them.
+4. Ombor **voids** those Barcode #2s and re-sends the material to Moyka — an explicit, confirmed, human-clicked action (§2.13, §5.2). The void happens here and only here.
+5. The material re-enters the existing §5.2 → §5.3 flow. New Barcode #2s on the second output. Konditirskiy stays behind and is additive, unchanged.
+6. The new cycle's pallets appear again in Laborator CHIQIM Window 1 as cycle 2.
+
+**Why not auto-void on the lab's verdict:** it would silently mutate Ombor's stock from another role's screen, and it would strand physical pallets whose stickers are dead but whose location only Ombor knows. Same reason no other section in this app auto-accepts into the next stage (§5 intro named invariant).
+
+#### 5.5.5 Re-wash re-entry point — §5.2 amendment ❓ OPEN (v1.9)
+
+Flagged pallets must **reappear in Storage §5.2 Window 1 (Moykaga chiqarish)** as sendable material, alongside first-wash raw. They arrive there with their re-wash flag visible so Ombor can tell a second-cycle send from a first-cycle one.
+
+**❓ OPEN — quantity basis.** §5.2 sends raw material by weight against a serial's remaining balance; re-wash material arrives as a set of finished pallets with known individual weights. Whether the re-send is expressed as "these specific voided barcodes" or collapses back into a plain kg figure against the serial affects §5.3's yield-loss maths across cycles. **Resolve before building §5.5.5 — do not let the build decide it.** (Explicitly out of scope for Step 8 prompt 1.)
+
+#### 5.5.6 Tekshiruvlar tarixi — one section, filtered 🔒 (NEW v1.9)
+
+**One history section, not three.** Both directions in a single filterable list — the same principle applied to the manager's reporting layer (§3.2): a lookup is a filter, not a separate screen.
+
+Filters (all combinable): date range + presets · KIRIM/CHIQIM · buyurtmachi · tur · kalibr · seriya/barkod · verdict.
+Each row expands to the full record: who tested, when, all values, target vs. actual, verdict, cycle number, photos, notes.
+Filtered-totals bar (§2.11) + Excel export, as everywhere.
+
+This is the table the client report (§3.5-A) reads for its moisture/SO₂ columns.
 
 ---
 
@@ -311,12 +381,15 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 
 ## 7. Open questions ❓
 1. ~~Owner role~~ — 🔒 **RESOLVED: designed as Rahbar** (§6).
-2. ~~Laborator window~~ — 🔒 **RESOLVED, designed** (§5.5).
+2. ~~Laborator window~~ — 🔒 **RESOLVED, designed** (§5.5). **REOPENED and re-resolved (v1.9):** the v1.5 design was replaced wholesale, not amended — see item 7 below and §5.5.
 3. ~~Manager KIRIM "Qabul qilindi" trigger~~ — 🔒 **RESOLVED: flips at `Yakunlandi`** (net weight known), not at gate stage-1.
 4. ~~Weight-term language~~ — resolved by global toggle (§2.8).
 5. ~~Buyurtmachi input~~ — 🔒 **RESOLVED: dropdown from OWNERS everywhere** (never free text). Prevents name drift ("GLOBAL EXPORT" vs "Global Export" vs "GLOBAL EKSPORT") silently fragmenting the per-client filter, the Mijoz bo'yicha lens, and the client report.
 6. ~~Sulfur unit~~ — 🔒 **RESOLVED: mg/kg (SO₂)**, entered by the **Laborator**.
-7. ~~Laborator CHIQIM scope~~ — 🔒 **RESOLVED: CHIQIM mirrors KIRIM exactly** — same form design and workflow (moisture first, sulfur added later). Subject is finished goods rather than raw intake.
+7. ~~Laborator CHIQIM scope~~ — ~~RESOLVED: CHIQIM mirrors KIRIM exactly~~ — 🔒 **REOPENED and re-resolved (v1.9): Laborator CHIQIM is NOT a mirror of KIRIM.** Trigger, purpose, and outcome all differ — CHIQIM triggers on Moyka output (not dispatch) and carries a hard-gating verdict; KIRIM is descriptive-only with no verdict. See §5.5.
+8. **NEW OPEN (v1.9)** — re-send quantity basis for re-wash material returning to §5.2 (§5.5.5). Must be resolved before §5.5.5 is built.
+9. **NEW OPEN (v1.9)** — should an untested batch raise a "Tahlil kechikdi" exception on the Rahbar's §6.2 list alongside "Sera kechikdi"? Likely yes and cheap; the threshold pattern already exists in §2.14.
+10. **CLARIFIED (v1.9)** — "Sera kechikdi" must exclude products with no SO₂ target (§5.5.1). A natural product is never overdue.
 
 ---
 
@@ -324,14 +397,14 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 - **OWNERS** — id, name
 - **MAHSULOT_TURLARI** — id, category, type_name, calibre_applies, calibre_set (incl. `Konditirskiy`)
 - **KIRIM_ORDERS** — order_id (PK), sana, plate, driver, owner_id, doc_photo, declared_total, status — *delivery envelope; one truck-trip. No serial.*
-- **KIRIM_LINES** — serial (PK, from `next_serial()`), order_id, type_id, declared_qty — *🔒 one line = one type = one serial. A serial is single-type by construction. `declared_qty` is the manager's figure and is never overwritten; the actual weight lives on STORAGE_STOCK.*
+- **KIRIM_LINES** — serial (PK, from `next_serial()`), order_id, type_id, declared_qty, **target_moisture_pct (nullable, v1.9)**, **target_so2_mg_kg (nullable, v1.9; blank = natural, meaningful not missing)** — *🔒 one line = one type = one serial. A serial is single-type by construction. `declared_qty` is the manager's figure and is never overwritten; the actual weight lives on STORAGE_STOCK. Targets attach here (not KIRIM_ORDERS) since one truck may carry two products with different requirements, and flow down the lineage to every pallet produced from this serial (§3.1).*
 - **CHIQIM_REQUESTS** — id, sana, plate, driver, owner_id, status (no goods-serial) · **CHIQIM_LINES** — request_id, type_id, calibre, qty
 - **GATE_WEIGHINGS** — id (PK), ref (🔒 `order_id` for KIRIM / `request_id` for CHIQIM — **a weighing belongs to a truck-trip, never to a serial**), direction, gruzheny, pustoy, net (generated), stage1_photo, stage1_scale_photo, stage2_photo, stage2_scale_photo, departure_doc_photo, status — *🔒 one weighing per trip. Net is the whole truck's, and is never split across the trip's serials (§4).*
 - **STORAGE_STOCK** — serial (PK), actual_qty (🔒 **measured** — entered by Storage at §5.1), namligi, sulfur(pending), pile_photo, barcode1, sent_to_moyka_qty, available_qty (derived), status — *serial is single-type, so this row is inherently per-type. No compound key needed.*
 - **MOYKA_SENDS** — serial, date, qty
-- **FINISHED_PALLETS** — barcode2 (PK), parent_serial, type_id, calibre, weight, owner, wash_cycle (1,2…), status (in_stock / dispatched / **bekor_qilindi**) — *atomic; never split. Voided barcodes must fail loudly on scan (§2.13)*
+- **FINISHED_PALLETS** — barcode2 (PK), parent_serial, type_id, calibre, weight, owner, wash_cycle (1,2…), status (in_stock / dispatched / **bekor_qilindi**) — *atomic; never split. Voided barcodes must fail loudly on scan (§2.13). Unchanged by v1.9 — the re-wash flag is **derived** from the parent serial's current-cycle verdict, not stored on the pallet. Only the void (`bekor_qilindi`) is stored, written by Ombor (§5.5.4).*
 - **DISPATCH_MANIFEST** — request_id, scanned barcode2[] (whole pallets only), shortfall_note
-- **LAB_RESULTS** — id, scope (kirim/chiqim), ref (serial | dispatch_request_id), sampled_pallet, sample_date, moisture_pct, so2_mg_kg (nullable = pending), unsulfured_flag, sample_photo, status (moisture_in / complete)
+- **LAB_RESULTS** — id, scope (kirim/chiqim), ref (serial | **wash_cycle_id, v1.9 — no longer dispatch_request_id**), sampled_pallet, sample_date, moisture_pct, so2_mg_kg (nullable — pending *or* not applicable; distinguish via the line's target, §5.5.1), sample_photo, note, **verdict (v1.9; null on kirim; `o_tdi` / `qayta_yuvish` on chiqim)**, **tested_by (v1.9)**, status
 - **NOTES** (append-only) — entity_ref, author, timestamp, text
 - **AUDIT_LOG** — entity_ref, actor, timestamp, action, before, after
 - **WASH_CYCLES** — serial, cycle_no, sent_qty, received_qty, loss_pct, status (active / voided / final) — *supports the re-wash loop (§2.13); Konditirskiy excluded from re-send and additive across cycles*
@@ -339,11 +412,14 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 - **SETTINGS_THRESHOLDS** — sulfur_overdue_days, moyka_idle_days, abnormal_loss_pct — *§2.14*
 - **USER_PREFS** — user_id, language (uz/ru)
 
+🔒 **Availability is one derived view, not a per-screen calculation (NEW v1.9).** A finished pallet is available for dispatch when `in_stock` **AND** not in `dispatch_manifest` **AND** its parent serial's current wash cycle has verdict `o_tdi`. Every consumer (Menejer's feasibility checker, Ombor's scan screen) reads this same derived truth — no screen recomputes it independently. *Implementation note: this is a design target for the lab-screens build, not yet wired into `useAvailableFinishedStock.ts` — the verdict component of the check does not exist until LAB_RESULTS gains its v1.9 shape (out of scope for Step 8 prompt 1).*
+
 ---
 
 ## 9. Changelog
 | Version | Date | Change |
 |---|---|---|
+| 1.12 | 2026-07-18 | 🔒 **Laborator redesigned; v1.5 model replaced (§5.5, wholesale).** CHIQIM check now triggers on Moyka output rather than dispatch and carries a **verdict** (`O'tdi` / `Qayta yuvish`) that **hard-gates dispatch availability**; KIRIM check is explicitly descriptive-only, no verdict. **Client quality targets added to `KIRIM_LINES`** (§3.1), per product line, inherited down the serial lineage; a blank SO₂ target means natural product and **removes the sulfur field entirely** from the lab form and from overdue alerts (§5.5.1). **Lab flags, Ombor voids** — the verdict mutates no stored state; re-wash material is flagged red for Ombor, who voids the barcodes and re-sends via §5.2 (§5.5.4–5). Lab history consolidated into **one filtered section** (§5.5.6). Client report gains target-vs-actual (§3.5-A). Amends §1.1, §2.13, §3.1, §5.2, §5.3, §7, §8. **Open: re-send quantity basis (§5.5.5)** — do not build §5.5.5 until resolved. This prompt (Step 8 prompt 1) applied the spec text + `kirim_lines` target columns + the Menejer form fields only; no lab screens, no `lab_results` reshape, no hard gate on `useAvailableFinishedStock` yet. |
 | 1.11 | 2026-07-17 | 🔒 **New §5 named invariant: "CHIQIM per-role finalization"** — §5.4 has no single shared "finished" status; Ombor (scan+`Yuklashni yakunlash`), Qorovul (second/loaded weighing), and Menejer (reads Qorovul's signal) each finalize independently and see their own Window 2 on their own action. `chiqim_requests.status` must not be overloaded to mean "Ombor done loading." Written ahead of Step 7 prompt 1 (Menejer CHIQIM request creation). |
 | 1.10 | 2026-07-17 | 🔒 **New §5 named invariant: "Placement windows vs. acceptance windows"** — every §5 second-window is either purely derived (pattern 1, no human action changes stored state) or displayed-but-gated (pattern 2, arithmetic controls eligibility but stored state only changes via an explicit click). §5.1 storage-intake and §5.3 finished-goods intake are pattern (2); no future section, including Step 7 CHIQIM, may auto-accept a serial into the next stage without an explicit acceptance action. See DECISIONS.md same title. |
 | 1.9 | 2026-07-14 | 🔒 **Serial is now per type-line, not per truck.** Serial moves from `KIRIM_ORDERS` to `KIRIM_LINES`; `next_serial()` called once per type row. A serial is therefore **always single-type**, which retroactively makes three existing rules *correct* rather than approximate: Barcode #1 per type-pile (§3.1/§5.1), Laborator's "one sample → whole parent serial" (§5.5), and `STORAGE_STOCK` keyed by serial (§8). 🔒 **Qorovul unchanged** — still one truck, two weighings, one truck-level net; multi-serial trips are display-only. 🔒 **No pro-rata apportionment**: the gate net is reconciled against the manager's declared *Jami avto* (truck total vs truck total), and **per-type actual weights are entered by Storage at §5.1**, where the piles are physically separated. Every weight in the system is measured, never derived. `GATE_WEIGHINGS.ref` re-pointed from serial → **order_id/request_id** (a weighing belongs to a truck-trip). §5.3 receipt-form `Tur` field kept but made **read-only**, auto-filled from the parent serial. |

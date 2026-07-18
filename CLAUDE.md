@@ -93,6 +93,13 @@ why this section reads the way it does.
 - Template/example: `tests/e2e/smoke.spec.ts` + `tests/e2e/helpers/login.ts`
   — proves the pipeline (real login, real navigation, zero console errors),
   not feature coverage. Feature-specific tests build on this pattern.
+- **Every e2e/Playwright report must include a plain-language walkthrough**,
+  in addition to (not instead of) the usual before/after technical report.
+  Written for someone unfamiliar with the codebase, using real values from
+  the actual run — not placeholders, not a generic description of what the
+  test *would* do. Shape: "Logged in as [role]. Did [action]. Expected
+  [result]. Checked the database directly — [what was found]." One line per
+  real step of the run, in the order it happened.
 
 ## Scope discipline
 - Build only what the task specifies. Explicitly flag (don't silently fix

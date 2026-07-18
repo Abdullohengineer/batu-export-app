@@ -9,10 +9,21 @@ interface TypeRow {
   key: string
   typeId: string
   qty: string
+  targetMoisture: string
+  targetSo2: string
 }
 
 function newRow(): TypeRow {
-  return { key: crypto.randomUUID(), typeId: '', qty: '' }
+  return { key: crypto.randomUUID(), typeId: '', qty: '', targetMoisture: '', targetSo2: '' }
+}
+
+// §3.1 (v1.9): a blank SO₂ target is a meaningful value (natural/unsulfured
+// product, §5.5.1) — must persist as null, never 0 or ''. Same treatment for
+// moisture for consistency, though the spec's "meaningful blank" callout is
+// specifically about sulfur.
+function numOrNull(s: string): number | null {
+  const trimmed = s.trim()
+  return trimmed === '' ? null : parseFloat(trimmed)
 }
 
 interface SavedLine {
@@ -115,6 +126,8 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
             order_id: order.order_id,
             type_id: r.typeId,
             declared_qty: parseFloat(r.qty),
+            target_moisture_pct: numOrNull(r.targetMoisture),
+            target_so2_mg_kg: numOrNull(r.targetSo2),
           })),
         )
         .select('serial, type_id')
@@ -214,42 +227,74 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
         </div>
 
         {rows.map((row) => (
-          <div key={row.key} className="flex items-center gap-2">
-            <select
-              required
-              value={row.typeId}
-              onChange={(e) => updateRow(row.key, { typeId: e.target.value })}
-              className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            >
-              <option value="" disabled>
-                Tur…
-              </option>
-              {productTypes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              required
-              placeholder="Miqdori (kg)"
-              value={row.qty}
-              onChange={(e) => updateRow(row.key, { qty: e.target.value })}
-              className="w-40 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            />
-            {rows.length > 1 && (
-              <button
-                type="button"
-                onClick={() => removeRow(row.key)}
-                aria-label="Qatorni o'chirish"
-                className="rounded-md px-2 py-2 text-sm text-slate-400 hover:text-red-600"
+          <div key={row.key} className="space-y-1 rounded-md border border-slate-100 p-2 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <select
+                required
+                value={row.typeId}
+                onChange={(e) => updateRow(row.key, { typeId: e.target.value })}
+                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               >
-                ✕
-              </button>
-            )}
+                <option value="" disabled>
+                  Tur…
+                </option>
+                {productTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                required
+                placeholder="Miqdori (kg)"
+                value={row.qty}
+                onChange={(e) => updateRow(row.key, { qty: e.target.value })}
+                className="w-40 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              />
+              {rows.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeRow(row.key)}
+                  aria-label="Qatorni o'chirish"
+                  className="rounded-md px-2 py-2 text-sm text-slate-400 hover:text-red-600"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {/* §3.1 (v1.9): client quality targets, per line. Both optional —
+                a blank SO₂ target is a meaningful "natural product" value,
+                not an incomplete field (§5.5.1), so neither is `required`
+                and blank never blocks or warns on save. */}
+            <div className="flex items-center gap-2 pl-1">
+              <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                Talab: Namligi %
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  placeholder="—"
+                  value={row.targetMoisture}
+                  onChange={(e) => updateRow(row.key, { targetMoisture: e.target.value })}
+                  className="w-20 rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                Talab: SO₂ mg/kg
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  placeholder="naturel"
+                  value={row.targetSo2}
+                  onChange={(e) => updateRow(row.key, { targetSo2: e.target.value })}
+                  className="w-20 rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </label>
+            </div>
           </div>
         ))}
       </div>

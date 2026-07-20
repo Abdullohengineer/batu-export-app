@@ -10,13 +10,19 @@ import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { useReportQuery } from '../../lib/useReportQuery'
 import { downloadReportExcel } from '../../lib/reportExport'
 import { computeTotals, dateBasisLabel, defaultReportFilters } from '../../lib/reportQuery'
-import { ReportRowCard } from './ReportRowCard'
+import { ReportResultsTable } from './ReportResultsTable'
 
 // §3.2 HISOBOT (Reporting) — the shared query engine + results table +
 // totals strip + filter bar (§3.2.1-3.2.4, applied to SPEC.md this step).
 // One component, mounted for both Menejer and Rahbar (§3.2: "Available to
 // Menejer and Rahbar. Rahbar's is read-only" — this view has no write
 // actions at all, so both roles get the literal same screen, no variant).
+//
+// DESKTOP surface, deliberately: Menejer/Rahbar work this screen on PCs
+// (phones are Ombor/Qorovul/Laborator's job) — results render as a real
+// table (ReportResultsTable.tsx), not the phone-oriented card list this
+// screen shipped with first. See DECISIONS.md "Reporting results view:
+// desktop rework."
 export function HisobotTab() {
   const initial = defaultDateRange()
   const [filters, setFilters] = useState(defaultReportFilters(initial.from, initial.to))
@@ -98,17 +104,14 @@ export function HisobotTab() {
           </div>
         )}
 
-        {rows.map((row) => (
-          <ReportRowCard
-            key={row.key}
-            row={row}
-            expanded={expandedKey === row.key}
-            onToggle={() => setExpandedKey(expandedKey === row.key ? null : row.key)}
-            ownerName={ownerName}
-            typeName={typeName}
-            calibreLabel={calibreLabel}
-          />
-        ))}
+        <ReportResultsTable
+          rows={rows}
+          expandedKey={expandedKey}
+          onToggle={(key) => setExpandedKey(expandedKey === key ? null : key)}
+          ownerName={ownerName}
+          typeName={typeName}
+          calibreLabel={calibreLabel}
+        />
       </HistoryView>
     </div>
   )

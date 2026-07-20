@@ -20,14 +20,13 @@ const STATUS_LABEL: Record<Exclude<PalletStatusFilter, ''>, string> = {
   bekor_qilingan: 'Bekor qilingan',
 }
 
-// §3.2.2/§3.2.4 "Filter bar must not dominate the screen: collapsed/
-// summarised by default, expanding to full controls." Own component
-// (deliberately not folded into HistoryView.tsx — Ombor/Qorovul's existing
-// Hisobotlar screens keep their current always-expanded filter row
-// unchanged; this collapse behaviour is additive furniture for the new
-// unified report only, per CLAUDE.md scope discipline). Collapsed state
-// shows a one-line summary of what's active; expanding reveals every
-// control. Reused as-is by every future saved view built on this engine.
+// §3.2.2/§3.2.4 filter bar. Own component (deliberately not folded into
+// HistoryView.tsx — Ombor/Qorovul's existing Hisobotlar screens keep their
+// current always-expanded filter row unchanged, per CLAUDE.md scope
+// discipline). Reporting is a desktop surface (Menejer/Rahbar, on PCs) —
+// expanded by default, no need to collapse on a wide screen — but the
+// collapse toggle itself stays (cheap, still useful on a narrower window).
+// Collapsed state shows a one-line summary of what's active.
 export function ReportFilterBar({
   filters,
   onChange,
@@ -41,7 +40,7 @@ export function ReportFilterBar({
   productTypes: ProductType[]
   calibres: Calibre[]
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
 
   function set<K extends keyof ReportFilters>(key: K, value: ReportFilters[K]) {
     onChange({ ...filters, [key]: value })

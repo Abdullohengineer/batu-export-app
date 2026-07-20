@@ -120,11 +120,12 @@ test('Hisobot: filtered results + totals reconcile against a direct query, and a
   await page.getByRole('link', { name: 'Hisobot' }).click()
   await expect(page.getByText('Sana asosi:')).toBeVisible()
 
-  await page.getByRole('button', { name: /Filtrlar|Yopish/ }).click()
+  // Filter bar is expanded by default on this desktop surface (Step 10
+  // prompt 2) — no toggle click needed, the fields are already visible.
   const plateInput = page.locator('label', { hasText: 'Moshina raqami' }).locator('input')
   await plateInput.fill(plate)
 
-  const row = page.locator('.rounded-md.border.border-slate-200', { hasText: plate })
+  const row = page.locator('table tbody tr', { hasText: plate })
   await expect(row).toBeVisible({ timeout: 15000 })
   await expect(row).toContainText('1,050 kg')
   await expect(row).not.toContainText('tarozi kutilmoqda')

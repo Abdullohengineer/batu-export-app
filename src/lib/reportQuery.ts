@@ -153,6 +153,23 @@ export function matchesText(haystack: string | null | undefined, query: string):
   return (haystack ?? '').toLowerCase().includes(q)
 }
 
+// 🔒 TEST- fixture exclusion (2026-07-20, see DECISIONS.md "Reporting
+// engine cleanup"). Same precedent `useFinishedChiqimRequests.ts` already
+// established: filtered out unconditionally, not exposed as a toggle — no
+// screen in this app has ever built a "show test data" switch, and there's
+// no other run-time signal that distinguishes a real record from a test
+// fixture. Applied once here so every row-construction path in the shared
+// query layer (KIRIM and CHIQIM alike) excludes fixtures the same way,
+// rather than each view re-deciding it. A CHIQIM row can be excluded by
+// EITHER its own dispatch's plate (if claimed) OR its parent serial's
+// originating KIRIM plate (if the pallet itself was born from a TEST-
+// intake, dispatched or not) — a request-only check would miss every
+// still-in-storage or voided test pallet, which have no dispatch plate of
+// their own to catch.
+export function isTestPlate(plate: string | null | undefined): boolean {
+  return (plate ?? '').startsWith('TEST-')
+}
+
 // §3.2.3 🔒 date basis label, shown on screen and in exports — printed
 // exactly once per direction selection, never silently varying per row.
 export function dateBasisLabel(direction: ReportDirection): string {

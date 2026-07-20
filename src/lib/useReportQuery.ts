@@ -8,6 +8,7 @@ import {
   labVerdictMatches,
   derivePalletStatus,
   passesDateOrStatusOverride,
+  isTestPlate,
   type ReportFilters,
   type ReportRow,
   type KirimReportRow,
@@ -124,6 +125,7 @@ async function fetchKirimReportRows(filters: ReportFilters, materialVariancePct:
     .filter((r) => matchesText(r.serial, filters.serial))
     .filter((r) => matchesText(r.plate, filters.plate))
     .filter((r) => matchesText(r.driver, filters.driver))
+    .filter((r) => !isTestPlate(r.plate))
 }
 
 interface FinishedPalletRow {
@@ -211,13 +213,17 @@ async function fetchChiqimReportRows(
 
   const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
   const { data: orders } = orderIds.length
-    ? await supabase.from('kirim_orders').select('order_id, owner_id').in('order_id', orderIds)
-    : { data: [] as { order_id: string; owner_id: string }[] }
+    ? await supabase.from('kirim_orders').select('order_id, owner_id, plate').in('order_id', orderIds)
+    : { data: [] as { order_id: string; owner_id: string; plate: string }[] }
 
   const requestById = new Map((requests ?? []).map((r) => [r.id, r]))
   const gateByRequest = new Map((weighings ?? []).map((w) => [w.request_id, w]))
   const lineBySerial = new Map((kLines ?? []).map((l) => [l.serial, l]))
   const orderOwnerById = new Map((orders ?? []).map((o) => [o.order_id, o.owner_id]))
+  // TEST- exclusion needs the pallet's ORIGINATING kirim_orders plate too —
+  // see reportQuery.ts's isTestPlate comment for why a request-only check
+  // would miss still-in-storage/voided test pallets.
+  const orderPlateById = new Map((orders ?? []).map((o) => [o.order_id, o.plate]))
   const cycleIdByKey = new Map((cycles ?? []).map((c) => [`${c.serial}:${c.cycle_no}`, c.id]))
 
   const cycleIds = [...cycleIdByKey.values()]
@@ -247,6 +253,13 @@ async function fetchChiqimReportRows(
     const line = lineBySerial.get(pallet.serial)
     const cycleId = cycleIdByKey.get(`${pallet.serial}:${pallet.wash_cycle}`)
     const lab = cycleId ? labByCycleId.get(cycleId) : undefined
+
+    // TEST- exclusion, checked on EITHER plate before this pallet becomes a
+    // row at all — including before the voided-barcode search sees it, so a
+    // test fixture stays fully invisible to this engine, not just absent
+    // from the default filtered table.
+    const originatingPlate = line ? orderPlateById.get(line.order_id) : undefined
+    if (isTestPlate(request?.plate) || isTestPlate(originatingPlate)) continue
 
     let voidInfo: VoidedBarcodeInfo | null = null
     if (palletStatus === 'bekor_qilingan') {

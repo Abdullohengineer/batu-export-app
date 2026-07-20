@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 
 export interface IntakeRecord {
@@ -37,9 +37,26 @@ export interface IntakeLine {
 export function useIntakeLines() {
   const [lines, setLines] = useState<IntakeLine[]>([])
   const [loading, setLoading] = useState(true)
+  // 🔒 Dropped-submit fix, part 2 of 2 (see DECISIONS.md "IntakeAcceptForm
+  // dropped submit" and OmborIntakeTab.tsx's own handleAccept comment).
+  // `loading` must only gate the FIRST fetch. OmborIntakeTab.tsx renders
+  // `if (loading) return null` -- a screen-blanking guard meant for "no
+  // data yet." OmborIntakeTab.handleAccept calls this refresh() again in
+  // the background after every accept (fire-and-forget, so a second line's
+  // form can legitimately still be open, mid-fill, while this runs) --
+  // without this guard, that refresh flips `loading` back to true, and the
+  // WHOLE TAB unmounts and remounts once it resolves, including any OTHER
+  // row's already-open IntakeAcceptForm. Its internal state (selected
+  // photo, comment) is lost silently -- a brand new component instance,
+  // not the same one -- even though `activeSerial` itself (part 1 of the
+  // fix) correctly still points at that row throughout. Confirmed via
+  // direct reproduction (mount/unmount tracing) that BOTH fixes are
+  // required together: part 1 alone left this second mechanism intact and
+  // the bug reproduced identically.
+  const hasLoadedOnce = useRef(false)
 
   const refresh = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedOnce.current) setLoading(true)
     try {
       const [{ data: orders }, { data: kLines }, { data: weighings }, { data: intakes }] = await Promise.all([
         supabase
@@ -88,6 +105,7 @@ export function useIntakeLines() {
       setLines(combined)
     } finally {
       setLoading(false)
+      hasLoadedOnce.current = true
     }
   }, [])
 

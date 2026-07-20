@@ -51,6 +51,19 @@ export function OmborIntakeTab() {
   // for #1 is "—" — unlike #2, a serial is already a stable, unique,
   // human-readable identifier, so no separate ID needed). Stored explicitly
   // at accept time, never recomputed on later views.
+  //
+  // 🔒 Dropped-submit fix, part 1 of 2 (multi-line rapid accept, see
+  // DECISIONS.md "IntakeAcceptForm dropped submit"): `activeSerial` names
+  // which ONE row's form is expanded across the WHOLE tab. Accepting line A
+  // kicks off an async upload+insert that can still be in flight when the
+  // operator opens line B's form (a completely normal multi-line workflow,
+  // not a rapid-click edge case) — `activeSerial` is now B. When A's accept
+  // finally resolves, it must NOT blindly reset `activeSerial` to null: that
+  // would close B's form out from under the operator. The functional
+  // updater only clears the active row if it's STILL this accept's own row
+  // — "close me only if I'm still the one open," not "close whatever is
+  // open now." (Part 2 of the fix is the loading-flag change in
+  // useIntakeLines.ts — this alone isn't sufficient, see that file's comment.)
   async function handleAccept(line: IntakeLine, values: IntakeAcceptValues) {
     const pilePath = await uploadPilePhoto(values.pilePhoto)
 
@@ -64,7 +77,7 @@ export function OmborIntakeTab() {
     })
     if (error) throw error
 
-    setActiveSerial(null)
+    setActiveSerial((current) => (current === line.serial ? null : current))
     refresh()
     // useEffectiveQty's own fetch is keyed by the SET of serials on the
     // page, not by their underlying intake/gate state — an accept within

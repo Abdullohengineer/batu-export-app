@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { jarayonda, ortiqcha } from './tayyorCompletion'
 import { sortByDateDesc, maxDate } from './sortByDate'
 import { isAwaitingTugallash } from './stageMembership'
+import { fetchActiveCycles } from './activeCycles'
 
 export { computeFinalLossPct } from './tayyorCompletion'
 
@@ -18,18 +19,24 @@ export interface OutputSerial {
   type_id: string
   category_id: string
   owner_id: string
-  sent: number // Yuborilgan — Σ moyka_sends.qty_kg (derived)
-  received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void (derived)
+  activeCycle: number // §5.5.4/§5.5.5: 1 unless a prior cycle was voided into a re-wash
+  isRewash: boolean
+  sent: number // Yuborilgan — Σ moyka_sends.qty_kg for the ACTIVE cycle only (derived)
+  received: number // Qabul qilingan — Σ finished_pallets.weight_kg for the ACTIVE cycle, non-void (derived)
   inProcess: number // Jarayonda — max(0, sent − received); never negative (see DECISIONS)
   excess: number // Ortiqcha — max(0, received − sent); non-blocking overage flag
-  pallets: FinishedPallet[]
+  pallets: FinishedPallet[] // this cycle's pallets only
   lastActivityDate: string | null // max(last moyka_sends.sent_date, last finished_pallets.received_date)
   // — used to sort this list newest-first (DECISIONS "Universal sort rule").
+  barcodeSeqByCalibre: Record<string, number> // §5.5.5: count of EVERY pallet ever made for this
+  // serial+calibre, across ALL cycles and INCLUDING voided ones — barcode2 is a permanent PK
+  // (void-never-delete), so the next barcode's sequence number must never collide with a prior
+  // cycle's, not even a voided one. Deliberately NOT scoped to the active cycle like `pallets`.
 }
 
-// §5.3 Window 2 (Tugallangan): a serial whose cycle 1 has a wash_cycles row
-// with status='final' — always via manual Tugallash now (DECISIONS.md
-// "Manual-only finishing"). lossPct is the LOCKED figure from
+// §5.3 Window 2 (Tugallangan): a serial whose ACTIVE cycle has a
+// wash_cycles row with status='final' — always via manual Tugallash now
+// (DECISIONS.md "Manual-only finishing"). lossPct is the LOCKED figure from
 // wash_cycles.final_loss_pct (source of truth once finalized, not
 // recomputed) — sent/received/excess stay derived like the active list,
 // for display and for the Ortiqcha badge.
@@ -37,6 +44,7 @@ export interface CompletedCycle {
   serial: string
   type_id: string
   owner_id: string
+  cycleNo: number
   sent: number
   received: number
   lossPct: number // locked wash_cycles.final_loss_pct, floored at 0 (see tayyorCompletion.ts)
@@ -52,17 +60,17 @@ export interface CompletedCycle {
 // (awaiting Tugallash: sent > 0 and not yet manually finished, regardless
 // of received/sent quantities — see stageMembership.ts isAwaitingTugallash
 // and DECISIONS "Manual-only finishing") and completed (Tugallangan: a
-// final wash_cycles row exists for cycle 1, always via Tugallash — there is
-// no auto-finalize path anymore). These two are independent, not mutually
-// exclusive: a serial can be active AND completed at once if more was sent
-// after an earlier cycle finalized (see DECISIONS "Serial-level in-process
-// visibility" — that scenario is now rarer, since finishing is always a
-// deliberate act, but still possible and still handled). All totals DERIVED
-// (CLAUDE.md "derive, don't store") except the locked final_loss_pct
-// itself: sent from moyka_sends, received from finished_pallets. wash_cycle
-// number is ignored for in-process visibility (serial-level, intentional —
-// re-wash/multi-cycle numbering is deferred, §2.13). Both lists sort
-// newest-first (DECISIONS "Universal sort rule").
+// final wash_cycles row exists for the ACTIVE cycle, always via Tugallash —
+// there is no auto-finalize path anymore). These two are independent, not
+// mutually exclusive: a serial can be active AND completed at once if more
+// was sent after an earlier cycle finalized. All totals DERIVED (CLAUDE.md
+// "derive, don't store") except the locked final_loss_pct itself: sent from
+// moyka_sends, received from finished_pallets — both scoped to the serial's
+// ACTIVE cycle (§5.5.4/§5.5.5, Step 8 prompt 2 split 2d) via the shared
+// fetchActiveCycles helper, so a re-washed serial's numbers describe its
+// current cycle, not a mix of cycle 1's already-finalized figures and cycle
+// 2's in-progress ones. Both lists sort newest-first (DECISIONS "Universal
+// sort rule").
 export function useMoykaOutput() {
   const [serials, setSerials] = useState<OutputSerial[]>([])
   const [completed, setCompleted] = useState<CompletedCycle[]>([])
@@ -72,25 +80,42 @@ export function useMoykaOutput() {
     setLoading(true)
     try {
       const [{ data: sends }, { data: pallets }, { data: cycles }] = await Promise.all([
-        supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
-        supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, status'),
+        supabase.from('moyka_sends').select('serial, qty_kg, sent_date, wash_cycle'),
+        supabase.from('finished_pallets').select('barcode2, serial, wash_cycle, calibre_id, weight_kg, received_date, status'),
         supabase.from('wash_cycles').select('serial, cycle_no, status, final_loss_pct'),
       ])
 
-      // Sent totals (and last send date, for sorting) per serial — only
-      // serials that have been sent appear.
+      const serialList = [...new Set((sends ?? []).map((s) => s.serial))]
+      if (serialList.length === 0) {
+        setSerials([])
+        setCompleted([])
+        return
+      }
+
+      const activeCycles = await fetchActiveCycles(serialList)
+      function cycleOf(serial: string): number {
+        return activeCycles.get(serial)?.cycle ?? 1
+      }
+
+      // Sent totals (and last send date, for sorting) per serial, scoped to
+      // that serial's ACTIVE cycle only — a re-washed serial's cycle-1 sends
+      // must not bleed into cycle 2's in-progress total.
       const sentBySerial = new Map<string, number>()
       const lastSentDateBySerial = new Map<string, string>()
       for (const s of sends ?? []) {
+        if (s.wash_cycle !== cycleOf(s.serial)) continue
         sentBySerial.set(s.serial, (sentBySerial.get(s.serial) ?? 0) + s.qty_kg)
         const prevSent = lastSentDateBySerial.get(s.serial)
         if (!prevSent || s.sent_date > prevSent) lastSentDateBySerial.set(s.serial, s.sent_date)
       }
 
-      // Pallets (and their received total) per serial.
+      // Pallets (and their received total) per serial, same active-cycle
+      // scoping — Konditirskiy from an earlier cycle stays in_stock (§2.13)
+      // but must not count toward the CURRENT cycle's received/loss maths.
       const palletsBySerial = new Map<string, FinishedPallet[]>()
       for (const p of pallets ?? []) {
-        if (p.status === 'bekor_qilindi') continue // voided pallets don't count (re-wash, future)
+        if (p.status === 'bekor_qilindi') continue
+        if (p.wash_cycle !== cycleOf(p.serial)) continue
         const list = palletsBySerial.get(p.serial) ?? []
         list.push({ barcode2: p.barcode2, calibre_id: p.calibre_id, weight_kg: p.weight_kg, received_date: p.received_date })
         palletsBySerial.set(p.serial, list)
@@ -103,10 +128,33 @@ export function useMoykaOutput() {
         )
       }
 
-      const serialList = [...sentBySerial.keys()]
-      const finalCycles = (cycles ?? []).filter((c) => c.cycle_no === 1 && c.status === 'final')
-      const lossPctBySerial = new Map(finalCycles.map((c) => [c.serial, c.final_loss_pct ?? 0]))
-      const finalizedSerials = new Set(finalCycles.map((c) => c.serial))
+      // §5.5.5: EVERY pallet ever made for a (serial, calibre) — every
+      // cycle, including voided ones — since barcode2 is a permanent PK
+      // (void-never-delete) and a new cycle's first same-calibre pallet
+      // must not reuse a sequence number a voided cycle already claimed.
+      const barcodeSeqBySerial = new Map<string, Record<string, number>>()
+      for (const p of pallets ?? []) {
+        const bySerial = barcodeSeqBySerial.get(p.serial) ?? {}
+        bySerial[p.calibre_id] = (bySerial[p.calibre_id] ?? 0) + 1
+        barcodeSeqBySerial.set(p.serial, bySerial)
+      }
+
+      // A cycle is "final" only when its OWN wash_cycles row (cycle_no =
+      // that serial's active cycle) has status='final' — not just any past
+      // cycle. Cycle 1's finalized-and-voided record stays in wash_cycles
+      // forever (void-never-delete) but must not be read as "still final"
+      // once the serial has moved on to a re-wash cycle.
+      const finalCycleByKey = new Map((cycles ?? []).filter((c) => c.status === 'final').map((c) => [`${c.serial}:${c.cycle_no}`, c]))
+      const lossPctBySerial = new Map<string, number>()
+      const finalizedSerials = new Set<string>()
+      for (const serial of serialList) {
+        const cycle = finalCycleByKey.get(`${serial}:${cycleOf(serial)}`)
+        if (cycle) {
+          lossPctBySerial.set(serial, cycle.final_loss_pct ?? 0)
+          finalizedSerials.add(serial)
+        }
+      }
+
       // §5.2 Moyka Window 2 = §5.3 Tayyor Window 1 (section mirroring) —
       // isAwaitingTugallash is the shared, tested predicate: sent at all,
       // not yet manually finished. No quantity comparison at all — an
@@ -114,22 +162,11 @@ export function useMoykaOutput() {
       // until the operator clicks Tugallash (DECISIONS "Manual-only
       // finishing").
       const activeSerials = serialList.filter((s) => isAwaitingTugallash(sentBySerial.get(s) ?? 0, finalizedSerials.has(s)))
-      // §5.3 Window 2 (Tugallangan) membership is UNCHANGED — still governed
-      // by wash_cycles.status='final'. A serial can be in BOTH activeSerials
-      // (not yet finished) and completedSerials (an earlier cycle's
-      // yield-loss already locked) at once if more was sent after that
-      // earlier Tugallash — both facts are real, so both windows show it.
+      // §5.3 Window 2 (Tugallangan) membership — the ACTIVE cycle has a
+      // final wash_cycles row. A serial can be in BOTH activeSerials (not
+      // yet finished) and completedSerials at once if more was sent after
+      // an earlier cycle finalized.
       const completedSerials = serialList.filter((s) => finalizedSerials.has(s))
-
-      // Only bail early if there is truly nothing sent yet — NOT just when
-      // activeSerials is empty, which would silently drop Window 2 (the bug
-      // this fixes: every serial could be finalized and Tugallangan would
-      // still render empty).
-      if (serialList.length === 0) {
-        setSerials([])
-        setCompleted([])
-        return
-      }
 
       const { data: kLines } = await supabase
         .from('kirim_lines')
@@ -166,6 +203,7 @@ export function useMoykaOutput() {
           sent,
           received,
           pallets: serialPallets,
+          barcodeSeqByCalibre: barcodeSeqBySerial.get(serial) ?? {},
           lastSentDate: lastSentDateBySerial.get(serial) ?? null,
           lastReceivedDate,
         }
@@ -175,13 +213,17 @@ export function useMoykaOutput() {
         .map((serial): OutputSerial | null => {
           const base = baseRow(serial)
           if (!base) return null
+          const cycle = cycleOf(serial)
           return {
             serial: base.serial,
             type_id: base.type_id,
             owner_id: base.owner_id,
+            activeCycle: cycle,
+            isRewash: cycle > 1,
             sent: base.sent,
             received: base.received,
             pallets: base.pallets,
+            barcodeSeqByCalibre: base.barcodeSeqByCalibre,
             category_id: categoryByType.get(base.type_id) ?? '',
             inProcess: jarayonda(base.sent, base.received),
             excess: ortiqcha(base.sent, base.received),
@@ -198,6 +240,7 @@ export function useMoykaOutput() {
             serial: base.serial,
             type_id: base.type_id,
             owner_id: base.owner_id,
+            cycleNo: cycleOf(serial),
             sent: base.sent,
             received: base.received,
             pallets: base.pallets,

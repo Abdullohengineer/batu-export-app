@@ -37,10 +37,15 @@ export function FinishedReceiptForm({
   const [error, setError] = useState<string | null>(null)
 
   function nextBarcode2(code: string): string {
-    // seq = count of existing non-void pallets of this serial+calibre + 1.
-    // The finished_pallets PK is the backstop against a concurrent collision
-    // (single ombor manager, one-pallet-per-save → collisions are unlikely).
-    const existing = serial.pallets.filter((p) => p.calibre_id === calibreId).length
+    // §5.5.5: seq counts EVERY pallet ever made for this serial+calibre —
+    // every cycle, including voided ones (barcodeSeqByCalibre, unlike
+    // `serial.pallets`, is deliberately NOT scoped to the active cycle).
+    // barcode2 is a permanent PK (void-never-delete), so a re-wash cycle's
+    // first same-calibre pallet must not reuse a sequence number a voided
+    // cycle already claimed. The finished_pallets PK is the backstop
+    // against a concurrent collision (single ombor manager, one-pallet-
+    // per-save → collisions are unlikely).
+    const existing = serial.barcodeSeqByCalibre[calibreId] ?? 0
     return `PLT-${serial.serial}-${code}-${existing + 1}`
   }
 

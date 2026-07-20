@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { loginAs } from './helpers/login'
-import { uniqueTestId } from './helpers/fixtures'
+import { uniqueRealLookingPlate } from './helpers/fixtures'
 
 // Step 10 prompt 1: reporting query engine, results table, totals strip,
 // filter bar (SPEC.md §3.2.1-3.2.4). Reduced testing per the task's own
@@ -27,7 +27,14 @@ test('Hisobot: filtered results + totals reconcile against a direct query, and a
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
-  const plate = uniqueTestId('HISOBOT')
+  // Non-TEST-prefixed plate, deliberately: the reporting engine's own
+  // isTestPlate() filter (reportQuery.ts, added the same session this test
+  // was written for a different reason) now excludes any TEST-prefixed
+  // kirim_orders.plate — same reason menejer-chiqim-finished-view.spec.ts
+  // already needed uniqueRealLookingPlate() for useFinishedChiqimRequests'
+  // identical filter. "TEST Driver" (below) still carries the traceability
+  // marker, per that same precedent.
+  const plate = uniqueRealLookingPlate()
 
   // --- Seed one single-line KIRIM order straight through to a known gate
   // net (1050kg), via direct writes — same shape as fixtures.ts's own

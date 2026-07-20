@@ -28,13 +28,14 @@ export function uniqueTestId(label?: string): string {
   return label ? `TEST-${label}-${runToken}-${counter}` : `TEST-${runToken}-${counter}`
 }
 
-// The ONE deliberate exception to the TEST- prefix convention:
-// useFinishedChiqimRequests.ts filters OUT any TEST-prefixed plate by
-// design (app code, not touched here), so a test that specifically
-// exercises that filter (Menejer's finished CHIQIM view) needs a plate
-// that does NOT start with "TEST-". Still unique per run/call via the same
-// counter; "TEST Driver" (unchanged elsewhere) remains the traceability
-// marker on these rows, same convention as every other fixture.
+// The deliberate exception to the TEST- prefix convention: some app code
+// filters OUT any TEST-prefixed plate by design (useFinishedChiqimRequests.ts
+// for Menejer's finished CHIQIM view; reportQuery.ts's isTestPlate() for the
+// Hisobot reporting engine, added 2026-07-20), so a test that specifically
+// exercises one of those filters needs a plate that does NOT start with
+// "TEST-". Still unique per run/call via the same counter; "TEST Driver"
+// (unchanged elsewhere) remains the traceability marker on these rows, same
+// convention as every other fixture.
 export function uniqueRealLookingPlate(): string {
   counter += 1
   // runToken = base36(Date.now()) + 4 random base36 chars. The random

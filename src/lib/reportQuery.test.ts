@@ -8,6 +8,7 @@ import {
   labVerdictMatches,
   derivePalletStatus,
   passesDateOrStatusOverride,
+  isTestPlate,
   type KirimReportRow,
   type ChiqimReportRow,
 } from './reportQuery.ts'
@@ -132,4 +133,13 @@ test('passesDateOrStatusOverride: dateless row excluded by default, included onl
   assert.equal(passesDateOrStatusOverride(null, 'omborda', filters), false)
   assert.equal(passesDateOrStatusOverride(null, 'omborda', { ...filters, status: 'omborda' }), true)
   assert.equal(passesDateOrStatusOverride(null, 'band_qilingan', { ...filters, status: 'omborda' }), false)
+})
+
+test('isTestPlate: TEST- prefix, same convention as useFinishedChiqimRequests', () => {
+  assert.equal(isTestPlate('TEST-HISOBOT-MRSX29RUEHX0-7'), true)
+  assert.equal(isTestPlate('TEST-'), true)
+  assert.equal(isTestPlate('01A777AA'), false)
+  assert.equal(isTestPlate(''), false)
+  assert.equal(isTestPlate(null), false)
+  assert.equal(isTestPlate(undefined), false)
 })

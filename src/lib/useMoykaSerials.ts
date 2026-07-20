@@ -70,10 +70,14 @@ export function useMoykaSerials() {
       const materialVariancePct = limitRow?.value ?? 5
 
       // Enrich each received serial with its line/order context.
+      // 🔒 Redundant-fetch collapse (see effectiveQty.ts's own comment):
+      // intakes/sends were already fetched above for this same refresh —
+      // pass them straight through instead of making fetchEffectiveQty
+      // re-fetch both tables again, unfiltered, a second time.
       const [{ data: kLines }, activeCycles, effectiveQtyBySerial] = await Promise.all([
         supabase.from('kirim_lines').select('serial, order_id, type_id').in('serial', serialList),
         fetchActiveCycles(serialList),
-        fetchEffectiveQty(serialList, materialVariancePct),
+        fetchEffectiveQty(serialList, materialVariancePct, { intakes: intakes ?? [], sends: sends ?? [] }),
       ])
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
       const { data: orders } = await supabase

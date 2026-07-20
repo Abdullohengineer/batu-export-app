@@ -40,15 +40,25 @@ export interface EffectiveQtyInfo {
 // caller only asked about one of them (same reasoning activeCycles.ts
 // documents for why it can't derive a single serial's cycle in isolation).
 //
-// NOTE: this re-fetches storage_intake/moyka_sends unfiltered even when the
-// caller (useMoykaSerials.ts) already has the same rows in hand from its
-// own refresh() — a known, real redundancy, deliberately left alone here
-// (see DECISIONS.md "effectiveQty refresh race" — collapsing it turned out
-// non-trivial to do safely alongside the race fix, deferred rather than
-// bundled in).
+// 🔒 Redundant-fetch collapse (2026-07-20, see DECISIONS.md "Reporting
+// engine cleanup: test-data DELETE, TEST- filter, redundant-fetch
+// collapse"): `prefetched` lets a caller that has ALREADY fetched
+// storage_intake/moyka_sends this refresh (useMoykaSerials.ts — both
+// UNFILTERED, table-wide fetches, identical to what this function needs)
+// pass those rows through instead of triggering two more Frankfurt-to-
+// Tashkent round trips for data already in hand. Optional and additive —
+// every other caller (useEffectiveQty, useReportQuery) omits it and gets
+// the original always-fetch-fresh behaviour unchanged. A version of this
+// was built and verified once before (Step 9 prompt 4) and reverted at the
+// time purely to avoid bundling it with that session's race-guard fix, not
+// because it didn't work — same design, actually shipped this time.
 export async function fetchEffectiveQty(
   serials: string[],
   materialVariancePct: number,
+  prefetched?: {
+    intakes?: { serial: string; actual_qty: number }[]
+    sends?: { serial: string; sent_date: string }[]
+  },
 ): Promise<Map<string, EffectiveQtyInfo>> {
   const result = new Map<string, EffectiveQtyInfo>()
   if (serials.length === 0) return result
@@ -57,14 +67,15 @@ export async function fetchEffectiveQty(
   const orderIds = [...new Set((seedLines ?? []).map((l) => l.order_id))]
   if (orderIds.length === 0) return result
 
-  const [{ data: allLines }, { data: intakes }, { data: weighings }, { data: orders }, { data: sends }] =
-    await Promise.all([
-      supabase.from('kirim_lines').select('serial, order_id, declared_qty').in('order_id', orderIds),
-      supabase.from('storage_intake').select('serial, actual_qty'),
-      supabase.from('gate_weighings').select('order_id, net_kg, completed_at').eq('dir', 'kirim').in('order_id', orderIds),
-      supabase.from('kirim_orders').select('order_id, declared_total').in('order_id', orderIds),
-      supabase.from('moyka_sends').select('serial, sent_date'),
-    ])
+  const [{ data: allLines }, intakesResult, { data: weighings }, { data: orders }, sendsResult] = await Promise.all([
+    supabase.from('kirim_lines').select('serial, order_id, declared_qty').in('order_id', orderIds),
+    prefetched?.intakes ? Promise.resolve({ data: prefetched.intakes }) : supabase.from('storage_intake').select('serial, actual_qty'),
+    supabase.from('gate_weighings').select('order_id, net_kg, completed_at').eq('dir', 'kirim').in('order_id', orderIds),
+    supabase.from('kirim_orders').select('order_id, declared_total').in('order_id', orderIds),
+    prefetched?.sends ? Promise.resolve({ data: prefetched.sends }) : supabase.from('moyka_sends').select('serial, sent_date'),
+  ])
+  const intakes = intakesResult.data
+  const sends = sendsResult.data
 
   const linesByOrder = new Map<string, { serial: string; declared_qty: number }[]>()
   const orderBySerial = new Map<string, string>()

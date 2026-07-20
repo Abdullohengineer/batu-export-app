@@ -1,145 +1,150 @@
 /// <reference types="node" />
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  computeTotals,
-  matchesText,
-  washCycleMatches,
-  labVerdictMatches,
-  derivePalletStatus,
-  passesDateOrStatusOverride,
-  isTestPlate,
-  type KirimReportRow,
-  type ChiqimReportRow,
-} from './reportQuery.ts'
+import { mapDbRowToReportRow, type ReportDbRow } from './reportQuery.ts'
 
-function kirimRow(effectiveQtyKg: number): KirimReportRow {
+// Filtering, ordering, and totals moved server-side (report_filtered_rows/
+// report_query_page/report_totals — see DECISIONS.md "Reporting engine:
+// server-side query"), so matchesText/washCycleMatches/labVerdictMatches/
+// derivePalletStatus/passesDateOrStatusOverride/isTestPlate/computeTotals
+// have no remaining caller and were removed along with their tests here.
+// What's left worth unit-testing is mapDbRowToReportRow — the one pure
+// function still translating the wire shape back into the app's row types.
+
+function kirimDbRow(overrides: Partial<ReportDbRow> = {}): ReportDbRow {
   return {
     kind: 'kirim',
-    key: 's1',
+    row_key: 's1',
     serial: 's1',
-    orderId: 'o1',
-    typeId: 't1',
-    ownerId: 'own1',
+    barcode2: null,
+    order_id: 'o1',
+    request_id: null,
+    owner_id: 'own1',
+    type_id: 't1',
+    calibre_id: null,
     plate: 'P1',
     driver: 'D1',
-    dateBasis: '2026-07-01',
-    dateBasisSource: 'gate_stage1',
-    declaredQty: 1000,
-    effectiveQtyKg,
+    date_basis: '2026-07-01',
+    date_basis_source: 'gate_stage1',
+    qty_kg: 1000,
     provisional: false,
-    truckVarianceDiffKg: null,
-    truckVarianceDiffPct: null,
-    provisionalVarianceFlag: false,
-    targetMoisturePct: null,
-    targetSo2MgKg: null,
-    kirimMoisturePct: null,
-    kirimSo2MgKg: null,
+    declared_qty: 950,
+    truck_variance_diff_kg: 50,
+    truck_variance_diff_pct: 5.26,
+    provisional_variance_flag: false,
+    wash_cycle: null,
+    pallet_status: null,
+    lab_verdict: null,
+    target_moisture_pct: null,
+    target_so2_mg_kg: null,
+    moisture_pct: null,
+    so2_mg_kg: null,
+    void_successor_barcodes: null,
+    ...overrides,
   }
 }
 
-function chiqimRow(weightKg: number): ChiqimReportRow {
+function chiqimDbRow(overrides: Partial<ReportDbRow> = {}): ReportDbRow {
   return {
     kind: 'chiqim',
-    key: 'PLT-1',
-    barcode2: 'PLT-1',
+    row_key: 'PLT-1',
     serial: 's1',
-    typeId: 't1',
-    calibreId: 'c1',
-    ownerId: 'own1',
-    requestId: 'r1',
+    barcode2: 'PLT-1',
+    order_id: 'o1',
+    request_id: 'r1',
+    owner_id: 'own1',
+    type_id: 't1',
+    calibre_id: 'c1',
     plate: 'P1',
     driver: 'D1',
-    weightKg,
-    washCycle: 1,
-    palletStatus: 'jonatilgan',
-    dateBasis: '2026-07-02',
-    labVerdict: 'o_tdi',
-    targetMoisturePct: null,
-    targetSo2MgKg: null,
-    moisturePct: null,
-    so2MgKg: null,
-    voidInfo: null,
+    date_basis: '2026-07-02',
+    date_basis_source: null,
+    qty_kg: 3000,
+    provisional: false,
+    declared_qty: null,
+    truck_variance_diff_kg: null,
+    truck_variance_diff_pct: null,
+    provisional_variance_flag: false,
+    wash_cycle: 1,
+    pallet_status: 'jonatilgan',
+    lab_verdict: 'o_tdi',
+    target_moisture_pct: null,
+    target_so2_mg_kg: null,
+    moisture_pct: null,
+    so2_mg_kg: null,
+    void_successor_barcodes: null,
+    ...overrides,
   }
 }
 
-test('computeTotals: sums kirim effective_qty as kg in, chiqim weight as kg out, net is the difference', () => {
-  const rows = [kirimRow(5000), kirimRow(2000), chiqimRow(3000)]
-  assert.deepEqual(computeTotals(rows), { kgIn: 7000, kgOut: 3000, net: 4000 })
+test('mapDbRowToReportRow: KIRIM row maps field-for-field', () => {
+  const row = mapDbRowToReportRow(kirimDbRow())
+  assert.equal(row.kind, 'kirim')
+  if (row.kind !== 'kirim') return
+  assert.equal(row.key, 's1')
+  assert.equal(row.effectiveQtyKg, 1000)
+  assert.equal(row.declaredQty, 950)
+  assert.equal(row.truckVarianceDiffKg, 50)
+  assert.equal(row.truckVarianceDiffPct, 5.26)
+  assert.equal(row.provisional, false)
+  assert.equal(row.dateBasisSource, 'gate_stage1')
 })
 
-test('computeTotals: empty set', () => {
-  assert.deepEqual(computeTotals([]), { kgIn: 0, kgOut: 0, net: 0 })
-})
-
-test('matchesText: empty query matches everything, including null', () => {
-  assert.equal(matchesText(null, ''), true)
-  assert.equal(matchesText('anything', ''), true)
-})
-
-test('matchesText: case-insensitive substring', () => {
-  assert.equal(matchesText('PLT-150726-001-04', 'plt-150726'), true)
-  assert.equal(matchesText('PLT-150726-001-04', 'zzz'), false)
-})
-
-test('washCycleMatches: any/1/2+ ', () => {
-  assert.equal(washCycleMatches(1, ''), true)
-  assert.equal(washCycleMatches(2, ''), true)
-  assert.equal(washCycleMatches(1, '1'), true)
-  assert.equal(washCycleMatches(2, '1'), false)
-  assert.equal(washCycleMatches(1, '2+'), false)
-  assert.equal(washCycleMatches(2, '2+'), true)
-  assert.equal(washCycleMatches(3, '2+'), true)
-})
-
-test('labVerdictMatches: tekshirilmagan means null verdict specifically', () => {
-  assert.equal(labVerdictMatches(null, ''), true)
-  assert.equal(labVerdictMatches(null, 'tekshirilmagan'), true)
-  assert.equal(labVerdictMatches('o_tdi', 'tekshirilmagan'), false)
-  assert.equal(labVerdictMatches('o_tdi', 'o_tdi'), true)
-  assert.equal(labVerdictMatches('qayta_yuvish', 'o_tdi'), false)
-})
-
-test('derivePalletStatus: voided wins regardless of claim state', () => {
-  assert.equal(
-    derivePalletStatus({ rawStatus: 'bekor_qilindi', claimed: true, dispatchGateCompletedAt: '2026-07-01T00:00:00Z' }),
-    'bekor_qilingan',
+test('mapDbRowToReportRow: numeric columns coerced even when the wire sends them as strings (PostgREST numeric quirk)', () => {
+  const row = mapDbRowToReportRow(
+    kirimDbRow({ qty_kg: '1000', declared_qty: '950', truck_variance_diff_kg: '50', truck_variance_diff_pct: '5.26' }),
   )
+  if (row.kind !== 'kirim') throw new Error('expected kirim')
+  assert.equal(row.effectiveQtyKg, 1000)
+  assert.equal(typeof row.effectiveQtyKg, 'number')
+  assert.equal(row.declaredQty, 950)
+  assert.equal(row.truckVarianceDiffKg, 50)
+  assert.equal(row.truckVarianceDiffPct, 5.26)
 })
 
-test('derivePalletStatus: unclaimed in_stock -> omborda', () => {
-  assert.equal(derivePalletStatus({ rawStatus: 'in_stock', claimed: false, dispatchGateCompletedAt: null }), 'omborda')
+test('mapDbRowToReportRow: KIRIM null truck variance stays null, not zero', () => {
+  const row = mapDbRowToReportRow(kirimDbRow({ truck_variance_diff_kg: null, truck_variance_diff_pct: null }))
+  if (row.kind !== 'kirim') throw new Error('expected kirim')
+  assert.equal(row.truckVarianceDiffKg, null)
+  assert.equal(row.truckVarianceDiffPct, null)
 })
 
-test('derivePalletStatus: claimed but dispatch gate stage 2 not done -> band_qilingan', () => {
-  assert.equal(derivePalletStatus({ rawStatus: 'in_stock', claimed: true, dispatchGateCompletedAt: null }), 'band_qilingan')
+test('mapDbRowToReportRow: CHIQIM row maps field-for-field, no voidInfo when not voided', () => {
+  const row = mapDbRowToReportRow(chiqimDbRow())
+  assert.equal(row.kind, 'chiqim')
+  if (row.kind !== 'chiqim') return
+  assert.equal(row.key, 'PLT-1')
+  assert.equal(row.weightKg, 3000)
+  assert.equal(row.washCycle, 1)
+  assert.equal(row.palletStatus, 'jonatilgan')
+  assert.equal(row.labVerdict, 'o_tdi')
+  assert.equal(row.voidInfo, null)
 })
 
-test('derivePalletStatus: claimed and dispatch gate stage 2 done -> jonatilgan', () => {
-  assert.equal(
-    derivePalletStatus({ rawStatus: 'in_stock', claimed: true, dispatchGateCompletedAt: '2026-07-01T00:00:00Z' }),
-    'jonatilgan',
+test('mapDbRowToReportRow: CHIQIM voided pallet WITH successors builds voidInfo from wash_cycle/wash_cycle+1', () => {
+  const row = mapDbRowToReportRow(
+    chiqimDbRow({
+      wash_cycle: 1,
+      pallet_status: 'bekor_qilingan',
+      void_successor_barcodes: ['PLT-2', 'PLT-3'],
+    }),
   )
+  if (row.kind !== 'chiqim') throw new Error('expected chiqim')
+  assert.deepEqual(row.voidInfo, { voidedCycle: 1, successorCycle: 2, successorBarcodes: ['PLT-2', 'PLT-3'] })
 })
 
-test('passesDateOrStatusOverride: dated row always goes through the date range, status ignored', () => {
-  const filters = { from: '2026-07-01', to: '2026-07-10', status: '' as const }
-  assert.equal(passesDateOrStatusOverride('2026-07-05', 'jonatilgan', filters), true)
-  assert.equal(passesDateOrStatusOverride('2026-06-30', 'jonatilgan', filters), false)
+test('mapDbRowToReportRow: CHIQIM voided pallet with NO successor yet -> empty array, not null crash', () => {
+  const row = mapDbRowToReportRow(
+    chiqimDbRow({ wash_cycle: 1, pallet_status: 'bekor_qilingan', void_successor_barcodes: null }),
+  )
+  if (row.kind !== 'chiqim') throw new Error('expected chiqim')
+  assert.deepEqual(row.voidInfo, { voidedCycle: 1, successorCycle: 2, successorBarcodes: [] })
 })
 
-test('passesDateOrStatusOverride: dateless row excluded by default, included only when its exact status is asked for', () => {
-  const filters = { from: '2026-07-01', to: '2026-07-10', status: '' as const }
-  assert.equal(passesDateOrStatusOverride(null, 'omborda', filters), false)
-  assert.equal(passesDateOrStatusOverride(null, 'omborda', { ...filters, status: 'omborda' }), true)
-  assert.equal(passesDateOrStatusOverride(null, 'band_qilingan', { ...filters, status: 'omborda' }), false)
-})
-
-test('isTestPlate: TEST- prefix, same convention as useFinishedChiqimRequests', () => {
-  assert.equal(isTestPlate('TEST-HISOBOT-MRSX29RUEHX0-7'), true)
-  assert.equal(isTestPlate('TEST-'), true)
-  assert.equal(isTestPlate('01A777AA'), false)
-  assert.equal(isTestPlate(''), false)
-  assert.equal(isTestPlate(null), false)
-  assert.equal(isTestPlate(undefined), false)
+test('mapDbRowToReportRow: CHIQIM missing request_id/barcode2/calibre_id fall back to empty string, not null', () => {
+  const row = mapDbRowToReportRow(chiqimDbRow({ request_id: null, barcode2: null, calibre_id: null, pallet_status: 'omborda' }))
+  if (row.kind !== 'chiqim') throw new Error('expected chiqim')
+  assert.equal(row.requestId, '')
+  assert.equal(row.barcode2, '')
+  assert.equal(row.calibreId, '')
 })

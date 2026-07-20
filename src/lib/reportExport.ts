@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
-import { dateBasisLabel, WEIGHT_BASIS_LABEL, computeTotals, type ReportRow, type ReportFilters } from './reportQuery'
+import { dateBasisLabel, WEIGHT_BASIS_LABEL, type ReportRow, type ReportFilters, type ReportTotals } from './reportQuery'
+import { fetchAllReportRowsForExport } from './useReportQuery'
 
 // §3.2.4/§3.2.2 "Excel export on every view, respecting the active filter,
 // with the date basis and weight basis printed in the header." Uses
@@ -35,6 +36,7 @@ export async function buildReportWorkbook(
   rows: ReportRow[],
   filters: ReportFilters,
   lookups: ExportLookups,
+  totals: ReportTotals,
 ): Promise<ExcelJS.Workbook> {
   const wb = new ExcelJS.Workbook()
   const sheet = wb.addWorksheet('Hisobot')
@@ -85,7 +87,6 @@ export async function buildReportWorkbook(
     }
   }
 
-  const totals = computeTotals(rows)
   sheet.addRow([])
   sheet.addRow(['Jami kirim (kg)', totals.kgIn])
   sheet.addRow(['Jami chiqim (kg)', totals.kgOut])
@@ -98,8 +99,15 @@ export async function buildReportWorkbook(
   return wb
 }
 
-export async function downloadReportExcel(rows: ReportRow[], filters: ReportFilters, lookups: ExportLookups): Promise<void> {
-  const wb = await buildReportWorkbook(rows, filters, lookups)
+// §ex requirement: export always covers the full filtered set, never just
+// the visible page — fetches it fresh (chunked, see fetchAllReportRowsForExport)
+// rather than reusing whatever page happens to be in memory. `totals` comes
+// from the caller's own already-current report_totals result (HisobotTab's
+// live state at the moment Export is clicked) rather than being recomputed
+// here — one source of truth, no risk of the two ever disagreeing.
+export async function downloadReportExcel(filters: ReportFilters, lookups: ExportLookups, totals: ReportTotals): Promise<void> {
+  const rows = await fetchAllReportRowsForExport(filters)
+  const wb = await buildReportWorkbook(rows, filters, lookups, totals)
   const buffer = await wb.xlsx.writeBuffer()
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(blob)

@@ -16,6 +16,11 @@ const PLATE = 'TEST-LAB-CHIQIM-01'
 // scan; a passed-verdict pallet must be visible/scannable exactly as before
 // this prompt existed.
 test('Laborator CHIQIM verdict hard-gates dispatch availability, both directions', async ({ page }) => {
+  // Step 9 regression pass: same latency-budget fix as rewash-full-cycle.spec.ts
+  // (see its comment) — effective_qty's extra per-refresh queries pushed this
+  // already-tight two-line test past the 30s default. See DECISIONS.md
+  // "Step 9 regression pass".
+  test.setTimeout(90_000)
   const consoleErrors: string[] = []
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text())

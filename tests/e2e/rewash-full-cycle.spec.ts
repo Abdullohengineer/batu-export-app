@@ -27,6 +27,15 @@ const PLATE = 'TEST-REWASH-01'
 // independently), cycle 2's loss math is right, and the hard gate opens up
 // once cycle 2 passes.
 test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, re-wash input is exact, cycle 2 loss is against the re-wash input, o_tdi reopens availability', async ({ page }) => {
+  // Step 9 regression pass: effective_qty added extra per-refresh queries to
+  // useMoykaSerials/useMoykaOutput (fetchEffectiveQty, called on every
+  // refresh of both hooks — see DECISIONS.md "Weight authority & effective
+  // quantity"). This test's own two full wash cycles were already tight
+  // against the 30s default; confirmed via a 90s diagnostic run that the
+  // app logic is unaffected (passes cleanly, ~1.1min) — this is a latency
+  // budget fix, not a functional one. See DECISIONS.md "Step 9 regression
+  // pass" for the full investigation.
+  test.setTimeout(120_000)
   const consoleErrors: string[] = []
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text())

@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueTestId } from './helpers/fixtures'
 
-const PLATE = 'TEST-KIRIM-TARGETS-01'
+const PLATE = uniqueTestId('KIRIM-TARGETS')
 
 // Step 8 prompt 1: Menejer KIRIM form gains per-line client quality targets
 // (SPEC.md v1.9 §3.1). Two lines on one order: one with both targets set

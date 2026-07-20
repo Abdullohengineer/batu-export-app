@@ -2,10 +2,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueTestId } from './helpers/fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
-const PLATE = 'TEST-LAB-KIRIM-01'
+const PLATE = uniqueTestId('LAB-KIRIM')
 
 // Step 8 prompt 2, split 2b: Laborator KIRIM screens (SPEC.md v1.9 §5.5.2).
 // Full real chain: Menejer creates a KIRIM order with a sulfured line

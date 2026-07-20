@@ -2,6 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueTestId, uniqueRealLookingPlate } from './helpers/fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
@@ -11,12 +12,12 @@ const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
 // requirement #2 asks for — KIRIM through the gate/intake/Moyka/Tayyor/Lab
 // chain, an o'tdi verdict, confirmation the pallet is available, a CHIQIM
 // request through Ombor's scan + Qorovul's two gate stages, and Menejer's
-// finished view showing correct actor/timestamp data. The existing test for
-// that last part (menejer-chiqim-finished-view.spec.ts) cannot currently run
-// — its hardcoded fixture barcodes were found voided during this session's
-// inspection, unrelated to effective_qty (see DECISIONS.md "Step 9
-// regression pass"). This test covers the same ground end to end, self-
-// contained, on fresh fixtures.
+// finished view showing correct actor/timestamp data. Originally written
+// because menejer-chiqim-finished-view.spec.ts couldn't run at all (voided
+// fixture barcodes) — that spec was since repaired with self-generating
+// fixtures (see DECISIONS.md "self-generating test fixtures"), but this one
+// stays: it drives the KIRIM half through real Moyka/Tayyor/Lab too, ground
+// no other single test covers end to end.
 test('Single-product truck, full KIRIM->CHIQIM chain: o_tdi verdict, availability, dispatch, finished-view actor/timestamp data', async ({
   page,
 }) => {
@@ -27,13 +28,13 @@ test('Single-product truck, full KIRIM->CHIQIM chain: o_tdi verdict, availabilit
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
-  const PLATE_IN = 'TEST-STEP9-CHAIN-01'
+  const PLATE_IN = uniqueTestId('STEP9-CHAIN')
   // Deliberately NOT TEST-prefixed: useFinishedChiqimRequests.ts filters out
   // any TEST-prefixed plate by design (menejer-chiqim-finished-view.spec.ts's
   // own REAL_PLATE follows the same convention, for the same reason) — a
   // TEST- plate here would correctly, not incorrectly, never appear in the
   // finished view this test is checking.
-  const PLATE_OUT = '02B889BB'
+  const PLATE_OUT = uniqueRealLookingPlate()
 
   // --- Menejer: KIRIM order, one line, 5000kg ---
   await loginAs(page, 'MENEJER')

@@ -2,10 +2,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueTestId } from './helpers/fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
-const PLATE = 'TEST-LAB-CHIQIM-01'
+const PLATE = uniqueTestId('LAB-CHIQIM')
 
 // Step 8 prompt 2, split 2c: Laborator CHIQIM screens (SPEC.md v1.9 §5.5.3)
 // + the hard gate (part D). Full real chain, two lines on one KIRIM order so
@@ -192,15 +193,22 @@ test('Laborator CHIQIM verdict hard-gates dispatch availability, both directions
 
   // Subxon (failed verdict) — the SAME 1000kg physically exists in
   // finished_pallets as in_stock, but the hard gate must exclude it from
-  // useAvailableFinishedStock, leaving checkFeasibility with an empty
-  // weights array for this type+calibre. checkFeasibility's "empty stock"
-  // case reports nearestBelow=0 (not null), so the app's actual message is
-  // "eng ko'p: 0 kg", not the separate "no pallet at all" fallback — that
-  // fallback is unreachable given how checkFeasibility behaves on empty
-  // input, confirmed by inspection, not a bug introduced by this task.
+  // useAvailableFinishedStock, so checkFeasibility never sees it as a
+  // candidate: nearestBelow is always 0 for THIS gated stock. Which exact
+  // message ChiqimForm.tsx renders around that "0 kg" — "eng ko'p: 0 kg"
+  // (no other Subxon/Kalibr 6 stock exists anywhere right now) or
+  // "eng yaqin: 0 kg yoki N kg" (some unrelated, ungated Subxon/Kalibr 6
+  // stock also happens to exist) — depends on the live DB's total stock at
+  // the moment this runs, not on anything this test controls; both are
+  // legitimate, correct renderings of the same underlying fact (found live:
+  // this test's own hardcoded "eng ko'p: 0 kg" expectation flipped to the
+  // "eng yaqin: 0 kg yoki 2,000 kg" shape between two consecutive runs with
+  // fresh fixtures both times — a genuinely stale string, not a fixture
+  // collision; see DECISIONS.md "self-generating test fixtures"). Assert on
+  // the one thing that's actually invariant: nearestBelow is 0.
   await chiqimSelects.nth(1).selectOption({ label: 'Subxon' })
   await chiqimSelects.nth(2).selectOption({ label: 'Kalibr 6' })
-  await expect(page.getByRole('status')).toContainText("eng ko'p: 0 kg")
+  await expect(page.getByRole('status')).toContainText(/(eng ko'p|eng yaqin): 0 kg/)
 
   // --- Hard gate, direction 2: Ombor's CHIQIM scan screen ---
   // Create a real CHIQIM request so there's a scan target for Isfara (the
@@ -232,6 +240,15 @@ test('Laborator CHIQIM verdict hard-gates dispatch availability, both directions
   await barcodeInput.fill(`PLT-${passSerial}-06-1`)
   await page.getByRole('button', { name: 'Skanerlash' }).click()
   await expect(page.getByText('✓ Aniq mos keldi')).toBeVisible()
+
+  // Close out this request (Step 9: self-generating test fixtures) — every
+  // other spec in this suite finishes what it opens, so no genuinely open
+  // CHIQIM request is ever left behind to pollute another spec's
+  // "no open requests" empty-state assertion (chiqim-flow.spec.ts) on a
+  // later run. Doesn't touch or repeat the hard-gate assertions above.
+  await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
+  await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
+  await expect(omborRequest).not.toBeVisible()
 
   // --- Direct DB check, same session (dev-only window.supabase) ---
   const result = await page.evaluate(async ({ fail, pass }) => {

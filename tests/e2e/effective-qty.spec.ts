@@ -2,6 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueTestId } from './helpers/fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
@@ -30,7 +31,7 @@ test('Single-product truck: provisional until gate stage 2, then gate net drives
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
-  const PLATE = 'TEST-EFFQTY-01'
+  const PLATE = uniqueTestId('EFFQTY')
 
   // --- Menejer: KIRIM order, one line, declared 5000kg ---
   await loginAs(page, 'MENEJER')
@@ -250,7 +251,7 @@ test('Multi-product truck: per-line intake figures used, truck-total variance sh
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
-  const PLATE = 'TEST-EFFQTY-02'
+  const PLATE = uniqueTestId('EFFQTY')
 
   // --- Menejer: KIRIM order, two lines, declared 1000kg each (2000 total) ---
   await loginAs(page, 'MENEJER')

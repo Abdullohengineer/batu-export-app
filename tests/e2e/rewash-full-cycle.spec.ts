@@ -2,10 +2,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueTestId } from './helpers/fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
-const PLATE = 'TEST-REWASH-01'
+const PLATE = uniqueTestId('REWASH')
 
 // Step 8 prompt 2, split 2d: re-wash cycle-awareness retrofit + void/re-
 // entry (SPEC.md v1.9 §5.5.4/§5.5.5). Full real chain, one serial, two wash

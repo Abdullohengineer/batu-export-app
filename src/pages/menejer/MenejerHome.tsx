@@ -14,6 +14,7 @@ export function MenejerHome() {
           tabs={[
             { to: '/menejer', label: 'KIRIM', end: true },
             { to: '/menejer/chiqim', label: 'CHIQIM' },
+            { to: '/menejer/hisobot', label: 'Hisobot' },
           ]}
         />
       }

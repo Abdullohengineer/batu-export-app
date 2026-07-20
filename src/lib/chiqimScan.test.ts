@@ -17,6 +17,7 @@ test('scan happy path: valid pallet accepted and assigned to its matching line',
     barcode2: 'PLT-140726-001-06-1',
     alreadyScannedBarcodes: [],
     pallet: basePallet(),
+    labPassed: true,
     alreadyClaimed: false,
     lines: [lineA, lineB],
     scannedTotalsByLineId: {},
@@ -32,6 +33,7 @@ test('scan happy path: reaching the target exactly is reported by lineStatus, no
     barcode2: 'PLT-140726-001-06-2',
     alreadyScannedBarcodes: ['PLT-140726-001-06-1'],
     pallet: basePallet(),
+    labPassed: true,
     alreadyClaimed: false,
     lines: [lineA],
     scannedTotalsByLineId: { 'line-a': 1600 }, // one pallet already scanned
@@ -46,6 +48,7 @@ test('duplicate-barcode rejection: same barcode already in this scan session', (
     barcode2: 'PLT-140726-001-06-1',
     alreadyScannedBarcodes: ['PLT-140726-001-06-1'],
     pallet: basePallet(),
+    labPassed: true,
     alreadyClaimed: false,
     lines: [lineA],
     scannedTotalsByLineId: {},
@@ -61,6 +64,7 @@ test('claimed-elsewhere rejection: barcode already in dispatch_manifest', () => 
     barcode2: 'PLT-140726-001-06-1',
     alreadyScannedBarcodes: [],
     pallet: basePallet(),
+    labPassed: true,
     alreadyClaimed: true,
     lines: [lineA],
     scannedTotalsByLineId: {},
@@ -73,6 +77,7 @@ test('not-found rejection: barcode does not resolve to any pallet', () => {
     barcode2: 'PLT-DOES-NOT-EXIST',
     alreadyScannedBarcodes: [],
     pallet: null,
+    labPassed: true,
     alreadyClaimed: false,
     lines: [lineA],
     scannedTotalsByLineId: {},
@@ -85,6 +90,7 @@ test('not-in-stock rejection: pallet exists but already dispatched/voided', () =
     barcode2: 'PLT-140726-001-06-1',
     alreadyScannedBarcodes: [],
     pallet: basePallet({ status: 'dispatched' }),
+    labPassed: true,
     alreadyClaimed: false,
     lines: [lineA],
     scannedTotalsByLineId: {},
@@ -92,11 +98,44 @@ test('not-in-stock rejection: pallet exists but already dispatched/voided', () =
   assert.deepEqual(result, { ok: false, reason: 'not_in_stock' })
 })
 
+// §5.5.3/§8 hard gate (v1.9): an in-stock, unclaimed pallet is still refused
+// if its parent serial's current wash cycle hasn't passed lab testing —
+// untested and re-wash-flagged stock must never be scannable.
+test('not-lab-passed rejection: in-stock, unclaimed pallet whose serial has not passed the current cycle', () => {
+  const result = resolveScan({
+    barcode2: 'PLT-140726-001-06-1',
+    alreadyScannedBarcodes: [],
+    pallet: basePallet(),
+    labPassed: false,
+    alreadyClaimed: false,
+    lines: [lineA],
+    scannedTotalsByLineId: {},
+  })
+  assert.deepEqual(result, { ok: false, reason: 'not_lab_passed' })
+})
+
+// Ordering: the lab gate is checked before the claimed-elsewhere check —
+// an untested pallet should never even reach the overcommit-guard logic,
+// same precedence as not-in-stock.
+test('not-lab-passed takes precedence over claimed-elsewhere', () => {
+  const result = resolveScan({
+    barcode2: 'PLT-140726-001-06-1',
+    alreadyScannedBarcodes: [],
+    pallet: basePallet(),
+    labPassed: false,
+    alreadyClaimed: true,
+    lines: [lineA],
+    scannedTotalsByLineId: {},
+  })
+  assert.deepEqual(result, { ok: false, reason: 'not_lab_passed' })
+})
+
 test('no-matching-line rejection: pallet type/calibre not requested', () => {
   const result = resolveScan({
     barcode2: 'PLT-140726-001-04-1',
     alreadyScannedBarcodes: [],
     pallet: basePallet({ calibre_id: 'k4' }),
+    labPassed: true,
     alreadyClaimed: false,
     lines: [lineA, lineB],
     scannedTotalsByLineId: {},
@@ -113,6 +152,7 @@ test('duplicate type+calibre lines: pallet fills the line with the larger remain
     barcode2: 'PLT-x',
     alreadyScannedBarcodes: [],
     pallet: basePallet(),
+    labPassed: true,
     alreadyClaimed: false,
     lines: [lineC, lineD],
     scannedTotalsByLineId: { 'line-c': 900, 'line-d': 1000 }, // gaps: 100 vs 4000

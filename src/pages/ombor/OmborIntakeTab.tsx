@@ -6,6 +6,7 @@ import { useOwners } from '../../lib/useOwners'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { useIntakeLines, type IntakeLine, type IntakeRecord } from '../../lib/useIntakeLines'
 import { useMoykaSerials } from '../../lib/useMoykaSerials'
+import { useEffectiveQty } from '../../lib/effectiveQty'
 import { sortByDateDesc } from '../../lib/sortByDate'
 import { hasRawRemainder } from '../../lib/stageMembership'
 import { IntakeAcceptForm, type IntakeAcceptValues } from './IntakeAcceptForm'
@@ -30,6 +31,14 @@ export function OmborIntakeTab() {
   const [expandedSerial, setExpandedSerial] = useState<string | null>(null)
 
   const kamChiqdiPct = limits.kam_chiqdi_pct ?? 5
+  // §2.15: the single derived source for the working quantity, used by both
+  // this window's display and its "raw remainder" membership test — never
+  // storage_intake.actual_qty directly (see DECISIONS.md "Weight authority
+  // & effective quantity").
+  const { effectiveQty, refresh: refreshEffectiveQty } = useEffectiveQty(
+    lines.map((l) => l.serial),
+    kamChiqdiPct,
+  )
 
   function typeName(typeId: string) {
     return productTypes.find((t) => t.id === typeId)?.name ?? typeId
@@ -57,6 +66,12 @@ export function OmborIntakeTab() {
 
     setActiveSerial(null)
     refresh()
+    // useEffectiveQty's own fetch is keyed by the SET of serials on the
+    // page, not by their underlying intake/gate state — an accept within
+    // the same mount doesn't change that set, so it must be told explicitly
+    // (found live: the "received" list showed the stale pre-accept snapshot,
+    // including a stale 0kg reconciliation sum, until this was added).
+    refreshEffectiveQty()
   }
 
   if (loading || moykaLoading) return null
@@ -82,10 +97,11 @@ export function OmborIntakeTab() {
   // already-sorted orders query), so this window needs its own sort rather
   // than trusting the source array's order.
   const received = sortByDateDesc(
-    lines.filter(
-      (l): l is IntakeLine & { intake: IntakeRecord } =>
-        l.intake !== null && hasRawRemainder(l.intake.actual_qty, sentBySerial.get(l.serial) ?? 0),
-    ),
+    lines.filter((l): l is IntakeLine & { intake: IntakeRecord } => {
+      if (l.intake === null) return false
+      const eqValue = effectiveQty.get(l.serial)?.value ?? l.intake.actual_qty
+      return hasRawRemainder(eqValue, sentBySerial.get(l.serial) ?? 0)
+    }),
     (l) => l.intake.confirmed_at,
   )
 
@@ -162,12 +178,15 @@ export function OmborIntakeTab() {
         <div className="mt-2 space-y-2">
           {received.length === 0 && <p className="text-sm text-slate-400">Hali qabul qilingan yo'q.</p>}
           {received.map((line) => {
-            const remaining = line.intake.actual_qty - (sentBySerial.get(line.serial) ?? 0)
+            const eq = effectiveQty.get(line.serial)
+            const eqValue = eq?.value ?? line.intake.actual_qty
+            const remaining = Math.max(0, eqValue - (sentBySerial.get(line.serial) ?? 0))
             return (
             <div key={line.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
               <div className="flex items-center justify-between">
                 <span className="text-slate-900 dark:text-slate-100">
-                  {line.serial} · {typeName(line.type_id)} · {line.intake.actual_qty.toLocaleString()} kg · Qoldiq:{' '}
+                  {line.serial} · {typeName(line.type_id)} ·{' '}
+                  {eq?.provisional ? 'tarozi kutilmoqda' : `${eqValue.toLocaleString()} kg`} · Qoldiq:{' '}
                   {remaining.toLocaleString()} kg
                 </span>
                 <div className="flex items-center gap-2">
@@ -191,6 +210,25 @@ export function OmborIntakeTab() {
                   </button>
                 </div>
               </div>
+              {/* §5.1 amend: gate-vs-declared variance, shown once gate stage 2 is known. */}
+              {eq?.truckVariance && Math.abs(eq.truckVariance.diffKg) > 0 && (
+                <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  Darvoza neta reys bo'yicha e'lon qilingandan {eq.truckVariance.diffKg >= 0 ? '+' : ''}
+                  {eq.truckVariance.diffKg.toLocaleString()} kg ({eq.truckVariance.diffPct >= 0 ? '+' : ''}
+                  {eq.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
+                </div>
+              )}
+              {eq?.lineReconciliation && Math.abs(eq.lineReconciliation.diffKg) > 0 && (
+                <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  Qatorlar yig'indisi darvoza netasidan {eq.lineReconciliation.diffKg >= 0 ? '+' : ''}
+                  {eq.lineReconciliation.diffKg.toLocaleString()} kg farq qiladi (bir necha turdagi reys).
+                </div>
+              )}
+              {eq?.provisionalVarianceFlag && (
+                <div className="mt-1 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+                  Diqqat: tarozi kutilayotganda yuborilgan, keyin darvoza netasi sezilarli farq qildi.
+                </div>
+              )}
               {expandedSerial === line.serial && (
                 <IntakeDetailView line={line} ownerName={ownerName(line.owner_id)} typeName={typeName(line.type_id)} />
               )}

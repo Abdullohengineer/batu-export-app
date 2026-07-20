@@ -1,9 +1,9 @@
 # BATU EXPORT — Ombor & Logistika App
 ## Master Design Specification
 
-**Version:** 1.12
-**Date:** 18 July 2026
-**Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED (redesigned v1.9; §5.5.5 re-wash re-entry quantity basis OPEN) · Rahbar (business owner) — DESIGNED
+**Version:** 1.13
+**Date:** 19 July 2026
+**Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED (redesigned v1.9; §5.5.5 re-wash re-entry quantity basis OPEN) · Rahbar (business owner) — DESIGNED · Weight authority (§2.16) — LOCKED (v1.10 prompt 1; §3.2 unified reporting layer not yet applied, see `docs/SPEC-reporting-v1.10-revision.md`)
 
 ---
 
@@ -136,12 +136,50 @@ Exception rules are **settings, not hardcoded** — editable in Administration (
 
 ---
 
+## 2.16 WEIGHT AUTHORITY & EFFECTIVE QUANTITY 🔒 (NEW, v1.10)
+
+*Renumbered from the source revision's "§2.15" — SPEC.md already has an unrelated §2.15 ("Technical architecture," above). See `docs/SPEC-reporting-v1.10-revision.md` for the revision as originally written, and DECISIONS.md for the renumbering note.*
+
+Three weights exist for the same material. **All three are permanently retained; none overwrites another.**
+
+| Weight | Source | Meaning |
+|---|---|---|
+| **Declared** | Menejer, at order entry (`kirim_lines.declared_qty`) | What the client said they sent. Never modified by anyone, ever (existing rule, unchanged). |
+| **Intake** | Ombor, at receipt (`storage_intake.actual_qty`) | Ombor's own figure. **Pre-filled with the declared quantity and usually accepted untouched** — on single-product trucks Ombor performs no independent measurement. Treat as a per-line split, **not** as a measurement. |
+| **Gate net** | Qorovul, `gate_weighings` (loaded − empty) | 🔒 **The accounting truth.** This is the only figure produced by a calibrated scale and evidenced by two mandatory photos. |
+
+### 2.16.1 Effective quantity — the derived figure everything reads
+
+🔒 **`effective_qty` is derived, never stored**, computed per `kirim_line`:
+
+- **Single-line truck (the norm):** `effective_qty = gate net`. The gate weighed exactly this material and nothing else.
+- **Multi-line truck (rare):** `effective_qty = storage_intake.actual_qty` per line, because the gate produces one figure for the whole truck and cannot split it. Gate net remains the truck total; the sum of the lines is reconciled against it and any gap is shown as a **soft variance** (never blocks, per §3.1 philosophy). 🔒 **A multi-line truck's `effective_qty` never becomes gate net, even after gate stage 2 completes** — only whether it is *provisional* flips; the number itself stays the per-line intake figure permanently (see DECISIONS.md — this ordering, not stated explicitly in the source revision, was confirmed with the user before implementation).
+- **Before gate stage 2 exists:** `effective_qty = storage_intake.actual_qty`, displayed as **provisional** (see §2.16.2).
+
+🔒 **Every downstream calculation reads `effective_qty`, not intake or declared** — raw available to send to Moyka, process loss, yield %, client balances, all reports. One derived truth, all consumers — the same principle as availability (§5.5.3). Implemented as `src/lib/weightAuthority.ts` (pure rule) + `src/lib/effectiveQty.ts` (I/O layer), mirroring the `rewash.ts`/`activeCycles.ts` split (Step 8).
+
+### 2.16.2 Sequencing: gate net arrives *after* intake 🔒
+
+The KIRIM order of events is: gate weighs loaded → **Ombor receives, records intake, Barcode #1 issued** → truck unloads and departs → **gate weighs empty → net known**.
+
+So the authoritative weight is established **after** Ombor and Menejer have already seen a quantity on screen. Therefore:
+
+- Between intake and gate stage 2, the quantity displayed on Ombor's and Menejer's screens is **provisional**, visually marked (*"tarozi kutilmoqda"*).
+- 🔒 **When gate stage 2 completes, a single-line serial's effective quantity updates automatically on both screens** to the gate net figure. This is a derived recomputation, not a stored write — it changes no records, so it does not violate the no-silent-auto-transition invariant (§2.2). Nothing is accepted, finalized, or advanced; a displayed number simply becomes final. (A multi-line serial's *value* never changes this way — see §2.16.1 — only its provisional flag does.)
+- Where the gate net differs materially from the declared quantity, both are shown with the variance — Menejer needs to see when a client's declaration was wrong, and that is a commercial conversation. 🔒 Variance is always **gate-vs-declared**, never intake-vs-declared (§5.1 amend) — intake is a pre-filled split, not a measurement, so comparing it to declared would read ~0% almost everywhere and measure nothing.
+- **Lab checks are unaffected.** Laborator's KIRIM queue is keyed to intake existing, and quality is independent of quantity — a serial may be tested while its weight is still provisional.
+
+⚠️ **Edge case, implemented:** if material is sent to Moyka before gate stage 2 completes, the sent quantity was measured against a provisional figure. Flagged, never blocked — the serial shows a variance note if the gate net later lands materially different, using the existing `kam_chiqdi_pct` threshold (§5.1) as the materiality bar rather than a new one (no threshold/notification config was built this prompt — deliberately deferred, see §7).
+
+---
+
 ## 3. Role: MANAGER (Menejer) 🔒
 
 ### 3.1 Operational window — TABBED 🔒
 Segmented **`KIRIM | CHIQIM`** tabs switch the screen. Each = create button + live status list.
 - **KIRIM form:** Sana · Moshina raqami · Haydovchi ismi · Buyurtmachi (OWNERS) · **repeatable Tur + Miqdori rows** (multi-product; one truck, several types; "+ Tur qo'shish"; **Jami avto**; **no calibre** — raw isn't graded yet) · 🔒 **auto Seriya per type row** (`next_serial()` called once per line; N types → N serials, all displayed back on save; each type-pile → own Barcode #1) · Hujjat rasmi (compressed). Status **Kutilmoqda → Qabul qilindi** (🔒 flips at gate **Yakunlandi**, i.e. when net weight is known — not at stage-1 arrival).
   - 🔒 **Declared vs actual.** The quantities on this form are the manager's **declared** figures (what the client says is coming). They are never overwritten. The **actual** per-type weight is entered later by the Storage Manager (§5.1). The gap between declared and actual is what "Kam chiqdi" means.
+  - 🔒 **Quantity displayed against a serial elsewhere (KIRIM order list, AMENDED v1.10) is `effective_qty` (§2.16.1)**, marked **provisional** until gate stage 2 completes, then final. Declared quantity stays visible and permanently unmodified beside it — this is an additional figure, not a replacement for declared.
   - 🔒 **Client quality targets, per line (NEW, v1.9).** Each Tur + Miqdori row also carries two optional fields: **Talab: Namligi %** (the client's target moisture) and **Talab: SO₂ mg/kg** (leave blank for a natural/unsulfured product). Targets live on `KIRIM_LINES`, not `KIRIM_ORDERS` — one truck may carry two products with different requirements — and flow down the lineage to every pallet produced from that serial. Entered once at intake, never re-entered at dispatch. 🔒 **A blank SO₂ target is a meaningful value, not a missing one** — it is what tells the Laborator there is no sulfur to measure (§5.5.1) and what makes the client report print "Yo'q · naturel"; it must never be treated as an incomplete form. *Rationale: the client states what they want back at the moment they hand over the goods — no one re-keys it days later at test time.*
 - **CHIQIM form:** Sana · Moshina · Haydovchi · Buyurtmachi · **repeatable Tur + Kalibr + Miqdori rows** (calibre set incl. Konditirskiy) · Jami avto. **No serial, no doc photo.** Status **Kutilmoqda → Olib ketildi**.
   - 🔒 **Whole-pallet soft warning:** since pallets are atomic (§5.4), the form checks each requested quantity against available whole pallets. If it doesn't map cleanly, it **soft-warns and suggests the nearest workable figures** so the manager confirms the exact number with the client **before the truck is sent**. **Never blocks** — the manager can save anyway and handle it. This is where dispatch discipline is enforced, keeping partial loads off the floor.
@@ -235,6 +273,7 @@ Visible **immediately on manager KIRIM submit** (Kutilmoqda), read-only, so stor
 - 🔒 **Declared is always visible next to actual.** The Qabul qilish form lists one row per serial on the trip, each showing: Seriya · Tur · **Buyurtma (kutilgan, kg)** — the manager's declared_qty, read-only — and **Aniq (kg)** — the storage manager's measured input. He confirms against a number he can see, while the pile is in front of him.
 - 🔒 **Live variance per row.** As he types the actual, the row shows the difference against declared (kg and %). A negative variance beyond the configured limit (§2.14) flags red **"Kam chiqdi"** on save. Never blocks — he can save a shortfall; it becomes a note for the manager (§5.1).
 - The declared figure is **never editable here** (§3.1 — declared is the manager's record and is never overwritten). Storage records what he measured; the gap between the two is the finding, not an error to be corrected away.
+- 🔒 **AMENDED v1.10 — `actual_qty` is a per-line split, not a measurement (§2.16).** On single-product trucks Ombor takes no independent weight; `actual_qty` is pre-filled from declared and normally accepted untouched. The **accept-time reconciliation above stays intake-vs-declared** (line 270 — unchanged, it's a floor-level sanity check made before gate net is typically even known) — but it is never the accounting figure. Once gate stage 2 completes, the Window 2 ("Qabul qilingan") list additionally shows the **gate-vs-declared** variance (§2.16.2), a separate, additional figure from the accept-time Kam chiqdi check, not a replacement for it. `effective_qty` (§2.16.1) — gate net for a single-line truck once known, else the intake figure — is the working quantity Window 2's "Qoldiq" and every downstream Moyka/yield calculation reads, never `actual_qty` directly.
 
 ### 5.2 Moykaga Chiqarish 🟡 (updated 2026-07-16 — see DECISIONS.md "Section mirroring / derived stage membership", "Manual-only finishing"; AMENDED v1.9 — see §5.5.5)
 Send raw to production; **partial sends** accumulate; no new barcode (#1 travels). **Window 1 ("Yuborish uchun")** is the identical set as §5.1's Window 2 (confirmed, raw remainder > 0 — section mirroring); send form with live "qoladi", ⋯ per-send history, Qaydlar qo'shish all live here, unchanged. Sorted newest-first by order_date (§5 intro named invariant). ~~Window 2 was unreceived sent material, `total_sent − total_received > 0`~~ 🔒 **Window 2 is sent, not yet manually finished** — `sent > 0 AND` no `final` `wash_cycles` row for cycle 1, independent of received/sent quantities entirely (updated 2026-07-16 — see DECISIONS.md "Manual-only finishing": since finishing is always a deliberate Tugallash click now, not an automatic quantity threshold, "not yet finished" is the correct membership test, not a quantity comparison). Window 2 is the identical set §5.3 Tayyor's Window 1 already computes (section mirroring again: `useMoykaOutput` is consumed directly here, not reimplemented). A partially-sent serial shows in **both** windows at once — still has raw remainder to send (Window 1) **and** hasn't been finished yet (Window 2) — expected, not a bug; the same serial can *also* simultaneously show in §5.3's Tugallangan if an earlier Tugallash already finalized a prior batch and more was sent since. Window 2 is read-only (no send action, no ⋯ expand): managing what happens to a serial once it's in Moyka is §5.3's job, this is just visibility that it's there.
@@ -249,6 +288,7 @@ Serials in Moyka awaiting output. `+ Qabul qilish` → **daily receipt form: one
 - 🔒 **NEW (v1.9) — Laborator CHIQIM Window 1 placement.** On `Tugallash`, produced pallets additionally appear in **Laborator CHIQIM Window 1** (§5.5.3), the moment the wash cycle completes — not on dispatch. Storage takes no extra action; this is a derived placement window, exactly like every other §5 cross-section boundary (section mirroring), not a handoff.
 - 🔒 **NEW (v1.9) — Qayta yuvish flag + action here.** A pallet whose parent serial's current cycle carries a `Qayta yuvish` lab verdict displays **red** in this section with a "Qayta yuvish kerak" flag, and exposes the void + re-send action described above (§5.5.4) — this is where Ombor actually executes what the lab flagged. **Pallets are not dispatchable until lab-passed** (v1.9) — §5.4's scan screen will not find them, because it reads the same derived availability truth as Menejer's feasibility checker (§8).
 - 🔒 **Moyka idle flag:** a serial sitting in Moyka beyond the configured threshold (§2.14) is flagged here **and** on the Rahbar's exceptions list (§6.2). `File: BATU-Storage-S3-Tayyor-Mahsulot-v1.pdf`.
+- 🔒 **AMENDED v1.10 — cycle-1 input basis (§2.16).** Process loss and yield are computed against `effective_qty` for cycle 1 (gate net for a single-line truck, once known; the per-line intake figure for a multi-line truck — never `actual_qty` directly), and against the re-wash input weight for cycles 2+ (existing §5.5.4/§5.5.5 behaviour, unchanged — the re-wash input is not a weight-authority figure). "Yuborish uchun"/"Qoladi" (§5.2) uses the same `effective_qty`-derived cap, floored at 0 for display (a serial can be over-consumed relative to a just-arrived, lower gate net; never shown negative). Ombor's finished-goods view (this section) shows the active cycle only; the serial passport (§3.2.5, not yet built) must read underlying records rather than this view.
 
 ### 5.4 Skladdan CHIQIM 🟡 (updated)
 Triggered by CHIQIM request + gate stage-1 (empty truck on-site).
@@ -390,6 +430,9 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 8. **NEW OPEN (v1.9)** — re-send quantity basis for re-wash material returning to §5.2 (§5.5.5). Must be resolved before §5.5.5 is built.
 9. **NEW OPEN (v1.9)** — should an untested batch raise a "Tahlil kechikdi" exception on the Rahbar's §6.2 list alongside "Sera kechikdi"? Likely yes and cheap; the threshold pattern already exists in §2.14.
 10. **CLARIFIED (v1.9)** — "Sera kechikdi" must exclude products with no SO₂ target (§5.5.1). A natural product is never overdue.
+11. ~~Accounting weight basis~~ — 🔒 **RESOLVED (v1.10): gate net** (§2.16).
+12. **NEW OPEN (v1.10)** — should the gate-net update (§2.16.2) notify Menejer when variance against declared exceeds a threshold, or only display it (current, this prompt's build)? Notification implies §2.14 threshold config — deliberately not built this prompt.
+13. **CARRIED (v1.10)** — the unified §3.2 reporting layer (Tarix/Kuzatuv/Mijoz hisoboti consolidation, serial passport, stock-on-hand, client balance report, moisture-adjusted yield, WIP, Rahbar aggregates) is specified in `docs/SPEC-reporting-v1.10-revision.md` but **not yet applied to this document or built** — out of scope for this prompt (weight authority only). §3.2/§3.4/§3.5 below are still the pre-v1.10 text.
 
 ---
 
@@ -414,11 +457,14 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 
 🔒 **Availability is one derived view, not a per-screen calculation (NEW v1.9).** A finished pallet is available for dispatch when `in_stock` **AND** not in `dispatch_manifest` **AND** its parent serial's current wash cycle has verdict `o_tdi`. Every consumer (Menejer's feasibility checker, Ombor's scan screen) reads this same derived truth — no screen recomputes it independently. *Implementation note: this is a design target for the lab-screens build, not yet wired into `useAvailableFinishedStock.ts` — the verdict component of the check does not exist until LAB_RESULTS gains its v1.9 shape (out of scope for Step 8 prompt 1).*
 
+🔒 **`effective_qty` (NEW v1.10, §2.16) is likewise a derived view, no new column or table.** No `KIRIM_LINES`/`STORAGE_STOCK`/`GATE_WEIGHINGS` schema change was needed — every input already existed. `src/lib/weightAuthority.ts` (pure rule) + `src/lib/effectiveQty.ts` (I/O, `fetchEffectiveQty`/`useEffectiveQty`) is the one implementation every consumer reads, same "one derived truth, all consumers" pattern as availability above.
+
 ---
 
 ## 9. Changelog
 | Version | Date | Change |
 |---|---|---|
+| 1.13 | 2026-07-19 | 🔒 **Weight authority settled (§2.16, new — renumbered from the source revision's "§2.15," which collided with this document's existing §2.15 "Technical architecture"; see DECISIONS.md).** Three weights (declared / intake / gate net) permanently retained; gate net is the accounting truth. `effective_qty` derived per `kirim_line`, never stored: gate net for a single-line truck once gate stage 2 completes; the per-line intake figure for a multi-line truck always (gate net only feeds a truck-level reconciliation variance for these, never adopted as the line's own value, confirmed with the user before implementation); the intake figure, marked **provisional**, before gate stage 2. Amends §3.1 (KIRIM list shows `effective_qty`, provisional-then-final), §5.1 (gate-vs-declared variance is additional to, not a replacement for, the existing accept-time intake-vs-declared Kam chiqdi check), §5.3 (cycle-1 process loss/yield and §5.2's "available to send" cap read `effective_qty`, floored at 0 for display; cycle 2+ re-wash input unchanged). No schema change — implemented as `src/lib/weightAuthority.ts` + `src/lib/effectiveQty.ts`. **This prompt applied §2.16 and the §3.1/§5.1/§5.3 amendments only** — the unified §3.2 reporting layer (Tarix/Kuzatuv/client-report consolidation, serial passport, stock-on-hand, moisture-adjusted yield, WIP, Rahbar aggregates) from the same source revision is pasted verbatim at `docs/SPEC-reporting-v1.10-revision.md` for a future prompt, not yet applied here (§7 item 13). |
 | 1.12 | 2026-07-18 | 🔒 **Laborator redesigned; v1.5 model replaced (§5.5, wholesale).** CHIQIM check now triggers on Moyka output rather than dispatch and carries a **verdict** (`O'tdi` / `Qayta yuvish`) that **hard-gates dispatch availability**; KIRIM check is explicitly descriptive-only, no verdict. **Client quality targets added to `KIRIM_LINES`** (§3.1), per product line, inherited down the serial lineage; a blank SO₂ target means natural product and **removes the sulfur field entirely** from the lab form and from overdue alerts (§5.5.1). **Lab flags, Ombor voids** — the verdict mutates no stored state; re-wash material is flagged red for Ombor, who voids the barcodes and re-sends via §5.2 (§5.5.4–5). Lab history consolidated into **one filtered section** (§5.5.6). Client report gains target-vs-actual (§3.5-A). Amends §1.1, §2.13, §3.1, §5.2, §5.3, §7, §8. **Open: re-send quantity basis (§5.5.5)** — do not build §5.5.5 until resolved. This prompt (Step 8 prompt 1) applied the spec text + `kirim_lines` target columns + the Menejer form fields only; no lab screens, no `lab_results` reshape, no hard gate on `useAvailableFinishedStock` yet. |
 | 1.11 | 2026-07-17 | 🔒 **New §5 named invariant: "CHIQIM per-role finalization"** — §5.4 has no single shared "finished" status; Ombor (scan+`Yuklashni yakunlash`), Qorovul (second/loaded weighing), and Menejer (reads Qorovul's signal) each finalize independently and see their own Window 2 on their own action. `chiqim_requests.status` must not be overloaded to mean "Ombor done loading." Written ahead of Step 7 prompt 1 (Menejer CHIQIM request creation). |
 | 1.10 | 2026-07-17 | 🔒 **New §5 named invariant: "Placement windows vs. acceptance windows"** — every §5 second-window is either purely derived (pattern 1, no human action changes stored state) or displayed-but-gated (pattern 2, arithmetic controls eligibility but stored state only changes via an explicit click). §5.1 storage-intake and §5.3 finished-goods intake are pattern (2); no future section, including Step 7 CHIQIM, may auto-accept a serial into the next stage without an explicit acceptance action. See DECISIONS.md same title. |

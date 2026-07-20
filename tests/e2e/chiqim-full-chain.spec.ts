@@ -2,28 +2,32 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueTestId, seedDispatchablePallets } from './helpers/fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
-const PLATE = 'TEST-CHIQIM-04'
 
 // Full CHIQIM chain, real merged main: Menejer creates a request -> Qorovul
 // stage 1 (empty weigh + photos) -> Ombor scans + finishes (already built,
 // prompt 2) -> Qorovul stage 2 (loaded weigh + 3 photos) -> confirm the
 // complete_chiqim_stage2() trigger flips chiqim_requests.status.
-// TEST-CHIQIM-03 fixtures (2x 2000kg Subxon/Kalibr 6 pallets) — a fresh
-// name distinct from TEST-CHIQIM-01/02, which are earlier attempts left in
-// place per CLAUDE.md's void-not-delete rule (chiqim_requests/chiqim_lines/
-// dispatch_manifest have no void mechanism — see prior prompt's DECISIONS
-// entry) and would otherwise collide with these locators, since Ombor's W2
-// and Qorovul's Yakunlangan both render the identical "date · plate ·
-// driver" text shape as W1/Faol.
+// Fixture pallets (2x 2000kg Subxon/Kalibr 6) are seeded fresh every run
+// via seedDispatchablePallets (Step 9: self-generating test fixtures — see
+// DECISIONS.md) instead of a one-time hand-written SQL fixture.
 test('Menejer -> Qorovul stage 1 -> Ombor scan -> Qorovul stage 2 -> status flips to olib_ketildi', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text())
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
+
+  const { pallets } = await seedDispatchablePallets(page, {
+    count: 2,
+    weightKgEach: 2000,
+    typeLabel: 'Subxon',
+    calibreLabel: 'Kalibr 6',
+  })
+  const PLATE = uniqueTestId('CHIQIM')
 
   // --- Menejer: create the request ---
   await loginAs(page, 'MENEJER')
@@ -78,16 +82,17 @@ test('Menejer -> Qorovul stage 1 -> Ombor scan -> Qorovul stage 2 -> status flip
   await omborRequest.click()
 
   const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
-  await barcodeInput.fill(`PLT-${PLATE}-06-1`)
+  await barcodeInput.fill(pallets[0].barcode2)
   await page.getByRole('button', { name: 'Skanerlash' }).click()
-  await barcodeInput.fill(`PLT-${PLATE}-06-2`)
+  await barcodeInput.fill(pallets[1].barcode2)
   await page.getByRole('button', { name: 'Skanerlash' }).click()
   await expect(page.getByText('✓ Aniq mos keldi')).toBeVisible()
   await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
   await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
   // Our request specifically leaves W1 — not asserting the whole list is
-  // empty, since earlier TEST-CHIQIM-01/02 attempts left other rows open
-  // (no void mechanism for chiqim_requests, per CLAUDE.md/DECISIONS).
+  // empty, since the live DB carries decades of prior sessions' open
+  // requests with no void mechanism for chiqim_requests (out of scope,
+  // per CLAUDE.md/DECISIONS).
   await expect(omborRequest).not.toBeVisible()
 
   // --- Qorovul: stage 2 (loaded truck leaves) ---

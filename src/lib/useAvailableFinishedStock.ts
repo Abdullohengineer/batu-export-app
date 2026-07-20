@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { currentCycleLabStatus } from './labVerdict'
 
 export interface AvailablePallet {
   barcode2: string
@@ -10,12 +11,16 @@ export interface AvailablePallet {
 
 // §3.1/§5.4 CHIQIM feasibility input: finished pallets not yet claimed by any
 // dispatch. `finished_pallets.status='in_stock'` alone isn't yet a complete
-// "available" definition — nothing in the app writes `status='dispatched'`
-// today (Ombor's scan/finish action is §5.4's own prompt, not built yet), so
-// this also excludes any barcode2 already in `dispatch_manifest` as a
-// defensive second check that stays correct however that later prompt ends
-// up flipping status. Read-only; feeds the feasibility checker only — pallet
-// selection itself is Ombor's job (§5.4), not built here.
+// "available" definition:
+// - excludes any barcode2 already in `dispatch_manifest` (nothing in the app
+//   writes `status='dispatched'`, so this is the real claimed-check).
+// - excludes any pallet whose parent serial's CURRENT wash cycle hasn't
+//   passed lab testing (`currentCycleLabStatus`, §5.5.3/§8 v1.9 hard gate) —
+//   untested and re-wash-flagged stock must be invisible here, same rule
+//   Ombor's scan screen (OmborChiqimTab/chiqimScan.ts) enforces, via the
+//   same shared helper so the two can never disagree.
+// Read-only; feeds the feasibility checker only — pallet selection itself
+// is Ombor's job (§5.4), not built here.
 export function useAvailableFinishedStock() {
   const [pallets, setPallets] = useState<AvailablePallet[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,11 +30,13 @@ export function useAvailableFinishedStock() {
       setLoading(true)
       try {
         const [{ data: fp }, { data: dm }] = await Promise.all([
-          supabase.from('finished_pallets').select('barcode2, type_id, calibre_id, weight_kg').eq('status', 'in_stock'),
+          supabase.from('finished_pallets').select('barcode2, type_id, calibre_id, weight_kg, serial').eq('status', 'in_stock'),
           supabase.from('dispatch_manifest').select('barcode2'),
         ])
         const claimed = new Set((dm ?? []).map((d) => d.barcode2))
-        setPallets((fp ?? []).filter((p) => !claimed.has(p.barcode2)))
+        const candidates = (fp ?? []).filter((p) => !claimed.has(p.barcode2))
+        const labStatus = await currentCycleLabStatus(candidates.map((p) => p.serial))
+        setPallets(candidates.filter((p) => labStatus.get(p.serial) === 'passed'))
       } finally {
         setLoading(false)
       }

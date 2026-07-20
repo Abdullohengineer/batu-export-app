@@ -4,8 +4,9 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useCalibres } from '../../lib/useCalibres'
-import { useMoykaOutput, type OutputSerial, type FinishedPallet } from '../../lib/useMoykaOutput'
+import { useMoykaOutput, type OutputSerial, type FinishedPallet, type CompletedCycle } from '../../lib/useMoykaOutput'
 import { useMoykaSerials } from '../../lib/useMoykaSerials'
+import { usePendingRewash } from '../../lib/usePendingRewash'
 import { computeFinalLossPct, completionBadge, tugallashWarnings } from '../../lib/tayyorCompletion'
 import { hasRawRemainder } from '../../lib/stageMembership'
 import { FinishedReceiptForm, type ReceiptValues } from './FinishedReceiptForm'
@@ -34,9 +35,16 @@ export function OmborTayyorTab() {
   // evaluate the Tugallash soft-warning's "raw remainder in storage" leg
   // with the same hasRawRemainder predicate §5.1/§5.2 already use.
   const { serials: moykaSerials, loading: moykaLoading } = useMoykaSerials()
+  // §5.5.4: which of Window 2's serials have a qayta_yuvish verdict on
+  // their CURRENT cycle — self-clearing once voided (see usePendingRewash's
+  // own comment), so no separate "already actioned" state to track here.
+  const { pending: pendingRewash, refresh: refreshPendingRewash } = usePendingRewash(completed.map((c) => c.serial))
   const [activeForm, setActiveForm] = useState<string | null>(null)
   const [lastBarcode, setLastBarcode] = useState<Record<string, string>>({})
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [confirmingRewash, setConfirmingRewash] = useState<string | null>(null)
+  const [rewashError, setRewashError] = useState<string | null>(null)
+  const [rewashSaving, setRewashSaving] = useState<string | null>(null)
   const [expandedActive, setExpandedActive] = useState<string | null>(null)
   const [expandedCompleted, setExpandedCompleted] = useState<string | null>(null)
 
@@ -101,8 +109,12 @@ export function OmborTayyorTab() {
   // as lossBadge/completionBadge above. Raw remainder uses the same
   // hasRawRemainder predicate §5.1/§5.2 use (section mirroring).
   function tugallashWarningText(s: OutputSerial): string[] {
-    const actualQty = moykaSerials.find((m) => m.serial === s.serial)?.actual_qty ?? s.sent
-    const remainderKg = hasRawRemainder(actualQty, s.sent) ? actualQty - s.sent : 0
+    // §5.5.4/§5.5.5: this cycle's own input (cycleInputKg — actual_qty for
+    // cycle 1, the previous cycle's voided kg for a re-wash), not the raw
+    // intake unconditionally — a re-wash serial's "remainder" is measured
+    // against what it was actually re-sent, not the original delivery.
+    const cycleInput = moykaSerials.find((m) => m.serial === s.serial)?.cycleInputKg ?? s.sent
+    const remainderKg = hasRawRemainder(cycleInput, s.sent) ? cycleInput - s.sent : 0
     const lossPct = computeFinalLossPct(s.sent, s.received)
     const reasons = tugallashWarnings(remainderKg, lossPct)
     return reasons.map((reason) =>
@@ -117,10 +129,15 @@ export function OmborTayyorTab() {
   // Mahsulot completion"); a new entry needs an explicit button click. No
   // auto-finalize here anymore (DECISIONS "Manual-only finishing") — saving
   // a receipt never locks the cycle; only Tugallash does that.
+  // §5.5.4/§5.5.5: wash_cycle tagged with the serial's ACTIVE cycle, not the
+  // DB default of 1 — a re-wash cycle's pallets get new Barcode #2s, kept
+  // separate from the voided cycle's (§2.13, Konditirskiy additive/
+  // per-cycle unchanged).
   async function handleReceipt(serial: OutputSerial, values: ReceiptValues) {
     const { error } = await supabase.from('finished_pallets').insert({
       barcode2: values.barcode2,
       serial: serial.serial,
+      wash_cycle: serial.activeCycle,
       type_id: serial.type_id,
       calibre_id: values.calibreId,
       weight_kg: values.weightKg,
@@ -139,11 +156,18 @@ export function OmborTayyorTab() {
   // triggered by any received/sent comparison. Idempotent upsert on
   // (serial, cycle_no); soft-warned (never blocked) in the UI before this
   // runs when raw remainder or loss > 10% applies.
+  //
+  // §5.5.4/§5.5.5: cycle_no is the serial's ACTIVE cycle, not hardcoded 1 —
+  // a re-wash cycle gets its OWN wash_cycles row (cycle 1's stays final
+  // forever, void-never-delete) and its loss is computed against THIS
+  // cycle's own sent/received (already active-cycle-scoped by
+  // useMoykaOutput.ts), i.e. against the re-wash input, never the original
+  // intake.
   async function handleTugallash(serial: OutputSerial) {
     const { error } = await supabase.from('wash_cycles').upsert(
       {
         serial: serial.serial,
-        cycle_no: 1,
+        cycle_no: serial.activeCycle,
         status: 'final',
         final_loss_pct: computeFinalLossPct(serial.sent, serial.received),
       },
@@ -152,6 +176,46 @@ export function OmborTayyorTab() {
     if (error) throw error
     setConfirming(null)
     refresh()
+  }
+
+  // §5.5.4: "the lab FLAGS, Ombor EXECUTES" — the verdict itself changed no
+  // stored state (labVerdict.ts's hard gate already made these pallets
+  // unavailable purely by reading the verdict); this is the one place
+  // anything actually gets voided. All non-Konditirskiy pallets of THIS
+  // cycle → bekor_qilindi; Konditirskiy is excluded from re-send by design
+  // (§2.13) and stays in_stock, untouched, keeping its existing barcode.
+  // No new RLS needed — finished_pallets already has an unrestricted
+  // ombor_updates policy (confirmed live, 0007_rls.sql).
+  async function handleRewash(c: CompletedCycle) {
+    setRewashError(null)
+    setRewashSaving(c.serial)
+    try {
+      const numberlessCalibres = new Set(calibres.filter((cal) => cal.is_numberless).map((cal) => cal.id))
+      const { data: cyclePallets, error: fetchErr } = await supabase
+        .from('finished_pallets')
+        .select('barcode2, calibre_id')
+        .eq('serial', c.serial)
+        .eq('wash_cycle', c.cycleNo)
+        .eq('status', 'in_stock')
+      if (fetchErr) throw fetchErr
+
+      const toVoid = (cyclePallets ?? []).filter((p) => !numberlessCalibres.has(p.calibre_id)).map((p) => p.barcode2)
+      if (toVoid.length > 0) {
+        const { error: voidErr } = await supabase
+          .from('finished_pallets')
+          .update({ status: 'bekor_qilindi' })
+          .in('barcode2', toVoid)
+        if (voidErr) throw voidErr
+      }
+
+      setConfirmingRewash(null)
+      refresh()
+      refreshPendingRewash()
+    } catch (err) {
+      setRewashError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
+    } finally {
+      setRewashSaving(null)
+    }
   }
 
   if (loading || moykaLoading) return null
@@ -183,6 +247,11 @@ export function OmborTayyorTab() {
                 <span className="ml-2 text-slate-500 dark:text-slate-400">
                   {typeName(s.type_id)} · {ownerName(s.owner_id)}
                 </span>
+                {s.isRewash && (
+                  <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">
+                    Qayta yuvish · sikl {s.activeCycle}
+                  </span>
+                )}
               </div>
               <span className="text-slate-500 dark:text-slate-400">⋯</span>
             </button>
@@ -295,8 +364,17 @@ export function OmborTayyorTab() {
         <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Tugallangan</h2>
         <div className="mt-2 space-y-2">
           {completed.length === 0 && <p className="text-sm text-slate-400">Tugallangan serial yo'q.</p>}
-          {completed.map((c) => (
-            <div key={c.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+          {completed.map((c) => {
+            const needsRewash = pendingRewash.has(c.serial)
+            return (
+            <div
+              key={c.serial}
+              className={
+                needsRewash
+                  ? 'rounded-md border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/30'
+                  : 'rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700'
+              }
+            >
               <button
                 type="button"
                 onClick={() => setExpandedCompleted(expandedCompleted === c.serial ? null : c.serial)}
@@ -304,9 +382,17 @@ export function OmborTayyorTab() {
               >
                 <div>
                   <span className="font-mono text-slate-900 dark:text-slate-100">{c.serial}</span>
+                  {c.cycleNo > 1 && (
+                    <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">sikl {c.cycleNo}</span>
+                  )}
                   <span className="ml-2 text-slate-500 dark:text-slate-400">
                     {ownerName(c.owner_id)} · {typeName(c.type_id)}
                   </span>
+                  {/* §5.5.4: the lab flags, Ombor executes — this text is the
+                      flag, the button below (behind expand) is the execution. */}
+                  {needsRewash && (
+                    <span className="ml-2 font-medium text-red-700 dark:text-red-400">Qayta yuvish kerak</span>
+                  )}
                 </div>
                 <span className="text-slate-500 dark:text-slate-400">⋯</span>
               </button>
@@ -314,9 +400,53 @@ export function OmborTayyorTab() {
                 Yuborilgan {c.sent.toLocaleString()} → tayyor {c.received.toLocaleString()} kg ·{' '}
                 {lossBadge(c.lossPct, c.excess)}
               </div>
-              {expandedCompleted === c.serial && palletList(c.serial, c.type_id, c.owner_id, c.pallets)}
+              {expandedCompleted === c.serial && (
+                <>
+                  {palletList(c.serial, c.type_id, c.owner_id, c.pallets)}
+                  {needsRewash && (
+                    <div className="mt-3 border-t border-red-200 pt-2 dark:border-red-900">
+                      {confirmingRewash === c.serial ? (
+                        <div className="space-y-2">
+                          <p className="text-sm text-slate-700 dark:text-slate-300">
+                            Kalibrlangan palletlar (K4/K6/K8) bekor qilinadi. Konditirskiy palletlar omborda qoladi,
+                            o'zgarmaydi. Serial §5.2'ga qayta yuvish uchun qaytadi.
+                          </p>
+                          {rewashError && (
+                            <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
+                              {rewashError}
+                            </p>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleRewash(c)}
+                              disabled={rewashSaving === c.serial}
+                              className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+                            >
+                              {rewashSaving === c.serial ? 'Saqlanmoqda…' : 'Ha, qayta yuvishga yuborish'}
+                            </button>
+                            <button
+                              onClick={() => setConfirmingRewash(null)}
+                              className="rounded-md px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                            >
+                              Bekor qilish
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmingRewash(c.serial)}
+                          className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500"
+                        >
+                          Qayta yuvishga yuborish
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-// Signed-URL photo display for the `gate-photos` bucket — same pattern as
+// Signed-URL photo display, default bucket `gate-photos` — same pattern as
 // IntakeDetailView.tsx's pile-photo display (createSignedUrl, 1hr expiry),
 // generalized so every gate photo column (stage1_plate_photo,
 // stage1_scale_photo, stage2_scale_photo, departure_doc_photo) can reuse it
-// instead of four copies of the same useEffect.
-export function GatePhoto({ path, label }: { path: string | null; label: string }) {
+// instead of four copies of the same useEffect. `bucket` is additive —
+// defaults to `gate-photos` so every existing call site is unchanged;
+// Laborator's `lab-photos` bucket is the first other consumer.
+export function GatePhoto({ path, label, bucket = 'gate-photos' }: { path: string | null; label: string; bucket?: string }) {
   const [url, setUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -16,7 +18,7 @@ export function GatePhoto({ path, label }: { path: string | null; label: string 
     }
     let cancelled = false
     supabase.storage
-      .from('gate-photos')
+      .from(bucket)
       .createSignedUrl(path, 3600)
       .then(({ data }) => {
         if (!cancelled) setUrl(data?.signedUrl ?? null)
@@ -24,7 +26,7 @@ export function GatePhoto({ path, label }: { path: string | null; label: string 
     return () => {
       cancelled = true
     }
-  }, [path])
+  }, [path, bucket])
 
   if (!path) return null
 

@@ -2,35 +2,52 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueRealLookingPlate, seedDispatchablePallets, seedFilteredFinishedRequest } from './helpers/fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
 
-// Not TEST-prefixed on purpose — this is the one plate in the whole test
-// suite that has to look like a real truck, since it's the positive case
-// for the TEST- filter itself (see below). driver stays 'TEST Driver', the
-// same secondary fixture marker used everywhere else in this app's tests,
-// so it's still traceable without defeating the thing under test.
-const REAL_PLATE = '01A778AA'
-const BARCODE_1 = 'PLT-TEST-CHIQIM-10-06-1'
-const BARCODE_2 = 'PLT-TEST-CHIQIM-10-06-2'
-// Already-completed TEST-prefixed fixture from the prior undo-scan test
-// session (status='olib_ketildi', confirmed live before writing this) —
-// reused here as the negative case (must NOT appear), not recreated.
-const FILTERED_PLATE = 'TEST-CHIQIM-08'
-
-test('Menejer finished view: real request shows full actor/timestamp/photo data, TEST- prefixed request is filtered out', async ({ page }) => {
+test('Menejer finished view: real request shows full actor/timestamp/photo data, TEST- prefixed request is filtered out', async ({
+  page,
+}) => {
+  // 3 (seedDispatchablePallets) + 1 (seedFilteredFinishedRequest, already
+  // Menejer) + 6 role switches in the flow itself — same latency-budget
+  // reason as every other long chain in this suite.
+  test.setTimeout(120_000)
   const consoleErrors: string[] = []
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text())
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
-  // --- Menejer: create the request (fixture pallets PLT-TEST-CHIQIM-09-06-*
-  // seeded separately via SQL, same established pattern as prior CHIQIM
-  // tests — the plate on the underlying raw-intake chain is irrelevant to
-  // the CHIQIM request's own plate, which is what this view displays). ---
-  await loginAs(page, 'MENEJER')
+  const { pallets } = await seedDispatchablePallets(page, {
+    count: 2,
+    weightKgEach: 2000,
+    typeLabel: 'Subxon',
+    calibreLabel: 'Kalibr 6',
+  })
+  const [BARCODE_1, BARCODE_2] = [pallets[0].barcode2, pallets[1].barcode2]
+  // Not TEST-prefixed on purpose — this is the one plate in the whole test
+  // suite that has to look like a real truck, since it's the positive case
+  // for the TEST- filter itself (see below). driver stays 'TEST Driver',
+  // the same secondary fixture marker used everywhere else in this app's
+  // tests, so it's still traceable without defeating the thing under test.
+  const REAL_PLATE = uniqueRealLookingPlate()
+  // The negative case: a request that WOULD appear in the finished view
+  // (status olib_ketildi) if its TEST- prefix didn't specifically exclude
+  // it. Self-seeded fresh every run (Step 9: self-generating test fixtures
+  // — see DECISIONS.md) rather than reused from another spec's leftover
+  // row, which is what made this test self-defeating before: that reused
+  // row was itself only ever completed ONCE, so on any later run this
+  // spec's OWN real request (same REAL_PLATE, previously hardcoded) had
+  // already permanently completed too, breaking the "not yet visible
+  // before completion" assertion below for good. Fresh REAL_PLATE +
+  // FILTERED_PLATE every run resolves both problems at once — confirmed
+  // by running this spec twice back to back, not assumed (see DECISIONS.md).
+  const { plate: FILTERED_PLATE } = await seedFilteredFinishedRequest(page)
+
+  // --- Menejer: create the request (already logged in, from the seed
+  // above) ---
   await page.getByRole('link', { name: 'CHIQIM' }).click()
   await expect(page.getByRole('heading', { name: 'Yangi CHIQIM' })).toBeVisible()
 

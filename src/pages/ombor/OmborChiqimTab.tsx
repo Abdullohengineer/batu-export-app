@@ -7,6 +7,7 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useOmborChiqimRequests, type ChiqimRequest } from '../../lib/useOmborChiqimRequests'
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { resolveScan, lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimScan'
+import { currentCycleLabStatus } from '../../lib/labVerdict'
 
 interface ScannedPallet {
   barcode2: string
@@ -81,7 +82,7 @@ export function OmborChiqimTab() {
 
     const { data: pallet } = await supabase
       .from('finished_pallets')
-      .select('barcode2, type_id, calibre_id, weight_kg, status')
+      .select('barcode2, type_id, calibre_id, weight_kg, status, serial')
       .eq('barcode2', barcode2)
       .maybeSingle()
 
@@ -95,10 +96,16 @@ export function OmborChiqimTab() {
       ? await supabase.from('dispatch_manifest').select('barcode2').eq('barcode2', barcode2).maybeSingle()
       : { data: null }
 
+    // §5.5.3/§8 hard gate (v1.9): same currentCycleLabStatus helper
+    // Menejer's feasibility checker uses — untested/re-wash-flagged stock
+    // must be refused here too, not just hidden from the request form.
+    const labStatus = pallet ? (await currentCycleLabStatus([pallet.serial])).get(pallet.serial) : undefined
+
     const result = resolveScan({
       barcode2,
       alreadyScannedBarcodes: (scannedByRequest[request.id] ?? []).map((s) => s.barcode2),
       pallet: pallet ? { type_id: pallet.type_id, calibre_id: pallet.calibre_id, status: pallet.status } : null,
+      labPassed: labStatus === 'passed',
       alreadyClaimed: !!claimed,
       lines: request.lines,
       scannedTotalsByLineId: lineTotalsFor(request.id),
@@ -109,6 +116,7 @@ export function OmborChiqimTab() {
         duplicate: 'Bu pallet allaqachon shu ro\'yxatga skanerlangan.',
         not_found: 'Bunday barcode topilmadi.',
         not_in_stock: 'Bu pallet omborda emas (allaqachon jo\'natilgan yoki bekor qilingan).',
+        not_lab_passed: 'Bu pallet hali laboratoriya tekshiruvidan o\'tmagan yoki qayta yuvishga yuborilgan.',
         claimed: 'Bu pallet allaqachon boshqa yuklashda ishlatilgan.',
         no_matching_line: 'Bu tur/kalibr ushbu so\'rovda yo\'q.',
       }

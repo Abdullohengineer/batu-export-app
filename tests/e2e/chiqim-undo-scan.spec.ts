@@ -2,36 +2,38 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
+import { uniqueTestId, seedDispatchablePallets } from './helpers/fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
-const PLATE = 'TEST-CHIQIM-08'
-const BARCODE_1 = `PLT-${PLATE}-06-1`
-const BARCODE_2 = `PLT-${PLATE}-06-2`
 
 // Ombor "undo scan" — a real DELETE on dispatch_manifest, available from
 // request creation up to Qorovul's gate stage-2 completion, enforced by the
 // ombor_deletes RLS policy (0021), not just UI hiding. Fixture pallets
-// (PLT-TEST-CHIQIM-08-06-*, 2x 2000kg Subxon/Kalibr 6) seeded via direct SQL
-// through the full kirim_orders->...->finished_pallets chain — same
-// established pattern as TEST-CHIQIM-01/04 (see DECISIONS.md), since driving
-// three unrelated roles' screens just to produce two finished pallets isn't
-// what this test is about. (TEST-CHIQIM-05/-06/-07 were this test's own
-// earlier attempts — -05 hit a real transient login timeout after the full
-// chain had already completed successfully; -06 exposed a real app bug,
-// fixed in OmborChiqimTab.tsx's handleUndoScan (a DELETE blocked by an RLS
-// USING clause returns success with zero rows, not a 42501 error — needed
-// `.select()` after the delete to detect the no-op); -07 exposed the same
-// gap in this test's own direct-RLS-check assertion, fixed the same way.
-// Each was switched away from rather than debugged against its own
-// leftover claimed-pallet state, same fix prompt 3's test authoring used.
-// -05/-06/-07 left in place per void-not-delete, not cleaned up mid-run.)
+// (2x 2000kg Subxon/Kalibr 6) are seeded fresh every run via
+// seedDispatchablePallets (Step 9: self-generating test fixtures — see
+// DECISIONS.md) instead of a one-time hand-written SQL fixture, so this
+// spec never again goes stale/voided between sessions.
 test('Ombor undoes a post-finish scan, pallet becomes available again, then a post-stage-2 undo is blocked by RLS', async ({ page }) => {
+  // 9 total role switches (3 for seedDispatchablePallets + 6 for the flow
+  // itself) — comfortably over the 30s default, same latency-budget reason
+  // as every other long chain in this suite (see DECISIONS.md "Step 9
+  // regression pass").
+  test.setTimeout(120_000)
   const consoleErrors: string[] = []
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text())
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
+
+  const { pallets } = await seedDispatchablePallets(page, {
+    count: 2,
+    weightKgEach: 2000,
+    typeLabel: 'Subxon',
+    calibreLabel: 'Kalibr 6',
+  })
+  const [BARCODE_1, BARCODE_2] = [pallets[0].barcode2, pallets[1].barcode2]
+  const PLATE = uniqueTestId('CHIQIM')
 
   // --- Menejer: create the request, confirm the pallets are NOT yet flagged
   // unavailable (feasibility hint should be silent — exact match). ---

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
+import { usePendingRewash } from '../../lib/usePendingRewash'
+import { useEffectiveQty } from '../../lib/effectiveQty'
+import { useSettingsLimits } from '../../lib/useSettingsLimits'
 
 interface KirimLine {
   serial: string
@@ -50,6 +53,20 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
     load()
   }, [profile, refreshKey])
 
+  // §5.5.4: read-only flag — "Menejer sees it, Ombor acts on it" (no action
+  // button here, deliberately). Same shared query Ombor's own flag uses, so
+  // the two can never disagree.
+  const { pending: pendingRewash } = usePendingRewash(orders.flatMap((o) => o.kirim_lines.map((l) => l.serial)))
+
+  // §3.1 amend: quantity displayed against a serial is effective_qty
+  // (§2.15.1), provisional until gate stage 2, then final — declared stays
+  // visible and unmodified beside it (unchanged, still line.declared_qty).
+  const { limits } = useSettingsLimits()
+  const { effectiveQty } = useEffectiveQty(
+    orders.flatMap((o) => o.kirim_lines.map((l) => l.serial)),
+    limits.kam_chiqdi_pct ?? 5,
+  )
+
   function toggle(orderId: string) {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -85,14 +102,43 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
           </button>
           {expanded.has(order.order_id) && (
             <div className="space-y-1 border-t border-slate-200 px-3 py-2 dark:border-slate-700">
-              {order.kirim_lines.map((line) => (
-                <div key={line.serial} className="flex items-center justify-between text-sm">
-                  <span className="font-mono text-slate-700 dark:text-slate-300">{line.serial}</span>
-                  <span className="text-slate-600 dark:text-slate-400">{typeName(line.type_id)}</span>
-                  <span className="text-slate-600 dark:text-slate-400">{line.declared_qty.toLocaleString()} kg</span>
-                  <span className="text-slate-500 dark:text-slate-500">{order.status}</span>
+              {order.kirim_lines.map((line) => {
+                const eq = effectiveQty.get(line.serial)
+                return (
+                <div key={line.serial} className="text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-slate-700 dark:text-slate-300">{line.serial}</span>
+                    <span className="text-slate-600 dark:text-slate-400">{typeName(line.type_id)}</span>
+                    <span className="text-slate-600 dark:text-slate-400">
+                      E'lon qilingan {line.declared_qty.toLocaleString()} kg
+                      {eq && (
+                        <>
+                          {' · '}
+                          {eq.provisional ? 'tarozi kutilmoqda' : `${eq.value.toLocaleString()} kg`}
+                        </>
+                      )}
+                    </span>
+                    <span className="text-slate-500 dark:text-slate-500">{order.status}</span>
+                    {pendingRewash.has(line.serial) && (
+                      <span className="font-medium text-red-600 dark:text-red-400">Qayta yuvish kerak</span>
+                    )}
+                  </div>
+                  {/* §5.1 amend: gate-vs-declared variance, once gate stage 2 is known. */}
+                  {eq?.truckVariance && Math.abs(eq.truckVariance.diffKg) > 0 && (
+                    <div className="text-xs text-amber-700 dark:text-amber-400">
+                      Darvoza neta reys bo'yicha e'lon qilingandan {eq.truckVariance.diffKg >= 0 ? '+' : ''}
+                      {eq.truckVariance.diffKg.toLocaleString()} kg ({eq.truckVariance.diffPct >= 0 ? '+' : ''}
+                      {eq.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
+                    </div>
+                  )}
+                  {eq?.provisionalVarianceFlag && (
+                    <div className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+                      Diqqat: tarozi kutilayotganda yuborilgan, keyin darvoza netasi sezilarli farq qildi.
+                    </div>
+                  )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

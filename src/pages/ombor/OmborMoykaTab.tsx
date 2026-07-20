@@ -48,9 +48,14 @@ export function OmborMoykaTab() {
 
   // §5.2: no new barcode on a send — Barcode #1 (Step 3) already identifies
   // the serial and travels with it. This just records the event.
+  //
+  // §5.5.4/§5.5.5: tagged with the serial's ACTIVE cycle, not the DB
+  // default of 1 — a re-wash send belongs to its own cycle, never
+  // conflated with cycle 1's already-finalized figures.
   async function handleSend(serial: MoykaSerial, qtyKg: number) {
     const { error } = await supabase.from('moyka_sends').insert({
       serial: serial.serial,
+      wash_cycle: serial.activeCycle,
       sent_date: new Date().toISOString().slice(0, 10),
       qty_kg: qtyKg,
       created_by: profile?.id,
@@ -62,7 +67,10 @@ export function OmborMoykaTab() {
 
   if (loading || processingLoading) return null
 
-  const toSend = serials.filter((s) => hasRawRemainder(s.actual_qty, s.sent))
+  // §5.5.4/§5.5.5: remainder is against THIS cycle's input (cycleInputKg —
+  // actual_qty for cycle 1, the previous cycle's voided kg for a re-wash),
+  // never the original actual_qty once a serial has moved past cycle 1.
+  const toSend = serials.filter((s) => hasRawRemainder(s.cycleInputKg, s.sent))
 
   function serialDetail(s: MoykaSerial) {
     return (
@@ -94,13 +102,28 @@ export function OmborMoykaTab() {
   function row(s: MoykaSerial) {
     const isActive = activeSerial === s.serial
     return (
-      <div key={s.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+      <div
+        key={s.serial}
+        className={
+          s.isRewash
+            ? 'rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30'
+            : 'rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700'
+        }
+      >
         <div className="flex items-center justify-between">
           <div>
             <span className="font-mono text-slate-900 dark:text-slate-100">{s.serial}</span>
             <span className="ml-2 text-slate-500 dark:text-slate-400">
               {typeName(s.type_id)} · {ownerName(s.owner_id)}
             </span>
+            {/* §5.5.4/§5.5.5: this row is a re-wash cycle (2+), not the
+                original intake — flagged so Ombor can tell a second-cycle
+                send from a first-cycle one at a glance. */}
+            {s.isRewash && (
+              <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">
+                Qayta yuvish · sikl {s.activeCycle}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {!isActive && (
@@ -121,9 +144,28 @@ export function OmborMoykaTab() {
           </div>
         </div>
         <div className="mt-1 text-slate-500 dark:text-slate-400">
-          Qabul qilingan: {s.actual_qty.toLocaleString()} kg · Yuborilgan: {s.sent.toLocaleString()} kg · Qoladi:{' '}
+          {s.isRewash ? 'Qayta yuvish miqdori' : 'Qabul qilingan'}:{' '}
+          {!s.isRewash && s.provisional ? 'tarozi kutilmoqda' : `${s.cycleInputKg.toLocaleString()} kg`} · Yuborilgan:{' '}
+          {s.sent.toLocaleString()} kg · Qoladi:{' '}
           <span className="font-medium text-slate-900 dark:text-slate-100">{s.available.toLocaleString()} kg</span>
         </div>
+        {/* §5.1 amend: gate-vs-declared, cycle 1 only, once gate stage 2 is known. */}
+        {!s.isRewash && s.truckVariance && Math.abs(s.truckVariance.diffKg) > 0 && (
+          <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            Darvoza neta reys bo'yicha e'lon qilingandan {s.truckVariance.diffKg >= 0 ? '+' : ''}
+            {s.truckVariance.diffKg.toLocaleString()} kg ({s.truckVariance.diffPct >= 0 ? '+' : ''}
+            {s.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
+          </div>
+        )}
+        {/* §2.15.2 edge case: this cycle's material was already sent while the
+            weight was still provisional, and the gate net later landed
+            materially different — flag, don't block (never re-blocks the
+            send that already happened). */}
+        {!s.isRewash && s.provisionalVarianceFlag && (
+          <div className="mt-1 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+            Diqqat: tarozi kutilayotganda yuborilgan, keyin darvoza netasi sezilarli farq qildi.
+          </div>
+        )}
 
         {isActive && <MoykaSendForm serial={s} onCancel={() => setActiveSerial(null)} onSubmit={(q) => handleSend(s, q)} />}
         {expanded === s.serial && serialDetail(s)}
@@ -142,6 +184,11 @@ export function OmborMoykaTab() {
           <span className="ml-2 text-slate-500 dark:text-slate-400">
             {typeName(s.type_id)} · {ownerName(s.owner_id)}
           </span>
+          {s.isRewash && (
+            <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">
+              Qayta yuvish · sikl {s.activeCycle}
+            </span>
+          )}
         </div>
         <div className="mt-1 text-slate-500 dark:text-slate-400">
           Yuborilgan: {s.sent.toLocaleString()} kg · Jarayonda:{' '}

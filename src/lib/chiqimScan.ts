@@ -22,7 +22,7 @@ export interface ChiqimLineLike {
 
 export type ScanResult =
   | { ok: true; lineId: string }
-  | { ok: false; reason: 'duplicate' | 'not_found' | 'not_in_stock' | 'claimed' | 'no_matching_line' }
+  | { ok: false; reason: 'duplicate' | 'not_found' | 'not_in_stock' | 'not_lab_passed' | 'claimed' | 'no_matching_line' }
 
 // Given a scanned pallet's already-known facts (looked up by the caller —
 // this function does no I/O), decides whether it can be added to this
@@ -38,6 +38,7 @@ export function resolveScan(input: {
   barcode2: string
   alreadyScannedBarcodes: string[]
   pallet: { type_id: string; calibre_id: string; status: string } | null
+  labPassed: boolean
   alreadyClaimed: boolean
   lines: ChiqimLineLike[]
   scannedTotalsByLineId: Record<string, number>
@@ -45,6 +46,12 @@ export function resolveScan(input: {
   if (input.alreadyScannedBarcodes.includes(input.barcode2)) return { ok: false, reason: 'duplicate' }
   if (!input.pallet) return { ok: false, reason: 'not_found' }
   if (input.pallet.status !== 'in_stock') return { ok: false, reason: 'not_in_stock' }
+  // §5.5.3/§8 hard gate (v1.9): a pallet's parent serial must have a passing
+  // verdict ('o_tdi') on its current wash cycle — untested or re-wash-
+  // flagged stock is refused here the same way Menejer's feasibility
+  // checker (useAvailableFinishedStock) never offers it in the first place,
+  // via the same shared currentCycleLabStatus helper.
+  if (!input.labPassed) return { ok: false, reason: 'not_lab_passed' }
   // Real enforcement point for the overcommit gap flagged in the prior
   // prompt: relies on dispatch_manifest.barcode2's UNIQUE constraint (the
   // caller re-checks this, and the DB constraint itself is the actual

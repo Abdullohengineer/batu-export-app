@@ -1,7 +1,14 @@
-// §3.2.1-3.2.4 (SPEC.md v1.10 revision, applied this step) — pure report-
-// engine logic, dependency-free (mirrors weightAuthority.ts/rewash.ts's own
-// split: this file holds shape + pure rules, useReportQuery.ts is the I/O +
-// combination layer around it).
+// §3.2.1-3.2.4 (SPEC.md v1.10 revision) — report-engine shapes + the pure
+// DB-row-to-app-row mapping. Filtering, pagination, and totals now live in
+// Postgres (report_kirim_rows/report_chiqim_rows/report_rows views +
+// report_filtered_rows/report_query_page/report_totals functions — see
+// DECISIONS.md "Reporting engine: server-side query" and
+// supabase/migrations/*_report_server_side_query.sql) — this file no longer
+// filters anything client-side. What's left: the row shapes every UI
+// component still renders (unchanged), and mapDbRowToReportRow, the one
+// remaining pure function, translating the flat SQL row shape back into the
+// KirimReportRow/ChiqimReportRow discriminated union those components
+// already expect.
 //
 // Row model (decided during inspection, not stated literally in the source
 // revision — see DECISIONS.md "Reporting query engine" for the full
@@ -137,39 +144,6 @@ export interface ReportTotals {
   net: number
 }
 
-export function computeTotals(rows: ReportRow[]): ReportTotals {
-  let kgIn = 0
-  let kgOut = 0
-  for (const row of rows) {
-    if (row.kind === 'kirim') kgIn += row.effectiveQtyKg
-    else kgOut += row.weightKg
-  }
-  return { kgIn, kgOut, net: kgIn - kgOut }
-}
-
-export function matchesText(haystack: string | null | undefined, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  return (haystack ?? '').toLowerCase().includes(q)
-}
-
-// 🔒 TEST- fixture exclusion (2026-07-20, see DECISIONS.md "Reporting
-// engine cleanup"). Same precedent `useFinishedChiqimRequests.ts` already
-// established: filtered out unconditionally, not exposed as a toggle — no
-// screen in this app has ever built a "show test data" switch, and there's
-// no other run-time signal that distinguishes a real record from a test
-// fixture. Applied once here so every row-construction path in the shared
-// query layer (KIRIM and CHIQIM alike) excludes fixtures the same way,
-// rather than each view re-deciding it. A CHIQIM row can be excluded by
-// EITHER its own dispatch's plate (if claimed) OR its parent serial's
-// originating KIRIM plate (if the pallet itself was born from a TEST-
-// intake, dispatched or not) — a request-only check would miss every
-// still-in-storage or voided test pallet, which have no dispatch plate of
-// their own to catch.
-export function isTestPlate(plate: string | null | undefined): boolean {
-  return (plate ?? '').startsWith('TEST-')
-}
-
 // §3.2.3 🔒 date basis label, shown on screen and in exports — printed
 // exactly once per direction selection, never silently varying per row.
 export function dateBasisLabel(direction: ReportDirection): string {
@@ -180,46 +154,100 @@ export function dateBasisLabel(direction: ReportDirection): string {
 
 export const WEIGHT_BASIS_LABEL = "Og'irlik asosi: effective_qty (darvoza netto / oraliq qiymat, §2.16)"
 
-export function washCycleMatches(cycleNo: number, filter: WashCycleFilter): boolean {
-  if (filter === '') return true
-  if (filter === '1') return cycleNo === 1
-  return cycleNo >= 2
+// The flat shape report_rows (and therefore report_query_page/
+// report_chiqim_rows directly, for the voided-barcode exact-match lookup)
+// actually returns over the wire. Numeric columns are wrapped in Number(...)
+// defensively in the mapper below — PostgREST's `numeric` serialization
+// differs between plain table reads and RPC/function results, and this
+// avoids silently doing string concatenation instead of arithmetic if a
+// given code path happens to come back as text.
+export interface ReportDbRow {
+  kind: 'kirim' | 'chiqim'
+  row_key: string
+  serial: string
+  barcode2: string | null
+  order_id: string | null
+  request_id: string | null
+  owner_id: string
+  type_id: string
+  calibre_id: string | null
+  plate: string
+  driver: string
+  date_basis: string | null
+  date_basis_source: DateBasisSource
+  qty_kg: number | string
+  provisional: boolean
+  declared_qty: number | string | null
+  truck_variance_diff_kg: number | string | null
+  truck_variance_diff_pct: number | string | null
+  provisional_variance_flag: boolean
+  wash_cycle: number | string | null
+  pallet_status: Exclude<PalletStatusFilter, ''> | null
+  lab_verdict: 'o_tdi' | 'qayta_yuvish' | null
+  target_moisture_pct: number | string | null
+  target_so2_mg_kg: number | string | null
+  moisture_pct: number | string | null
+  so2_mg_kg: number | string | null
+  void_successor_barcodes: string[] | null
 }
 
-export function labVerdictMatches(verdict: 'o_tdi' | 'qayta_yuvish' | null, filter: LabVerdictFilter): boolean {
-  if (filter === '') return true
-  if (filter === 'tekshirilmagan') return verdict === null
-  return verdict === filter
+function num(v: number | string | null): number | null {
+  return v === null ? null : Number(v)
 }
 
-// A CHIQIM row without a governing dispatch event (band_qilingan/omborda/
-// bekor_qilingan — see PalletStatusFilter's own doc) has no date to range-
-// filter on. Default behaviour (no explicit status filter) excludes such a
-// row from the events table entirely — the default view stays a clean
-// history. Choosing that exact status explicitly overrides the date filter
-// for rows of that status only, since there's nothing meaningful to range
-// them against. A row that DOES have a date is always date-filtered,
-// regardless of the status filter.
-export function passesDateOrStatusOverride(
-  dateBasis: string | null,
-  palletStatus: Exclude<PalletStatusFilter, ''>,
-  filters: Pick<ReportFilters, 'from' | 'to' | 'status'>,
-): boolean {
-  if (dateBasis !== null) return dateBasis >= filters.from && dateBasis <= filters.to
-  return filters.status !== '' && filters.status === palletStatus
-}
+export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
+  if (row.kind === 'kirim') {
+    return {
+      kind: 'kirim',
+      key: row.row_key,
+      serial: row.serial,
+      orderId: row.order_id ?? '',
+      typeId: row.type_id,
+      ownerId: row.owner_id,
+      plate: row.plate,
+      driver: row.driver,
+      dateBasis: row.date_basis,
+      dateBasisSource: row.date_basis_source,
+      declaredQty: num(row.declared_qty) ?? 0,
+      effectiveQtyKg: Number(row.qty_kg),
+      provisional: row.provisional,
+      truckVarianceDiffKg: num(row.truck_variance_diff_kg),
+      truckVarianceDiffPct: num(row.truck_variance_diff_pct),
+      provisionalVarianceFlag: row.provisional_variance_flag,
+      targetMoisturePct: num(row.target_moisture_pct),
+      targetSo2MgKg: num(row.target_so2_mg_kg),
+      kirimMoisturePct: num(row.moisture_pct),
+      kirimSo2MgKg: num(row.so2_mg_kg),
+    }
+  }
 
-// Derives the four named pallet states (§3.2.2) from what's actually
-// stored — `finished_pallets.status='dispatched'` is dead code (confirmed
-// via useAvailableFinishedStock.ts: nothing in this app ever writes it), so
-// "jo'natilgan" is really "claimed AND that dispatch's gate stage 2 is
-// complete", not a stored enum value.
-export function derivePalletStatus(input: {
-  rawStatus: 'in_stock' | 'dispatched' | 'bekor_qilindi'
-  claimed: boolean
-  dispatchGateCompletedAt: string | null
-}): Exclude<PalletStatusFilter, ''> {
-  if (input.rawStatus === 'bekor_qilindi') return 'bekor_qilingan'
-  if (input.claimed) return input.dispatchGateCompletedAt !== null ? 'jonatilgan' : 'band_qilingan'
-  return 'omborda'
+  const washCycle = num(row.wash_cycle) ?? 1
+  const palletStatus = row.pallet_status ?? 'omborda'
+  const voidInfo: VoidedBarcodeInfo | null =
+    palletStatus === 'bekor_qilingan'
+      ? { voidedCycle: washCycle, successorCycle: washCycle + 1, successorBarcodes: row.void_successor_barcodes ?? [] }
+      : null
+
+  return {
+    kind: 'chiqim',
+    key: row.row_key,
+    barcode2: row.barcode2 ?? '',
+    serial: row.serial,
+    typeId: row.type_id,
+    calibreId: row.calibre_id ?? '',
+    ownerId: row.owner_id,
+    requestId: row.request_id ?? '',
+    plate: row.plate,
+    driver: row.driver,
+    weightKg: Number(row.qty_kg),
+    washCycle,
+    palletStatus,
+    dateBasis: row.date_basis,
+    labVerdict: row.lab_verdict,
+    targetMoisturePct: num(row.target_moisture_pct),
+    targetSo2MgKg: num(row.target_so2_mg_kg),
+    moisturePct: num(row.moisture_pct),
+    so2MgKg: num(row.so2_mg_kg),
+    voidInfo,
+  }
 }

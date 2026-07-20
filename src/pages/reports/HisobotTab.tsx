@@ -6,10 +6,9 @@ import { defaultDateRange } from '../../lib/dateRange'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
-import { useSettingsLimits } from '../../lib/useSettingsLimits'
-import { useReportQuery } from '../../lib/useReportQuery'
+import { useReportQuery, ExportTooLargeError } from '../../lib/useReportQuery'
 import { downloadReportExcel } from '../../lib/reportExport'
-import { computeTotals, dateBasisLabel, defaultReportFilters } from '../../lib/reportQuery'
+import { dateBasisLabel, defaultReportFilters } from '../../lib/reportQuery'
 import { ReportResultsTable } from './ReportResultsTable'
 
 // §3.2 HISOBOT (Reporting) — the shared query engine + results table +
@@ -28,15 +27,17 @@ export function HisobotTab() {
   const [filters, setFilters] = useState(defaultReportFilters(initial.from, initial.to))
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   const { owners } = useOwners()
   const { productTypes } = useProductTypes()
   const { calibres } = useCalibres()
-  const { limits } = useSettingsLimits()
-  const materialVariancePct = limits.kam_chiqdi_pct ?? 5
 
-  const { rows, voidedBarcodeMatch, loading } = useReportQuery(filters, materialVariancePct)
-  const totals = computeTotals(rows)
+  // §requirement 3: totals are computed server-side (report_totals) over
+  // the FULL filtered set, never summed from `rows` (which is only ever one
+  // page). §requirement 1: filters are pushed into the query itself
+  // (report_query_page/report_totals) — no client-side narrowing left here.
+  const { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading } = useReportQuery(filters)
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -50,8 +51,13 @@ export function HisobotTab() {
 
   async function handleExport() {
     setExporting(true)
+    setExportError(null)
     try {
-      await downloadReportExcel(rows, filters, { ownerName, typeName, calibreLabel })
+      await downloadReportExcel(filters, { ownerName, typeName, calibreLabel }, totals)
+    } catch (err) {
+      // §requirement 5: the export's own safety cap must fail loudly, never
+      // silently hand back a truncated file.
+      setExportError(err instanceof ExportTooLargeError ? err.message : 'Excel yuklab olishda xatolik yuz berdi.')
     } finally {
       setExporting(false)
     }
@@ -69,23 +75,50 @@ export function HisobotTab() {
 
       <HistoryView
         loading={loading}
-        isEmpty={rows.length === 0 && !showVoidedCallout}
+        isEmpty={totalCount === 0 && !showVoidedCallout}
         emptyText="Natija topilmadi."
-        resultCount={rows.length}
+        resultCount={totalCount}
         filters={
           <ReportFilterBar filters={filters} onChange={setFilters} owners={owners} productTypes={productTypes} calibres={calibres} />
         }
       >
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <button
+              type="button"
+              onClick={() => setPage(page - 1)}
+              disabled={page <= 1}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              ← Oldingi
+            </button>
+            <span>
+              {page} / {pageCount}-sahifa
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage(page + 1)}
+              disabled={page >= pageCount}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Keyingi →
+            </button>
+          </div>
           <button
             type="button"
             onClick={handleExport}
-            disabled={exporting || rows.length === 0}
+            disabled={exporting || totalCount === 0}
             className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             {exporting ? 'Tayyorlanmoqda…' : 'Excel yuklab olish'}
           </button>
         </div>
+
+        {exportError && (
+          <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400" role="alert">
+            {exportError}
+          </div>
+        )}
 
         {showVoidedCallout && voidedBarcodeMatch && (
           <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/30">

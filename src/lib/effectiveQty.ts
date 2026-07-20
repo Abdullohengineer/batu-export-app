@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import {
   deriveEffectiveQty,
@@ -157,15 +157,40 @@ export async function fetchEffectiveQty(
 // (refresh-callable, loading flag) — for the two screen-level consumers
 // (Menejer's KirimOrdersList, Ombor's OmborIntakeTab) that read
 // effective_qty directly rather than through useMoykaSerials/useMoykaOutput.
+//
+// 🔒 Request-sequencing guard (found live, Step 9: self-generating test
+// fixtures — see DECISIONS.md). `refresh()` is called fire-and-forget by
+// callers (e.g. OmborIntakeTab.handleAccept, once per accepted line, never
+// awaited) — two overlapping calls are a real scenario, not a hypothetical:
+// accepting two lines on the same multi-line order in quick succession
+// fires two overlapping fetchEffectiveQty calls. Without ordering
+// protection, whichever call's network response happens to resolve LAST
+// wins via setData, regardless of which one was STARTED last — an older,
+// stale (e.g. one-line-only) result can overwrite a newer, correct
+// (both-lines) one. `latestRequestId` is bumped on every refresh() call;
+// a response is only applied if no newer call has started since. The
+// existing "cancelled" idiom elsewhere in this app (useGateHistory.ts,
+// useIntakeHistory.ts) solves the same class of problem for an effect that
+// re-runs on a dependency change, via a closure-scoped flag React's own
+// cleanup resets per run — that doesn't cover this hook's case (repeat
+// manual refresh() calls, not a dependency-driven effect re-run), so this
+// uses a ref-based counter instead, scoped to the whole hook instance
+// rather than a single effect run.
 export function useEffectiveQty(serials: string[], materialVariancePct: number) {
   const [data, setData] = useState<Map<string, EffectiveQtyInfo>>(new Map())
   const [loading, setLoading] = useState(true)
   const key = serials.join(',')
+  const latestRequestId = useRef(0)
 
   const refresh = useCallback(async () => {
+    const requestId = ++latestRequestId.current
     setLoading(true)
     try {
-      setData(await fetchEffectiveQty(serials, materialVariancePct))
+      const result = await fetchEffectiveQty(serials, materialVariancePct)
+      // Only apply this response if it's still the most recently STARTED
+      // call — an older call resolving after a newer one must not clobber
+      // the newer (correct) data with its own stale snapshot.
+      if (requestId === latestRequestId.current) setData(result)
     } finally {
       setLoading(false)
     }

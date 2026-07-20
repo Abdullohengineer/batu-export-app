@@ -1,9 +1,9 @@
 # BATU EXPORT — Ombor & Logistika App
 ## Master Design Specification
 
-**Version:** 1.13
-**Date:** 19 July 2026
-**Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED (redesigned v1.9; §5.5.5 re-wash re-entry quantity basis OPEN) · Rahbar (business owner) — DESIGNED · Weight authority (§2.16) — LOCKED (v1.10 prompt 1; §3.2 unified reporting layer not yet applied, see `docs/SPEC-reporting-v1.10-revision.md`)
+**Version:** 1.14
+**Date:** 20 July 2026
+**Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED (redesigned v1.9; §5.5.5 re-wash re-entry quantity basis OPEN) · Rahbar (business owner) — DESIGNED · Weight authority (§2.16) — LOCKED (v1.10 prompt 1) · Hisobot query engine + results view (§3.2.1-3.2.4) — LOCKED (v1.10 prompt 2 / Step 10 prompt 1; saved views §3.2.5+ not yet applied, see `docs/SPEC-reporting-v1.10-revision.md`)
 
 ---
 
@@ -21,7 +21,7 @@ Single source of truth. Keep it in the Claude **Project knowledge base**. Any ne
 ### 1.1 Roles
 | Role | Uzbek | Owns |
 |---|---|---|
-| Manager | Menejer | KIRIM orders & CHIQIM requests; Tarix log; **Kuzatuv** traceability; client reports; product settings |
+| Manager | Menejer | KIRIM orders & CHIQIM requests; **Hisobot** reporting (§3.2); **Kuzatuv** traceability; client reports; product settings |
 | Gate guard | Qorovul | Two-stage truck weighing on arrival & departure |
 | Storage manager | Ombor menejeri | 4 sections: raw intake → send to wash → finished intake → dispatch |
 | Business owner | **Rahbar** | 🔒 Oversight / Exceptions / Reports / Administration (§6). **Read-only on all operations**, write rights on admin. Multiple Rahbar accounts supported. See §2.10 naming |
@@ -184,10 +184,53 @@ Segmented **`KIRIM | CHIQIM`** tabs switch the screen. Each = create button + li
 - **CHIQIM form:** Sana · Moshina · Haydovchi · Buyurtmachi · **repeatable Tur + Kalibr + Miqdori rows** (calibre set incl. Konditirskiy) · Jami avto. **No serial, no doc photo.** Status **Kutilmoqda → Olib ketildi**.
   - 🔒 **Whole-pallet soft warning:** since pallets are atomic (§5.4), the form checks each requested quantity against available whole pallets. If it doesn't map cleanly, it **soft-warns and suggests the nearest workable figures** so the manager confirms the exact number with the client **before the truck is sent**. **Never blocks** — the manager can save anyway and handle it. This is where dispatch discipline is enforced, keeping partial loads off the floor.
 
-### 3.2 Tarix — operatsiyalar jurnali 🔒
-Chronological event log. Excel export of filtered view; date presets; combinable filters; Hammasi/Kirim/Chiqim sub-tabs; footer → product settings.
-- 🔒 **Filtered totals bar at the bottom** (§2.11) — row count + kg totals reflecting the current filter; included in the Excel export.
-- 🔒 **"Sera kechikdi" (sulfur overdue) alerts** appear on the manager's dashboard as well as the Rahbar's (§6.2).
+### 3.2 HISOBOT (Reporting) 🔒 — query engine + results view APPLIED (v1.14 / Step 10 prompt 1)
+
+*Supersedes this document's own prior §3.2 "Tarix" text (chronological event log, sub-tabbed by direction) — that functionality is now this section, built out as the unified engine the v1.10 revision called for. §3.4 Kuzatuv and §3.5 Client report, further down this document, are **NOT yet superseded** — they still describe not-yet-built functionality (serial passport lenses, the full client balance report) and stay as the only spec reference for it until the saved views that absorb them (§3.2.5 passport, §3.2.6 stock-on-hand, §3.2.7 client report — see `docs/SPEC-reporting-v1.10-revision.md`) are actually built. Until then, §2.11's and §6.3's own mentions of "Tarix"/"Kuzatuv" as Rahbar's reporting toolkit are still accurate in spirit (same underlying screen) even though this section's own name changed.*
+
+🔒 **One shared query engine, results table, totals strip, and filter bar — the foundation every later saved view is built on, not a screen in its own right.** Available to **Menejer and Rahbar** (`/menejer/hisobot` and `/rahbar/hisobotlar` — identical component, no write actions on either side, so Rahbar's read-only rule §2.12 needs no special-casing here).
+
+#### 3.2.1 The underlying identity everything reports against 🔒
+
+```
+RAW RECEIVED = CALIBRE OUTPUT + KONDITIRSKIY + PROCESS LOSS + STILL IN STORAGE
+```
+
+Every view is a slice of this. If a report does not reconcile to it, the report is wrong. All quantities use `effective_qty` (§2.16.1) — never `actual_qty`/`declared_qty` directly. A CHIQIM row's own quantity is a pallet's measured `weight_kg` (never derived, always atomic — §5.4), which is why it never needed a weight-authority derivation of its own.
+
+#### 3.2.2 Filter bar — dimensions, all combinable 🔒
+
+Direction (KIRIM / CHIQIM / both) · date range + presets · buyurtmachi · mahsulot turi · kalibr · seriya (Barcode #1) · **Barcode #2** · truck plate · driver · wash cycle (1 / 2+ / any) · lab verdict (o'tdi / qayta yuvish / tekshirilmagan) · status (omborda / band qilingan / jo'natilgan / bekor qilingan).
+
+🔒 **Row granularity, decided during this prompt's build (not stated literally in the source revision):** a KIRIM row is one `kirim_lines` entry (one Barcode #1/serial) — "an arrival line." A CHIQIM row is one `finished_pallets` entry (one Barcode #2), **not** a whole CHIQIM request — because Barcode #2, wash cycle, and kalibr are each independent filter dimensions above and only make sense at pallet granularity; a request-level row would leave those ambiguous. Status is a pallet-lifecycle state, derived (`finished_pallets.status='dispatched'` is dead code — nothing in this app ever writes it, confirmed via `useAvailableFinishedStock.ts` — "jo'natilgan" really means claimed in `dispatch_manifest` **and** that dispatch's gate stage 2 is complete).
+
+🔒 **A voided Barcode #2 must remain findable.** Searching a dead sticker returns its record with an explicit result: *"bekor qilindi — qayta yuvilgan, sikl N, yangi barkod: X"* (or, when the re-wash's next cycle hasn't produced output yet, a plain "hali yangi barkod chiqarilmagan" note — the successor cycle is always `voided cycle + 1`, never ambiguous about which later cycle to check, since only a serial's currently-active cycle can ever be voided). Never "not found" — staff scanning a real sticker and getting silence will stop trusting the system.
+
+#### 3.2.3 The date-filter rule 🔒
+
+🔒 **The date filter always filters on the event matching the selected direction — never on wash date, never on lab date:**
+
+- **KIRIM selected** → arrival date — gate stage 1 completion (`gate_weighings.stage1_completed_at`), falling back to the order's own stated date (`kirim_orders.order_date`) only for the (in practice unreached, since intake requires stage 1 first, §5.1) case where stage 1 hasn't happened yet
+- **CHIQIM selected** → dispatch date — gate stage 2 completion (`gate_weighings.completed_at`, `dir='chiqim'`)
+- **Both selected** → each row filters on its own governing event
+
+The active date basis is **printed on screen and on every export** (*"sana asosi: kelish"* / *"jo'natish"*). Two people producing two different numbers from the same screen is how a reporting layer loses credibility, and an unlabelled date basis is the usual cause.
+
+🔒 **A CHIQIM/pallet row with no governing dispatch event yet (status omborda / band qilingan) has no date to range-filter on.** Left out of the default (date-ranged) view — the default stays a clean history of things that actually happened — but reachable by explicitly selecting that exact status, which overrides the date filter for rows of that status only. This is deliberate plumbing for the future stock-on-hand saved view (§3.2.6, out of scope this prompt), not a gap in this one.
+
+#### 3.2.4 Results table + totals strip 🔒
+
+Rows are events (an arrival line, or a dispatched pallet). Newest-first (universal sort, §5 intro), each row on its own governing date (§3.2.3).
+
+🔒 **Filtered-totals strip** (kg in / kg out / net) recalculates against the active filter, **sticky while scrolling** (§2.11). Applies to every view.
+
+Each row expands to its extra fields — **not** the full serial passport (§3.2.5, out of scope this prompt: no wash-cycle-by-wash-cycle breakdown, no dispatch list for the parent serial). Same expand-panel interaction `OmborChiqimTab`/`OmborHisobotlar` already use — no new interaction pattern.
+
+🔒 **Phone-density decision, applies to every later view built on this engine:** prioritised fields in a card + expand, not a literal table or horizontal scroll. Not a new choice for this screen — every existing list in this app (`OmborChiqimTab`, `LaboratorChiqimTab`, both existing Hisobotlar screens) already works this way, and there is no `<table>` element anywhere in this codebase. A phone-width card shows date/plate/driver + owner on one line and type/quantity/flags on a second; the remaining fields sit behind the expand toggle.
+
+Excel export on every view, respecting the active filter, with the date basis and weight basis printed in the header. Built with `exceljs`, not the more commonly reached-for `xlsx`/SheetJS package — the npm-published `xlsx` build carries an unpatched high-severity prototype-pollution/ReDoS advisory (patched builds are CDN-only, not on the npm registry); `exceljs` avoids shipping the flagged package (see DECISIONS.md "Reporting query engine").
+
+**Implemented as:** `src/lib/reportQuery.ts` (pure filter/row/totals logic) + `src/lib/useReportQuery.ts` (I/O — fetches KIRIM/CHIQIM candidates, joins, filters, sorts) + `src/lib/reportExport.ts`, mirroring the pure/IO split every other derived-data module in this app already uses (`weightAuthority.ts`/`effectiveQty.ts`, `rewash.ts`/`activeCycles.ts`). UI: `src/components/report/ReportFilterBar.tsx` (collapsed-by-default, expands to full controls — own component, not folded into the shared `HistoryView.tsx` shell, so Ombor/Qorovul's existing always-expanded Hisobotlar filter rows stay unchanged), `src/components/report/TotalsStrip.tsx`, `src/pages/reports/HisobotTab.tsx` + row-detail components.
 
 ### 3.3 Product settings 🔒
 Add categories / types / calibres (incl. Konditirskiy) → `MAHSULOT_TURLARI`.
@@ -432,7 +475,8 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 10. **CLARIFIED (v1.9)** — "Sera kechikdi" must exclude products with no SO₂ target (§5.5.1). A natural product is never overdue.
 11. ~~Accounting weight basis~~ — 🔒 **RESOLVED (v1.10): gate net** (§2.16).
 12. **NEW OPEN (v1.10)** — should the gate-net update (§2.16.2) notify Menejer when variance against declared exceeds a threshold, or only display it (current, this prompt's build)? Notification implies §2.14 threshold config — deliberately not built this prompt.
-13. **CARRIED (v1.10)** — the unified §3.2 reporting layer (Tarix/Kuzatuv/Mijoz hisoboti consolidation, serial passport, stock-on-hand, client balance report, moisture-adjusted yield, WIP, Rahbar aggregates) is specified in `docs/SPEC-reporting-v1.10-revision.md` but **not yet applied to this document or built** — out of scope for this prompt (weight authority only). §3.2/§3.4/§3.5 below are still the pre-v1.10 text.
+13. **PARTIALLY RESOLVED (v1.14)** — the unified §3.2 reporting layer's query engine, results table, totals strip, and filter bar (§3.2.1-3.2.4) are now applied and built (Step 10 prompt 1). **Still CARRIED, out of scope for that prompt:** the saved views built on top of this engine — serial passport (§3.2.5, the row-expand's eventual full target), stock-on-hand with ageing (§3.2.6), client balance report consolidation (§3.2.7, §3.4/§3.5 below still hold the only spec text for this until then), moisture-adjusted yield (§3.2.8), WIP/stuck (§3.2.9), Rahbar aggregates (§3.2.10) — all specified in `docs/SPEC-reporting-v1.10-revision.md`, none yet applied to this document or built.
+14. **NEW OPEN (v1.14)** — the "status" filter's two dateless pallet states (omborda / band qilingan, §3.2.2) are real plumbing for the future stock-on-hand view but return nothing in today's results table unless explicitly selected (§3.2.3) — confirm this is still the right shape once §3.2.6 is actually built, rather than assuming this prompt's judgment call carries over unchanged.
 
 ---
 
@@ -459,11 +503,14 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 
 🔒 **`effective_qty` (NEW v1.10, §2.16) is likewise a derived view, no new column or table.** No `KIRIM_LINES`/`STORAGE_STOCK`/`GATE_WEIGHINGS` schema change was needed — every input already existed. `src/lib/weightAuthority.ts` (pure rule) + `src/lib/effectiveQty.ts` (I/O, `fetchEffectiveQty`/`useEffectiveQty`) is the one implementation every consumer reads, same "one derived truth, all consumers" pattern as availability above.
 
+🔒 **HISOBOT (§3.2, NEW v1.14) reads existing tables only — no reporting-specific persistence, confirmed before building, no migration this prompt.** `KIRIM_LINES`/`KIRIM_ORDERS`/`GATE_WEIGHINGS`/`STORAGE_STOCK`/`FINISHED_PALLETS`/`DISPATCH_MANIFEST`/`CHIQIM_REQUESTS`/`WASH_CYCLES`/`LAB_RESULTS` are joined and filtered client-side, the same "fetch broad, join via Maps, filter client-side" convention every other read-only history view in this app already uses (`useGateHistory.ts`, `useIntakeHistory.ts`) — not pushed server-side, since none of these tables carries a reliable, always-populated date column to page on server-side.
+
 ---
 
 ## 9. Changelog
 | Version | Date | Change |
 |---|---|---|
+| 1.14 | 2026-07-20 | 🔒 **Reporting query engine, results table, totals strip, and filter bar applied and built (§3.2.1-3.2.4, Step 10 prompt 1).** Replaces this document's own prior §3.2 "Tarix" text — that functionality IS this section now. One shared engine: direction/date/client/type/kalibr/seriya/Barcode #2/plate/driver/wash-cycle/lab-verdict/status filters, all combinable; every quantity reads `effective_qty` (§2.16.1), never `actual_qty`/`declared_qty`; date basis follows direction (KIRIM → gate stage 1 / order date, CHIQIM → gate stage 2) and is printed on screen and in exports; a voided Barcode #2 always returns its record (voided cycle + successor barcode(s), never "not found"); filtered-totals strip (kg in/out/net) sticky while scrolling; Excel export via `exceljs` (not `xlsx`/SheetJS — unpatched npm advisory, see DECISIONS.md). **Row-granularity decision:** a KIRIM row is one `kirim_lines` entry, a CHIQIM row is one `finished_pallets` entry (pallet, not whole request) — needed for Barcode #2/wash-cycle/kalibr filters to be unambiguous. **Phone-density decision, inherited by every later saved view:** prioritised-fields-in-a-card + expand, matching every existing list in this app — no `<table>`, no horizontal scroll. Row expand is this row's own fields only, not the full serial passport (§3.2.5, still unbuilt). Mounted at `/menejer/hisobot` and `/rahbar/hisobotlar` (identical, read-only component). No schema change — reads existing tables only (§8). **This prompt applied §3.2.1-3.2.4 only** — §3.2.5 (serial passport), §3.2.6 (stock-on-hand), §3.2.7 (client balance report), §3.2.8 (yield), §3.2.9 (WIP), §3.2.10 (Rahbar aggregates) remain in `docs/SPEC-reporting-v1.10-revision.md`, not yet applied here (§7 item 13). |
 | 1.13 | 2026-07-19 | 🔒 **Weight authority settled (§2.16, new — renumbered from the source revision's "§2.15," which collided with this document's existing §2.15 "Technical architecture"; see DECISIONS.md).** Three weights (declared / intake / gate net) permanently retained; gate net is the accounting truth. `effective_qty` derived per `kirim_line`, never stored: gate net for a single-line truck once gate stage 2 completes; the per-line intake figure for a multi-line truck always (gate net only feeds a truck-level reconciliation variance for these, never adopted as the line's own value, confirmed with the user before implementation); the intake figure, marked **provisional**, before gate stage 2. Amends §3.1 (KIRIM list shows `effective_qty`, provisional-then-final), §5.1 (gate-vs-declared variance is additional to, not a replacement for, the existing accept-time intake-vs-declared Kam chiqdi check), §5.3 (cycle-1 process loss/yield and §5.2's "available to send" cap read `effective_qty`, floored at 0 for display; cycle 2+ re-wash input unchanged). No schema change — implemented as `src/lib/weightAuthority.ts` + `src/lib/effectiveQty.ts`. **This prompt applied §2.16 and the §3.1/§5.1/§5.3 amendments only** — the unified §3.2 reporting layer (Tarix/Kuzatuv/client-report consolidation, serial passport, stock-on-hand, moisture-adjusted yield, WIP, Rahbar aggregates) from the same source revision is pasted verbatim at `docs/SPEC-reporting-v1.10-revision.md` for a future prompt, not yet applied here (§7 item 13). |
 | 1.12 | 2026-07-18 | 🔒 **Laborator redesigned; v1.5 model replaced (§5.5, wholesale).** CHIQIM check now triggers on Moyka output rather than dispatch and carries a **verdict** (`O'tdi` / `Qayta yuvish`) that **hard-gates dispatch availability**; KIRIM check is explicitly descriptive-only, no verdict. **Client quality targets added to `KIRIM_LINES`** (§3.1), per product line, inherited down the serial lineage; a blank SO₂ target means natural product and **removes the sulfur field entirely** from the lab form and from overdue alerts (§5.5.1). **Lab flags, Ombor voids** — the verdict mutates no stored state; re-wash material is flagged red for Ombor, who voids the barcodes and re-sends via §5.2 (§5.5.4–5). Lab history consolidated into **one filtered section** (§5.5.6). Client report gains target-vs-actual (§3.5-A). Amends §1.1, §2.13, §3.1, §5.2, §5.3, §7, §8. **Open: re-send quantity basis (§5.5.5)** — do not build §5.5.5 until resolved. This prompt (Step 8 prompt 1) applied the spec text + `kirim_lines` target columns + the Menejer form fields only; no lab screens, no `lab_results` reshape, no hard gate on `useAvailableFinishedStock` yet. |
 | 1.11 | 2026-07-17 | 🔒 **New §5 named invariant: "CHIQIM per-role finalization"** — §5.4 has no single shared "finished" status; Ombor (scan+`Yuklashni yakunlash`), Qorovul (second/loaded weighing), and Menejer (reads Qorovul's signal) each finalize independently and see their own Window 2 on their own action. `chiqim_requests.status` must not be overloaded to mean "Ombor done loading." Written ahead of Step 7 prompt 1 (Menejer CHIQIM request creation). |

@@ -8,6 +8,7 @@ import { UsersAdminPage } from './pages/admin/UsersAdminPage'
 import { MenejerHome } from './pages/menejer/MenejerHome'
 import { MenejerKirimTab } from './pages/menejer/MenejerKirimTab'
 import { MenejerChiqimTab } from './pages/menejer/MenejerChiqimTab'
+import { HisobotTab } from './pages/reports/HisobotTab'
 import { QorovulHome } from './pages/qorovul/QorovulHome'
 import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
 import { QorovulChiqimTab } from './pages/qorovul/QorovulChiqimTab'
@@ -52,6 +53,7 @@ function AppRoutes() {
         }
       >
         <Route index element={<RahbarHome />} />
+        <Route path="hisobotlar" element={<HisobotTab />} />
         <Route path="foydalanuvchilar" element={<UsersAdminPage />} />
       </Route>
 
@@ -65,6 +67,7 @@ function AppRoutes() {
       >
         <Route index element={<MenejerKirimTab />} />
         <Route path="chiqim" element={<MenejerChiqimTab />} />
+        <Route path="hisobot" element={<HisobotTab />} />
       </Route>
       <Route
         path="/qorovul"

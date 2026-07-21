@@ -28,6 +28,12 @@ export function RahbarLayout() {
           <NavLink to="/rahbar/mijoz-hisoboti" className={navClass}>
             Mijoz hisoboti
           </NavLink>
+          <NavLink to="/rahbar/hosildorlik" className={navClass}>
+            Hosildorlik
+          </NavLink>
+          <NavLink to="/rahbar/diqqat-talab" className={navClass}>
+            Diqqat talab
+          </NavLink>
           <NavLink to="/rahbar/foydalanuvchilar" className={navClass}>
             Foydalanuvchilar
           </NavLink>

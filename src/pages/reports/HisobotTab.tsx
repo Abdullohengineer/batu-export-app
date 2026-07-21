@@ -10,6 +10,7 @@ import { useReportQuery, ExportTooLargeError } from '../../lib/useReportQuery'
 import { downloadReportExcel } from '../../lib/reportExport'
 import { dateBasisLabel, defaultReportFilters } from '../../lib/reportQuery'
 import { ReportResultsTable } from './ReportResultsTable'
+import { SerialPassportModal } from './SerialPassportModal'
 
 // §3.2 HISOBOT (Reporting) — the shared query engine + results table +
 // totals strip + filter bar (§3.2.1-3.2.4, applied to SPEC.md this step).
@@ -28,6 +29,10 @@ export function HisobotTab() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  // §3.2.5 serial passport drill-down — reached from any row's expand panel,
+  // KIRIM or CHIQIM, always resolving to that row's PARENT serial (see
+  // KirimRowDetail.tsx/ChiqimRowDetail.tsx). Not a route; local modal state.
+  const [passportSerial, setPassportSerial] = useState<string | null>(null)
 
   const { owners } = useOwners()
   const { productTypes } = useProductTypes()
@@ -144,8 +149,18 @@ export function HisobotTab() {
           ownerName={ownerName}
           typeName={typeName}
           calibreLabel={calibreLabel}
+          onOpenPassport={setPassportSerial}
         />
       </HistoryView>
+
+      {passportSerial && (
+        <SerialPassportModal
+          serial={passportSerial}
+          onClose={() => setPassportSerial(null)}
+          typeName={typeName}
+          calibreLabel={calibreLabel}
+        />
+      )}
     </div>
   )
 }

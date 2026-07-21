@@ -94,8 +94,14 @@ begin
     (v_request_id, 'PLT-' || v_serial || '-06-2', '2026-05-10 07:35:00+00'),
     (v_request_id, 'PLT-' || v_serial || '-04-1', '2026-05-10 07:40:00+00'),
     (v_request_id, 'PLT-' || v_serial || '-KN1', '2026-05-10 07:45:00+00');
+  -- CHIQIM is reversed from KIRIM (QorovulChiqimTab.tsx): stage 1 writes
+  -- pustoy_kg (empty truck arrives), stage 2 writes gruzheny_kg (loaded
+  -- truck departs) -- net_kg = gruzheny-pustoy stays the actual cargo
+  -- weight either way. Originally swapped here; fixed live 2026-07-21 (see
+  -- DECISIONS.md "Serial passport" -- found via the passport surfacing a
+  -- negative net_kg for the first time).
   insert into gate_weighings (dir, request_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
-    values ('chiqim', v_request_id, 1400, 6500, v_qorovul, '2026-05-10 08:30:00+00', v_qorovul, '2026-05-10 09:15:00+00');
+    values ('chiqim', v_request_id, 6500, 1400, v_qorovul, '2026-05-10 08:30:00+00', v_qorovul, '2026-05-10 09:15:00+00');
 
   -- ============================================================
   -- STORY 2 -- Farg'ona / Isfara / single-line / natural / partially dispatched
@@ -128,7 +134,7 @@ begin
   insert into dispatch_manifest (request_id, barcode2, loaded_at) values
     (v_request_id, 'PLT-' || v_serial || '-06-1', '2026-05-25 07:30:00+00');
   insert into gate_weighings (dir, request_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
-    values ('chiqim', v_request_id, 1000, 4200, v_qorovul, '2026-05-25 08:30:00+00', v_qorovul, '2026-05-25 09:00:00+00');
+    values ('chiqim', v_request_id, 4200, 1000, v_qorovul, '2026-05-25 08:30:00+00', v_qorovul, '2026-05-25 09:00:00+00');
 
   -- ============================================================
   -- STORY 3 -- Samarqand / Subxon + Qand qizil / MULTI-line
@@ -168,7 +174,7 @@ begin
     (v_request_id, 'PLT-' || v_serial || '-06-1', '2026-06-06 07:30:00+00'),
     (v_request_id, 'PLT-' || v_serial || '-08-1', '2026-06-06 07:35:00+00');
   insert into gate_weighings (dir, request_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
-    values ('chiqim', v_request_id, 1000, 2900, v_qorovul, '2026-06-06 08:30:00+00', v_qorovul, '2026-06-06 09:00:00+00');
+    values ('chiqim', v_request_id, 2900, 1000, v_qorovul, '2026-06-06 08:30:00+00', v_qorovul, '2026-06-06 09:00:00+00');
   -- lineB -- Tugallash done, pallets in_stock, deliberately NO chiqim lab_results yet (awaiting lab)
   insert into moyka_sends (serial, wash_cycle, sent_date, qty_kg, created_by) values (v_serial_b, 1, '2026-06-03', 1500, v_ombor);
   insert into wash_cycles (serial, cycle_no, status, final_loss_pct) values (v_serial_b, 1, 'final', 10.0);
@@ -216,7 +222,7 @@ begin
     (v_request_id, 'PLT-' || v_serial || '-08-1', '2026-06-18 07:30:00+00'),
     (v_request_id, 'PLT-' || v_serial || '-06-3', '2026-06-18 07:35:00+00');
   insert into gate_weighings (dir, request_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
-    values ('chiqim', v_request_id, 1000, 3450, v_qorovul, '2026-06-18 08:30:00+00', v_qorovul, '2026-06-18 09:00:00+00');
+    values ('chiqim', v_request_id, 3450, 1000, v_qorovul, '2026-06-18 08:30:00+00', v_qorovul, '2026-06-18 09:00:00+00');
   -- both Konditirskiy pallets (cycle 1's and cycle 2's) deliberately left in_stock, never dispatched
 
   -- ============================================================
@@ -253,7 +259,7 @@ begin
   insert into dispatch_manifest (request_id, barcode2, loaded_at) values
     (v_request_id, 'PLT-' || v_serial || '-06-1', '2026-06-27 07:30:00+00');
   insert into gate_weighings (dir, request_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
-    values ('chiqim', v_request_id, 1000, 1950, v_qorovul, '2026-06-27 08:30:00+00', v_qorovul, '2026-06-27 09:00:00+00');
+    values ('chiqim', v_request_id, 1950, 1000, v_qorovul, '2026-06-27 08:30:00+00', v_qorovul, '2026-06-27 09:00:00+00');
   -- lineB -- lab-passed, deliberately NOT dispatched (still in storage)
   insert into moyka_sends (serial, wash_cycle, sent_date, qty_kg, created_by) values (v_serial_b, 1, '2026-06-24', 1200, v_ombor);
   insert into wash_cycles (serial, cycle_no, status, final_loss_pct) values (v_serial_b, 1, 'final', 4.2) returning id into v_cycle1;
@@ -298,7 +304,7 @@ begin
     (v_request_id, 'PLT-' || v_serial || '-06-3', '2026-07-08 07:30:00+00'),
     (v_request_id, 'PLT-' || v_serial || '-08-1', '2026-07-08 07:35:00+00');
   insert into gate_weighings (dir, request_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
-    values ('chiqim', v_request_id, 1000, 2900, v_qorovul, '2026-07-08 08:30:00+00', v_qorovul, '2026-07-08 09:00:00+00');
+    values ('chiqim', v_request_id, 2900, 1000, v_qorovul, '2026-07-08 08:30:00+00', v_qorovul, '2026-07-08 09:00:00+00');
 
   -- ============================================================
   -- STORY 7 -- Samarqand / Subxon / single-line / raw still in storage (never sent to Moyka)

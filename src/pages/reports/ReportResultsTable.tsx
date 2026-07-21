@@ -23,6 +23,7 @@ export function ReportResultsTable({
   ownerName,
   typeName,
   calibreLabel,
+  onOpenPassport,
 }: {
   rows: ReportRow[]
   expandedKey: string | null
@@ -30,6 +31,7 @@ export function ReportResultsTable({
   ownerName: (id: string) => string
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
+  onOpenPassport: (serial: string) => void
 }) {
   return (
     <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
@@ -59,6 +61,7 @@ export function ReportResultsTable({
               ownerName={ownerName}
               typeName={typeName}
               calibreLabel={calibreLabel}
+              onOpenPassport={onOpenPassport}
             />
           ))}
         </tbody>

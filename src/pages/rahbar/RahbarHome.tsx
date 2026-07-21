@@ -18,8 +18,10 @@ export function RahbarHome() {
   const [from, setFrom] = useState(initial.from)
   const [to, setTo] = useState(initial.to)
 
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- monthly trends/product-mix resolve ids
+  // over historical months, which may reference a since-deactivated type.
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
   const { limits } = useSettingsLimits()
   const { rows: trends, loading: trendsLoading } = useMonthlyTrends()
   const { ranking, productMix, loading: rankingLoading } = useClientRankingAndProductMix(from, to)

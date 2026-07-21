@@ -17,9 +17,14 @@ import { SerialPassportModal } from './SerialPassportModal'
 // shape as every other §3.2 saved view.
 export function YieldTab() {
   const initial = defaultDateRange(90)
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- this screen resolves ids on historical
+  // serials (a completed serial's owner/type/calibre must never fall back
+  // to a raw uuid just because that master-data row was later deactivated)
+  // and its own filter selects must still be able to pick a deactivated
+  // client/type to view their history.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
 
   const [ownerId, setOwnerId] = useState<string>('')
   const [typeId, setTypeId] = useState<string>('')

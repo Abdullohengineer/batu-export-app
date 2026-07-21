@@ -20,9 +20,10 @@ function fmt(ts: string | null) {
 // there's no counterpart "still open" state to show here — that's Ombor's
 // and Qorovul's own screens, not this one.
 export function FinishedChiqimList() {
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- resolves names on historical requests.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
   const { names } = useProfileNames()
   const { requests, loading } = useFinishedChiqimRequests()
   const [expanded, setExpanded] = useState<string | null>(null)

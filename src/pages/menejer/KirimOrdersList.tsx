@@ -24,7 +24,8 @@ interface KirimOrder {
 
 export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
   const { profile } = useAuth()
-  const { productTypes } = useProductTypes()
+  // §3.3: includeInactive=true -- resolves type names on historical orders.
+  const { productTypes } = useProductTypes(true)
   const [orders, setOrders] = useState<KirimOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())

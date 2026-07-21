@@ -22,8 +22,9 @@ async function uploadPilePhoto(file: File) {
 
 export function OmborIntakeTab() {
   const { profile } = useAuth()
-  const { productTypes } = useProductTypes()
-  const { owners } = useOwners()
+  // §3.3: includeInactive=true -- resolves names on in-flight/historical rows.
+  const { productTypes } = useProductTypes(true)
+  const { owners } = useOwners(true)
   const { limits } = useSettingsLimits()
   const { lines, loading, refresh } = useIntakeLines()
   const { serials: moykaSerials, loading: moykaLoading } = useMoykaSerials()

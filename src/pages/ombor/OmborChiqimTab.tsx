@@ -28,9 +28,11 @@ interface ScannedPallet {
 // shortfall/overage status.
 export function OmborChiqimTab() {
   const { profile } = useAuth()
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- resolves ids on in-flight/historical rows;
+  // this screen scans barcodes, it has no creation dropdown of its own.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
   const { open, finished, loading, refresh } = useOmborChiqimRequests()
 
   const [expandedOpen, setExpandedOpen] = useState<string | null>(null)

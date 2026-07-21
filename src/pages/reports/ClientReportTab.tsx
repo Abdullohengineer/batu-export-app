@@ -28,9 +28,12 @@ function BalanceLine({ label, value, bold, indent }: { label: string; value: num
 // Rahbar shape as every other §3.2 saved view.
 export function ClientReportTab() {
   const initial = defaultDateRange(30)
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true throughout -- the owner select must still be
+  // able to generate a report for a deactivated client, and typeName/
+  // calibreLabel must resolve every historical line, not just active ones.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
 
   const [ownerId, setOwnerId] = useState<string>('')
   const [from, setFrom] = useState(initial.from)

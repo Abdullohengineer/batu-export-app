@@ -20,8 +20,11 @@ export function OmborHisobotlar() {
   })
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
+  // §3.3: includeInactive=true -- resolves names on historical rows, and the
+  // Tur/Buyurtmachi filter selects must still be able to pick a deactivated
+  // type/client to filter their history.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
   const { limits } = useSettingsLimits()
   const { rows, loading } = useIntakeHistory(filters)
 

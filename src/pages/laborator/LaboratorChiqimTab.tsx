@@ -15,8 +15,9 @@ const VERDICT_LABEL: Record<string, string> = { o_tdi: "O'tdi", qayta_yuvish: 'Q
 // amber), Yakunlangan (values + verdict + cycle number).
 export function LaboratorChiqimTab() {
   const { profile } = useAuth()
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
+  // §3.3: includeInactive=true -- resolves names on historical/in-flight cycles.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
   const { awaiting, sulfurPending, finished, loading, refresh } = useLaboratorChiqim()
 
   const [activeTahlil, setActiveTahlil] = useState<string | null>(null)

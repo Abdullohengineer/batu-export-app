@@ -27,9 +27,16 @@ import { Barcode2Display } from './Barcode2Display'
 // loss reading, same as Window 1's non-blocking overage treatment).
 export function OmborTayyorTab() {
   const { profile } = useAuth()
-  const { productTypes } = useProductTypes()
-  const { owners } = useOwners()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- typeName/ownerName/calibreLabel resolve
+  // historical rows, and handleRewash's numberlessCalibres set (below) must
+  // recognise a deactivated Konditirskiy calibre correctly, not silently
+  // misclassify it as a normal calibre and void it. The NEW-pallet
+  // creation dropdown (FinishedReceiptForm, below) gets a derived
+  // active-only subset instead of this full list.
+  const { productTypes } = useProductTypes(true)
+  const { owners } = useOwners(true)
+  const { calibres } = useCalibres(true)
+  const activeCalibres = calibres.filter((c) => c.active)
   const { serials, completed, loading, refresh } = useMoykaOutput()
   // Reused (not reimplemented) purely for each serial's actual_qty, to
   // evaluate the Tugallash soft-warning's "raw remainder in storage" leg
@@ -288,7 +295,7 @@ export function OmborTayyorTab() {
                   <FinishedReceiptForm
                     serial={s}
                     typeName={typeName(s.type_id)}
-                    calibres={calibres}
+                    calibres={activeCalibres}
                     onCancel={() => setActiveForm(null)}
                     onSubmit={(values) => handleReceipt(s, values)}
                   />

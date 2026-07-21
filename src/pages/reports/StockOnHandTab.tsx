@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useStockOnHand } from '../../lib/useStockOnHand'
+import { stockBucketSortIndex } from '../../lib/stockOnHand'
 import { StockOnHandHeader } from './StockOnHandHeader'
 import { StockOnHandTable } from './StockOnHandTable'
 import { SerialPassportModal } from './SerialPassportModal'
@@ -30,6 +31,26 @@ export function StockOnHandTab() {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
 
+  // Sorted by resolved NAME, not raw id — grouping buyurtmachi -> tur ->
+  // kalibr -> holat only reads as "grouped" to a human if the owner/type
+  // groups themselves land in a readable order, not raw-uuid order (a real
+  // bug caught during visual verification: uuid comparison put "Toshkent"
+  // before "Boysun"/"Samarqand" for no readable reason).
+  const sortedRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const ownerDiff = ownerName(a.ownerId).localeCompare(ownerName(b.ownerId))
+      if (ownerDiff !== 0) return ownerDiff
+      const typeDiff = typeName(a.typeId).localeCompare(typeName(b.typeId))
+      if (typeDiff !== 0) return typeDiff
+      const calA = a.calibreId ? calibreLabel(a.calibreId) : ''
+      const calB = b.calibreId ? calibreLabel(b.calibreId) : ''
+      const calDiff = calA.localeCompare(calB)
+      if (calDiff !== 0) return calDiff
+      return stockBucketSortIndex(a.bucket) - stockBucketSortIndex(b.bucket)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, owners, productTypes, calibres])
+
   return (
     <div className="space-y-4">
       <StockOnHandHeader summary={summary} turnaroundAvgDays={turnaroundAvgDays} />
@@ -41,7 +62,7 @@ export function StockOnHandTab() {
       ) : (
         <>
           <StockOnHandTable
-            rows={rows}
+            rows={sortedRows}
             expandedKey={expandedKey}
             onToggle={(key) => setExpandedKey(expandedKey === key ? null : key)}
             ownerName={ownerName}

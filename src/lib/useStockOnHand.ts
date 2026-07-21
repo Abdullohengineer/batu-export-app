@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { stockBucketSortIndex, type StockOnHandRow, type StockOnHandSummaryRow, type StockBucket } from './stockOnHand'
+import type { StockOnHandRow, StockOnHandSummaryRow, StockBucket } from './stockOnHand'
 
 interface StockOnHandDbRow {
   bucket: StockBucket
@@ -59,9 +59,13 @@ function mapSummary(r: StockOnHandSummaryDbRow): StockOnHandSummaryRow {
 // §3.2.6 — grouped buyurtmachi -> tur -> kalibr -> holat. The grouping itself
 // is expressed by sort order over the flat detail rows (rowKey-level, for
 // passport drill-down) rather than a new collapsible-tree interaction — the
-// task's own furniture-reuse instruction rules out inventing one. Summary
-// rows feed the per-bucket header totals; lab_turnaround_avg feeds the one
-// header stat §3.2.9 part C asks for here.
+// task's own furniture-reuse instruction rules out inventing one. Sorting by
+// resolved NAME (not raw id) is the caller's job (StockOnHandTab.tsx) — this
+// hook has no owner/type/calibre label lookups of its own, and sorting by raw
+// uuid here first produced a real, confirmed-live bug: owners rendered in an
+// arbitrary uuid-comparison order instead of a readable one. Summary rows
+// feed the per-bucket header totals; lab_turnaround_avg feeds the one header
+// stat §3.2.9 part C asks for here.
 export function useStockOnHand() {
   const [rows, setRows] = useState<StockOnHandRow[]>([])
   const [summary, setSummary] = useState<StockOnHandSummaryRow[]>([])
@@ -79,16 +83,7 @@ export function useStockOnHand() {
           supabase.rpc('lab_turnaround_avg'),
         ])
         if (cancelled) return
-        const mapped = ((rowsResult.data ?? []) as StockOnHandDbRow[]).map(mapRow)
-        mapped.sort((a, b) => {
-          if (a.ownerId !== b.ownerId) return a.ownerId.localeCompare(b.ownerId)
-          if (a.typeId !== b.typeId) return a.typeId.localeCompare(b.typeId)
-          const calA = a.calibreId ?? ''
-          const calB = b.calibreId ?? ''
-          if (calA !== calB) return calA.localeCompare(calB)
-          return stockBucketSortIndex(a.bucket) - stockBucketSortIndex(b.bucket)
-        })
-        setRows(mapped)
+        setRows(((rowsResult.data ?? []) as StockOnHandDbRow[]).map(mapRow))
         setSummary(((summaryResult.data ?? []) as StockOnHandSummaryDbRow[]).map(mapSummary))
         setTurnaroundAvgDays(avgResult.data === null || avgResult.data === undefined ? null : Number(avgResult.data))
       } finally {

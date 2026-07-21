@@ -156,15 +156,22 @@ grant execute on function stock_on_hand_summary(uuid) to authenticated;
 create or replace function lab_turnaround_avg()
 returns numeric
 language sql stable security invoker as $$
+  -- 🔒 TEST- fixture exclusion (matches every other view in this engine,
+  -- reportQuery.ts's isTestPlate() precedent) -- found live during visual
+  -- verification: 193 TEST- rows vs. 10 real ones diluted the displayed
+  -- average from a real 0.9 days down to 0.0, silently.
   select avg(lr.sample_date - fp_first.received_date)
   from lab_results lr
   join wash_cycles wc on wc.id = lr.wash_cycle_id
+  join kirim_lines kl on kl.serial = wc.serial
+  join kirim_orders ko on ko.order_id = kl.order_id
   join lateral (
     select min(fp2.received_date) as received_date
     from finished_pallets fp2
     where fp2.serial = wc.serial and fp2.wash_cycle = wc.cycle_no
   ) fp_first on true
-  where lr.scope = 'chiqim';
+  where lr.scope = 'chiqim'
+    and ko.plate not like 'TEST-%';
 $$;
 
 grant execute on function lab_turnaround_avg() to authenticated;

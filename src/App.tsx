@@ -11,6 +11,7 @@ import { MenejerChiqimTab } from './pages/menejer/MenejerChiqimTab'
 import { HisobotTab } from './pages/reports/HisobotTab'
 import { StockOnHandTab } from './pages/reports/StockOnHandTab'
 import { WipTab } from './pages/reports/WipTab'
+import { ClientReportTab } from './pages/reports/ClientReportTab'
 import { QorovulHome } from './pages/qorovul/QorovulHome'
 import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
 import { QorovulChiqimTab } from './pages/qorovul/QorovulChiqimTab'
@@ -58,6 +59,7 @@ function AppRoutes() {
         <Route path="hisobotlar" element={<HisobotTab />} />
         <Route path="qoldiq" element={<StockOnHandTab />} />
         <Route path="kutilmoqda" element={<WipTab />} />
+        <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
         <Route path="foydalanuvchilar" element={<UsersAdminPage />} />
       </Route>
 
@@ -74,6 +76,7 @@ function AppRoutes() {
         <Route path="hisobot" element={<HisobotTab />} />
         <Route path="qoldiq" element={<StockOnHandTab />} />
         <Route path="kutilmoqda" element={<WipTab />} />
+        <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
       </Route>
       <Route
         path="/qorovul"

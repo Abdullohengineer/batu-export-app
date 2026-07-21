@@ -40,6 +40,20 @@
 --   10. Nukus / Subxon / arrived 2026-05-20 (before period), washed 2026-06-05 (during), output incl. Konditirskiy -> opening RAW contributor
 --   11. Nukus / Subxon / arrived+washed in May (before period), dispatched 2026-06-20 (during) -> opening FINISHED contributor
 --   12. Nukus / Subxon (natural, no SO2 target) / arrived 2026-06-25 (during period), never washed -> closing RAW contributor
+--
+-- PART 3 -- two more stories (13-14), same owner (Nukus), dated entirely
+-- AFTER June (August/September) so the reference above is untouched, testing
+-- §3.2.7's client report (0029 migration) against a second target period,
+-- 2026-09-01 to 2026-09-30. See the hand-computed reference block
+-- immediately above story 13 below -- note that September's own numbers
+-- deliberately are NOT a clean, isolated read: story 10's never-dispatched
+-- finished output and story 12's never-washed raw both legitimately carry
+-- forward into September's opening balances, same as any real inventory
+-- would. (Dating stories 13-14 BEFORE June, the first version of this
+-- fixture's approach, seemed safer but was wrong -- see the reference
+-- block's own note on why.)
+--   13. Nukus / Subxon / cycle 1 fails+voids in August, cycle 2 (re-wash) completes in September -> CROSS-PERIOD re-wash test
+--   14. Nukus / Subxon / sent-to-Moyka (1,600kg) DELIBERATELY exceeds gate net (1,500kg) -> processed-cap-must-be-visible test
 
 do $$
 declare
@@ -551,6 +565,159 @@ begin
   insert into lab_results (scope, parent_serial, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, created_at)
     values ('kirim', v_serial, v_serial, '2026-06-26', 12, null, v_laborator, 'complete', '2026-06-26 10:00:00+00');
   -- deliberately no moyka_sends row -- raw sits untouched through period end
+
+  -- ============================================================================
+  -- HAND-COMPUTED REFERENCE -- Nukus Agro Eksport, period 2026-09-01..2026-09-30
+  -- ============================================================================
+  -- Stories 13-14 test the two edge cases §3.2.7's client report (0029
+  -- migration) had to be corrected for. Both are dated in August/September --
+  -- entirely AFTER June -- so June's locked reference above (raw opening
+  -- 3,100/received 1,800/processed 3,100/closing 1,800; finished opening
+  -- 2,300/produced 2,945/dispatched 2,300/closing 2,945; loss 155/5.0%) is
+  -- completely unaffected: neither story's finished_pallets exist yet as of
+  -- June 30, and neither's raw activity falls in June. (An EARLIER version of
+  -- this fixture dated both stories in March/April -- before June -- which
+  -- seemed safe for the RAW side but was wrong: their never-dispatched
+  -- finished pallets would then count as part of June's OPENING finished
+  -- balance, since "produced before period, still held" is exactly correct
+  -- behaviour for real stock. Moved both stories to occur strictly after June
+  -- instead of strictly before it, which sidesteps the problem entirely.)
+  --
+  -- September's own numbers are NOT a clean, isolated read, and that's
+  -- deliberate and correct: story 12's raw (arrived June 25, never sent to
+  -- Moyka at all) is STILL fully unprocessed as of September 1 and correctly
+  -- carries forward as September's own OPENING raw balance; story 10's full
+  -- finished output (never dispatched) likewise carries forward as
+  -- September's OPENING finished balance. Real balances persist across
+  -- periods until resolved -- a report that zeroed them out between periods
+  -- would be the actual bug.
+  --
+  -- RAW (effective_qty basis):
+  --   Opening (story 12's still-unwashed raw, carried forward from June).. 1,800 kg
+  --   + Received during period (story 14 only, 09-08)................... 1,500 kg
+  --   - Processed during period (story 14 only, CAPPED at effective_qty --
+  --     story 14 sent 1,600 kg against a 1,500 kg gate net, deliberately).. 1,500 kg
+  --   = Closing (still just story 12's raw -- story 14 fully consumed,
+  --     1,500-1,500=0)..................................................... 1,800 kg
+  --   processedActualSentKg (uncapped)................................... 1,600 kg
+  --   processedOverageKg (1,600-1,500)...................................... 100 kg
+  --     -- cappedSerials must list story 14's serial: actualSentKg=1,600,
+  --     effectiveQtyKg=1,500, overageKg=100. Must be VISIBLE, never silently
+  --     clamped away.
+  --
+  -- processedBreakdown (main, in-period-consistent cycles only -- story 14's
+  -- cycle 1; story 13's cycle 2 is EXCLUDED here, see crossPeriodRewash):
+  --   calibreKg=1,520, konditirskiyKg=0, lossKg=80 (sent 1,600 - output 1,520)
+  --   -> lossPct = 80/1,600 = 5.0% exactly.
+  --   Check: 1,520+0+80 = 1,600 = processedActualSentKg (NOT processedKg,
+  --   1,500 -- the 100 kg gap IS processedOverageKg, fully explained, not a
+  --   reconciliation error).
+  --
+  -- crossPeriodRewash (story 13's cycle 2 -- completed 09-12, but its raw was
+  -- consumed back on 08-20, a DIFFERENT period -- must NOT appear in the main
+  -- processedBreakdown above, must NOT make September's processedKg move):
+  --   serial=story13, cycleNo=2, completedDate=2026-09-12,
+  --   rawConsumedDate=2026-08-20, sentKg=1,800, calibreKg=1,710,
+  --   konditirskiyKg=0, lossKg=90 (1,800-1,710), lossPct=5.0% exactly.
+  --
+  -- FINISHED (by calibre, kg):
+  --   Opening (story 10's full June output, never dispatched, carried
+  --   forward: Kalibr 6 1,800 + Kalibr 4 1,000 + Konditirskiy 145)....... 2,945 kg
+  --   + Produced during period (story 13 cycle 2, 09-12, Kalibr 6 1,710 +
+  --     story 14 cycle 1, 09-14, Kalibr 6 1,520)........................ 3,230 kg
+  --   - Dispatched during period.......................................... 0 kg
+  --   = Closing (Kalibr 6 5,030 + Kalibr 4 1,000 + Konditirskiy 145)... 6,175 kg
+  --
+  -- Story 13's cycle 1 (August, voided) never appears in this September
+  -- report at all -- it belongs entirely to August's report, and its raw was
+  -- never double-counted as September's "opening" (cycle1_completed_date
+  -- 08-20 < 2026-09-01, so the "still raw as of period start" condition is
+  -- false -- correctly excluded, same reasoning as story 11 in the June set).
+  --
+  -- Separately verified (Toshkent Agro Savdo, story 4, re-wash, period
+  -- 2026-06-01..2026-06-30): processedKg=4,100 (raw counted ONCE, not once
+  -- per cycle); processedBreakdown calibreKg=2,450 (cycle 2's live output
+  -- only -- cycle 1's voided 3,000kg correctly excluded, not double-summed),
+  -- konditirskiyKg=900 (both cycles, additive per §2.13), lossKg=750 (both
+  -- cycles' loss, 600+150); lossPct=750/4,100=18.3% (against raw actually
+  -- consumed -- NOT against the two cycles' combined sent total of 7,100,
+  -- which would double-count the re-sent material and understate the
+  -- percentage). 2,450+900+750=4,100 exactly.
+
+  -- ============================================================
+  -- STORY 13 -- Nukus / Subxon / single-line / sulfur target / CROSS-PERIOD
+  -- re-wash: cycle 1 fails + voids in August, cycle 2 (re-wash) completes in
+  -- September -- a different reporting period from where the raw was consumed
+  -- ============================================================
+  insert into kirim_orders (order_date, plate, driver, owner_id, declared_total, status, created_by, created_at)
+    values ('2026-08-10', '75G777VV', 'Bekzod Rahimov', v_owner_nukus, 2000, 'qabul_qilindi', v_menejer, '2026-08-10 07:00:00+00')
+    returning order_id into v_order_id;
+  insert into kirim_lines (order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg)
+    values (v_order_id, v_type_subxon, 2000, 10, 45)
+    returning serial into v_serial;
+  insert into gate_weighings (dir, order_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
+    values ('kirim', v_order_id, 3200, 1200, v_qorovul, '2026-08-10 07:30:00+00', v_qorovul, '2026-08-10 09:00:00+00');
+  insert into storage_intake (serial, confirmed_at, actual_qty, confirmed_by)
+    values (v_serial, '2026-08-10 09:30:00+00', 2000, v_ombor);
+  insert into lab_results (scope, parent_serial, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, created_at)
+    values ('kirim', v_serial, v_serial, '2026-08-11', 11, 44, v_laborator, 'complete', '2026-08-11 10:00:00+00');
+  -- cycle 1: fails lab, gets voided -- completes (received_date) 2026-08-20,
+  -- entirely within August -- this is when the serial's raw is "processed"
+  -- (davrda qayta ishlangan), permanently, regardless of the re-wash below.
+  insert into moyka_sends (serial, wash_cycle, sent_date, qty_kg, created_by)
+    values (v_serial, 1, '2026-08-12', 2000, v_ombor);
+  insert into wash_cycles (serial, cycle_no, status, final_loss_pct)
+    values (v_serial, 1, 'final', 10.0) returning id into v_cycle1;
+  insert into finished_pallets (barcode2, serial, wash_cycle, type_id, calibre_id, weight_kg, received_date, status, created_by) values
+    ('PLT-' || v_serial || '-06-1', v_serial, 1, v_type_subxon, v_cal6, 1800, '2026-08-20', 'bekor_qilindi', v_ombor);
+  insert into lab_results (scope, parent_serial, wash_cycle_id, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, verdict, created_at)
+    values ('chiqim', v_serial, v_cycle1, 'PLT-' || v_serial || '-06-1', '2026-08-21', 13, 50, v_laborator, 'complete', 'qayta_yuvish', '2026-08-21 11:00:00+00');
+  -- cycle 2: re-wash of the voided 1,800kg, completes (received_date)
+  -- 2026-09-12 -- a DIFFERENT period from cycle 1's August completion. This
+  -- is the cross-period case: September's report must show this cycle's own
+  -- 90kg loss as a separately labelled line, WITHOUT making September's
+  -- "davrda qayta ishlangan" move (that stays anchored to August).
+  insert into moyka_sends (serial, wash_cycle, sent_date, qty_kg, created_by)
+    values (v_serial, 2, '2026-09-05', 1800, v_ombor);
+  insert into wash_cycles (serial, cycle_no, status, final_loss_pct)
+    values (v_serial, 2, 'final', 5.0) returning id into v_cycle2;
+  insert into finished_pallets (barcode2, serial, wash_cycle, type_id, calibre_id, weight_kg, received_date, status, created_by) values
+    ('PLT-' || v_serial || '-06-2', v_serial, 2, v_type_subxon, v_cal6, 1710, '2026-09-12', 'in_stock', v_ombor);
+  insert into lab_results (scope, parent_serial, wash_cycle_id, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, verdict, created_at)
+    values ('chiqim', v_serial, v_cycle2, 'PLT-' || v_serial || '-06-2', '2026-09-13', 9, 42, v_laborator, 'complete', 'o_tdi', '2026-09-13 11:00:00+00');
+  -- deliberately not dispatched
+
+  -- ============================================================
+  -- STORY 14 -- Nukus / Subxon / single-line / sulfur target / sent-to-Moyka
+  -- DELIBERATELY EXCEEDS effective_qty (1,600 kg sent against a 1,500 kg
+  -- gate net) -- the clamp-must-be-visible test case
+  -- ============================================================
+  insert into kirim_orders (order_date, plate, driver, owner_id, declared_total, status, created_by, created_at)
+    values ('2026-09-08', '75G888WW', 'Sardor Yusupov', v_owner_nukus, 1500, 'qabul_qilindi', v_menejer, '2026-09-08 07:00:00+00')
+    returning order_id into v_order_id;
+  insert into kirim_lines (order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg)
+    values (v_order_id, v_type_subxon, 1500, 10, 45)
+    returning serial into v_serial;
+  insert into gate_weighings (dir, order_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
+    values ('kirim', v_order_id, 2800, 1300, v_qorovul, '2026-09-08 07:30:00+00', v_qorovul, '2026-09-08 09:00:00+00');
+  insert into storage_intake (serial, confirmed_at, actual_qty, confirmed_by)
+    values (v_serial, '2026-09-08 09:30:00+00', 1500, v_ombor);
+  insert into lab_results (scope, parent_serial, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, created_at)
+    values ('kirim', v_serial, v_serial, '2026-09-09', 11, 44, v_laborator, 'complete', '2026-09-09 10:00:00+00');
+  -- effective_qty = gate net = 1,500 (single-line, gate stage 2 done same
+  -- day) -- sent below is 1,600, 100kg MORE than effective_qty. Real data
+  -- has produced this exact shape (serial 140726-003, flagged live) -- the
+  -- report must cap "davrda qayta ishlangan" at 1,500 and show the 100kg
+  -- overage explicitly, never silently.
+  insert into moyka_sends (serial, wash_cycle, sent_date, qty_kg, created_by)
+    values (v_serial, 1, '2026-09-10', 1600, v_ombor);
+  insert into wash_cycles (serial, cycle_no, status, final_loss_pct)
+    values (v_serial, 1, 'final', 5.0) returning id into v_cycle1;
+  insert into finished_pallets (barcode2, serial, wash_cycle, type_id, calibre_id, weight_kg, received_date, status, created_by) values
+    ('PLT-' || v_serial || '-06-1', v_serial, 1, v_type_subxon, v_cal6, 1520, '2026-09-14', 'in_stock', v_ombor);
+  insert into lab_results (scope, parent_serial, wash_cycle_id, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, verdict, created_at)
+    values ('chiqim', v_serial, v_cycle1, 'PLT-' || v_serial || '-06-1', '2026-09-15', 8, 42, v_laborator, 'complete', 'o_tdi', '2026-09-15 11:00:00+00');
+  -- deliberately not dispatched
 
   raise notice 'Demo data seeded: owners=% % % % %', v_owner_boysun, v_owner_fargona, v_owner_samarqand, v_owner_toshkent, v_owner_nukus;
 end $$;

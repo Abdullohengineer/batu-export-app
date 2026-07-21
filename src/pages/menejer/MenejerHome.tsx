@@ -17,6 +17,7 @@ export function MenejerHome() {
             { to: '/menejer/hisobot', label: 'Hisobot' },
             { to: '/menejer/qoldiq', label: "Ombor qoldig'i" },
             { to: '/menejer/kutilmoqda', label: 'Kutilayotgan ishlar' },
+            { to: '/menejer/mijoz-hisoboti', label: 'Mijoz hisoboti' },
           ]}
         />
       }

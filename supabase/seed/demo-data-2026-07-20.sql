@@ -19,7 +19,8 @@
 -- -- corrected here and live to gruzheny_kg=2000/pustoy_kg=1000 (net 1000),
 -- the same 1000kg tare every other story's truck already uses.
 --
--- Nine "stories" (KIRIM orders), spread 2026-05-04 to 2026-07-16 (~3 months):
+-- PART 1 -- nine "stories" (KIRIM orders), spread 2026-05-04 to 2026-07-16
+-- (~3 months), for the reporting/stock-on-hand/WIP saved views (§3.2.1-9):
 --   1. Boysun / Subxon / single-line / sulfur target / fully dispatched incl. Konditirskiy
 --   2. Farg'ona / Isfara / single-line / natural (no SO2) / partially dispatched, 2 pallets left in stock
 --   3. Samarqand / Subxon+Qand qizil / MULTI-line / one line dispatched, other line's pallets awaiting CHIQIM lab
@@ -30,6 +31,15 @@
 --   8. Toshkent / Isfara / single-line / gate stage 2 NOT done (provisional effective_qty), KIRIM lab not yet done
 --   9. Samarqand / Isfara / single-line / cycle 1 FAILS lab (qayta_yuvish), voided, NOT yet re-sent -- a real
 --      WIP state the stuck-items view needs: distinct from stories 4/6, which show the re-wash already done
+--
+-- PART 2 -- three more stories (10-12), a FIFTH owner (Nukus Agro Eksport,
+-- touched by nothing else in this file), purpose-built to verify the
+-- (not-yet-built) §3.5/§3.2.7 client report's balance arithmetic over a
+-- target period of 2026-06-01 to 2026-06-30. See the large comment block
+-- immediately above story 10 for the full hand-computed reference.
+--   10. Nukus / Subxon / arrived 2026-05-20 (before period), washed 2026-06-05 (during), output incl. Konditirskiy -> opening RAW contributor
+--   11. Nukus / Subxon / arrived+washed in May (before period), dispatched 2026-06-20 (during) -> opening FINISHED contributor
+--   12. Nukus / Subxon (natural, no SO2 target) / arrived 2026-06-25 (during period), never washed -> closing RAW contributor
 
 do $$
 declare
@@ -38,6 +48,7 @@ declare
   v_owner_fargona uuid;
   v_owner_samarqand uuid;
   v_owner_toshkent uuid;
+  v_owner_nukus uuid;
   v_type_subxon uuid := '48aebd73-1de9-4edb-802a-ad38e197fc7e';
   v_type_isfara uuid := 'b6295a21-df2f-4eef-9c79-de7bc701ee94';
   v_type_qandqizil uuid := '35c5c93a-d5be-410e-8694-fac3a7ab861b';
@@ -68,6 +79,7 @@ begin
   insert into owners (name, active) values ('Farg''ona Eksport Guruhi', true) returning id into v_owner_fargona;
   insert into owners (name, active) values ('Samarqand Meva Kompaniyasi', true) returning id into v_owner_samarqand;
   insert into owners (name, active) values ('Toshkent Agro Savdo', true) returning id into v_owner_toshkent;
+  insert into owners (name, active) values ('Nukus Agro Eksport', true) returning id into v_owner_nukus;
 
   -- ============================================================
   -- STORY 1 -- Boysun / Subxon / single-line / sulfur target / fully dispatched
@@ -376,5 +388,169 @@ begin
     values ('chiqim', v_serial, v_cycle1, 'PLT-' || v_serial || '-06-1', '2026-07-18', 13, 51, v_laborator, 'complete', 'qayta_yuvish', '2026-07-18 11:00:00+00');
   -- deliberately NO cycle 2 -- still awaiting Ombor to re-send, no chiqim_requests/dispatch either
 
-  raise notice 'Demo data seeded: owners=% % % %', v_owner_boysun, v_owner_fargona, v_owner_samarqand, v_owner_toshkent;
+  -- ============================================================================
+  -- HAND-COMPUTED REFERENCE -- Nukus Agro Eksport, period 2026-06-01..2026-06-30
+  -- ============================================================================
+  -- This is the ground truth the (not-yet-built) §3.5/§3.2.7 client report
+  -- must reproduce for this client+period. A mismatch against this block is
+  -- unambiguously a code error, not a data question -- every figure below is
+  -- derived directly from the three inserts that follow, by hand, using the
+  -- SAME rules the rest of this engine already established:
+  --   * every quantity is effective_qty (§2.16), never actual_qty/declared --
+  --     story 10 deliberately makes gate net (3,100) != actual_qty (3,000)
+  --     != declared (3,000) specifically to catch a report that reads the
+  --     wrong figure (exactly the class of bug the stock-on-hand build found
+  --     and fixed this session for raw balances -- see DECISIONS.md).
+  --   * KIRIM date basis = gate stage 1 completion (§3.2.3); CHIQIM date
+  --     basis = gate stage 2 completion (§3.2.3). "Sent to Moyka" and
+  --     "produced" have no §3.2.3 rule of their own (they are not Hisobot row
+  --     types) -- moyka_sends.sent_date and finished_pallets.received_date
+  --     are the only dates either event has, so they are the anchors used
+  --     here. Flag this choice to whoever builds the report; it is a
+  --     reasonable default, not a locked spec decision -- §3.5 itself only
+  --     describes per-serial arrival/dispatch/remainder, with no explicit
+  --     period opening/closing-balance concept written down anywhere yet.
+  --   * "opening" = as of 2026-06-01 (start of period, inclusive);
+  --     "closing" = as of 2026-06-30 (end of period, inclusive).
+  --   * Finished stock is "produced but not DEPARTED", not "produced and
+  --     unclaimed" -- the same three-state model the passport (§3.2.5
+  --     "Joriy holat") and stock-on-hand (§3.2.6 band_qilingan bucket)
+  --     already use: `omborda` (unclaimed) and `band_qilingan` (claimed onto
+  --     a manifest, that dispatch's gate stage 2 not yet complete) BOTH
+  --     still count as held; only `jo'natilgan` (gate stage 2 actually
+  --     complete) removes a pallet from the balance. All three views must
+  --     derive this the same way. This fixture doesn't happen to exercise a
+  --     pallet sitting in band_qilingan across the period boundary itself
+  --     (story 11's claim and departure land on the same day, 06-20) --
+  --     only that claimed-without-departed must never be read as gone.
+  --
+  -- RAW BALANCE (effective_qty basis):
+  --   Opening raw (unsent as of 2026-06-01)........... 3,100 kg  (story 10 only -- arrived
+  --                                                                2026-05-20, not sent until 06-05)
+  --   + Received during period (KIRIM, gate stage 1 in June) 1,800 kg  (story 12 only, 06-25)
+  --   - Sent to Moyka during period (cycle 1 sends in June).. 3,100 kg  (story 10 only, 06-05)
+  --   = Closing raw (unsent as of 2026-06-30).......... 1,800 kg  (story 12's untouched raw --
+  --                                                                story 10 fully consumed, 3,100-3,100=0)
+  --
+  -- FINISHED BALANCE (by calibre, kg -- Konditirskiy shown separately, per
+  -- §2.3/§2.13: client-owned and collectible, not a deduction like loss):
+  --                          Opening(06-01)  Produced-in-period  Dispatched-in-period  Closing(06-30)
+  --   Kalibr 6                    1,400            1,800               1,400              1,800
+  --   Kalibr 8                      900                0                 900                  0
+  --   Kalibr 4                        0            1,000                 0              1,000
+  --   Konditirskiy                    0              145                 0                145
+  --   TOTAL                       2,300            2,945               2,300              2,945
+  --   (Opening = story 11's pallets, produced 05-15, not yet departed at period start --
+  --    band_qilingan would also count here if it applied, it doesn't in this fixture.
+  --    Produced-in-period = story 10's pallets (incl. its Konditirskiy), received_date 06-08.
+  --    Dispatched-in-period = story 11's pallets, CHIQIM gate stage 2 completed 06-20 --
+  --    exactly matches story 11's own opening figures per calibre, confirming it was a
+  --    clean, total departure with nothing partial. Closing = story 10's own output,
+  --    entirely unclaimed -- confirms story 11 fully cleared out and story 10 is the
+  --    only thing left, both cross-checked independently of the addition above.)
+  --
+  -- PROCESS LOSS (period-scoped, on the processed portion only -- §3.5 "loss on
+  -- processed portion only"; Konditirskiy is output, not loss, so it is
+  -- excluded from this figure the same way it's excluded from "calibre
+  -- output" in the §3.2.1 identity): only story 10 was both sent AND
+  -- finished inside the window (story 11 was processed entirely in May,
+  -- story 12 never sent).
+  --   Sent 3,100 kg -> calibre output 2,800 kg (1,800 Kalibr 6 + 1,000 Kalibr 4)
+  --   + Konditirskiy 145 kg -> loss = 3,100 - 2,800 - 145 = 155 kg = 155/3,100
+  --   = 5.0% exactly (matches story 10's own wash_cycles.final_loss_pct
+  --   directly -- a second, independent check).
+  --
+  -- DISPATCHED DURING PERIOD (total): 2,300 kg (story 11's two pallets, one trip).
+  --
+  -- Known gap, not covered by this fixture: none of these three stories has
+  -- gate stage 2 still outstanding AS OF the period boundary itself (all
+  -- three are either fully final or fully untouched by 06-01/06-30) -- a
+  -- "still provisional exactly at the boundary" edge case is not exercised
+  -- here and would need its own fixture if the report needs to handle it.
+
+  -- ============================================================
+  -- STORY 10 -- Nukus / Subxon / single-line / sulfur target / arrived before
+  -- period, washed during it -> OPENING RAW balance contributor
+  -- ============================================================
+  insert into kirim_orders (order_date, plate, driver, owner_id, declared_total, status, created_by, created_at)
+    values ('2026-05-20', '75G201RR', 'Farrux Yoqubov', v_owner_nukus, 3000, 'qabul_qilindi', v_menejer, '2026-05-20 07:00:00+00')
+    returning order_id into v_order_id;
+  insert into kirim_lines (order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg)
+    values (v_order_id, v_type_subxon, 3000, 10, 45)
+    returning serial into v_serial;
+  insert into gate_weighings (dir, order_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
+    values ('kirim', v_order_id, 4600, 1500, v_qorovul, '2026-05-20 07:30:00+00', v_qorovul, '2026-05-20 09:00:00+00');
+  insert into storage_intake (serial, confirmed_at, actual_qty, confirmed_by)
+    values (v_serial, '2026-05-20 09:30:00+00', 3000, v_ombor);
+  insert into lab_results (scope, parent_serial, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, created_at)
+    values ('kirim', v_serial, v_serial, '2026-05-21', 11, 44, v_laborator, 'complete', '2026-05-21 10:00:00+00');
+  -- effective_qty = gate net = 3,100 (single-line, gate stage 2 done) --
+  -- deliberately NOT equal to actual_qty (3,000) or declared (3,000): see
+  -- the reference block above.
+  insert into moyka_sends (serial, wash_cycle, sent_date, qty_kg, created_by)
+    values (v_serial, 1, '2026-06-05', 3100, v_ombor);
+  insert into wash_cycles (serial, cycle_no, status, final_loss_pct)
+    values (v_serial, 1, 'final', 5.0) returning id into v_cycle1;
+  insert into finished_pallets (barcode2, serial, wash_cycle, type_id, calibre_id, weight_kg, received_date, status, created_by) values
+    ('PLT-' || v_serial || '-06-1', v_serial, 1, v_type_subxon, v_cal6, 1800, '2026-06-08', 'in_stock', v_ombor),
+    ('PLT-' || v_serial || '-04-1', v_serial, 1, v_type_subxon, v_cal4, 1000, '2026-06-08', 'in_stock', v_ombor),
+    ('PLT-' || v_serial || '-KN1', v_serial, 1, v_type_subxon, v_calkn, 145, '2026-06-08', 'in_stock', v_ombor);
+  insert into lab_results (scope, parent_serial, wash_cycle_id, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, verdict, created_at)
+    values ('chiqim', v_serial, v_cycle1, 'PLT-' || v_serial || '-06-1', '2026-06-09', 8, 41, v_laborator, 'complete', 'o_tdi', '2026-06-09 11:00:00+00');
+  -- deliberately NOT dispatched -- all three pallets stay in stock through period end
+
+  -- ============================================================
+  -- STORY 11 -- Nukus / Subxon / single-line / sulfur target / arrived+washed
+  -- before period, dispatched during it -> OPENING FINISHED balance
+  -- contributor
+  -- ============================================================
+  insert into kirim_orders (order_date, plate, driver, owner_id, declared_total, status, created_by, created_at)
+    values ('2026-05-10', '75G150SS', 'Otabek Nazarov', v_owner_nukus, 2500, 'qabul_qilindi', v_menejer, '2026-05-10 07:00:00+00')
+    returning order_id into v_order_id;
+  insert into kirim_lines (order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg)
+    values (v_order_id, v_type_subxon, 2500, 10, 40)
+    returning serial into v_serial;
+  insert into gate_weighings (dir, order_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
+    values ('kirim', v_order_id, 3900, 1400, v_qorovul, '2026-05-10 07:30:00+00', v_qorovul, '2026-05-10 09:00:00+00');
+  insert into storage_intake (serial, confirmed_at, actual_qty, confirmed_by)
+    values (v_serial, '2026-05-10 09:30:00+00', 2500, v_ombor);
+  insert into lab_results (scope, parent_serial, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, created_at)
+    values ('kirim', v_serial, v_serial, '2026-05-11', 10, 39, v_laborator, 'complete', '2026-05-11 10:00:00+00');
+  insert into moyka_sends (serial, wash_cycle, sent_date, qty_kg, created_by)
+    values (v_serial, 1, '2026-05-12', 2500, v_ombor);
+  insert into wash_cycles (serial, cycle_no, status, final_loss_pct)
+    values (v_serial, 1, 'final', 8.0) returning id into v_cycle1;
+  insert into finished_pallets (barcode2, serial, wash_cycle, type_id, calibre_id, weight_kg, received_date, status, created_by) values
+    ('PLT-' || v_serial || '-06-1', v_serial, 1, v_type_subxon, v_cal6, 1400, '2026-05-15', 'in_stock', v_ombor),
+    ('PLT-' || v_serial || '-08-1', v_serial, 1, v_type_subxon, v_cal8, 900, '2026-05-15', 'in_stock', v_ombor);
+  insert into lab_results (scope, parent_serial, wash_cycle_id, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, verdict, created_at)
+    values ('chiqim', v_serial, v_cycle1, 'PLT-' || v_serial || '-06-1', '2026-05-16', 9, 38, v_laborator, 'complete', 'o_tdi', '2026-05-16 11:00:00+00');
+  insert into chiqim_requests (request_date, plate, driver, owner_id, status, created_by, created_at, ombor_finished_at, ombor_finished_by)
+    values ('2026-06-20', '75G999UU', 'Sherzod Ergashev', v_owner_nukus, 'olib_ketildi', v_menejer, '2026-06-20 06:00:00+00', '2026-06-20 08:00:00+00', v_ombor)
+    returning id into v_request_id;
+  insert into dispatch_manifest (request_id, barcode2, loaded_at) values
+    (v_request_id, 'PLT-' || v_serial || '-06-1', '2026-06-20 07:30:00+00'),
+    (v_request_id, 'PLT-' || v_serial || '-08-1', '2026-06-20 07:35:00+00');
+  insert into gate_weighings (dir, request_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
+    values ('chiqim', v_request_id, 3300, 1000, v_qorovul, '2026-06-20 08:30:00+00', v_qorovul, '2026-06-20 09:00:00+00');
+
+  -- ============================================================
+  -- STORY 12 -- Nukus / Subxon (natural, no SO2 target) / single-line /
+  -- arrived during period, never washed -> CLOSING RAW balance contributor
+  -- ============================================================
+  insert into kirim_orders (order_date, plate, driver, owner_id, declared_total, status, created_by, created_at)
+    values ('2026-06-25', '75G180TT', 'Ilhom Qodirov', v_owner_nukus, 1800, 'qabul_qilindi', v_menejer, '2026-06-25 07:00:00+00')
+    returning order_id into v_order_id;
+  insert into kirim_lines (order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg)
+    values (v_order_id, v_type_subxon, 1800, 11, null)
+    returning serial into v_serial;
+  insert into gate_weighings (dir, order_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
+    values ('kirim', v_order_id, 3000, 1200, v_qorovul, '2026-06-25 07:30:00+00', v_qorovul, '2026-06-25 09:00:00+00');
+  insert into storage_intake (serial, confirmed_at, actual_qty, confirmed_by)
+    values (v_serial, '2026-06-25 09:30:00+00', 1800, v_ombor);
+  insert into lab_results (scope, parent_serial, sampled_pallet, sample_date, moisture_pct, so2_mg_kg, tested_by, status, created_at)
+    values ('kirim', v_serial, v_serial, '2026-06-26', 12, null, v_laborator, 'complete', '2026-06-26 10:00:00+00');
+  -- deliberately no moyka_sends row -- raw sits untouched through period end
+
+  raise notice 'Demo data seeded: owners=% % % % %', v_owner_boysun, v_owner_fargona, v_owner_samarqand, v_owner_toshkent, v_owner_nukus;
 end $$;

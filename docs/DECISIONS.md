@@ -799,3 +799,15 @@ Built exactly the design the 2026-07-19 entry already validated once and reverte
 `npx tsc -b --noEmit` clean. `npm test`: 79/79 unchanged (no pure-logic files touched this task). Full Playwright suite run once per the reduced-testing instruction: **12 passed, 2 failed — the exact same two pre-existing, already-diagnosed failures from the immediately-prior entries (`laborator-chiqim-hard-gate.spec.ts`, `laborator-kirim.spec.ts`), nothing new.** No regression introduced by this task.
 
 **Out of scope, not touched (per the task):** stock-on-hand, WIP, client report, yield, Rahbar dashboard (later prompts) — this is the foundation they inherit, same relationship as the reporting engine to its own saved views. PDF/print, Uz/Ru export localisation, the two known-failing e2e tests, the `-2,200kg` race — none touched.
+
+## 2026-07-21 — Stock-on-hand + WIP saved views: pre-build verification, one data fix
+
+**Context:** Before building §3.2.6 (stock-on-hand) and §3.2.9 (WIP/stuck), the task required re-confirming the demo data's KIRIM-side `gate_weighings` independently — the immediately-prior "Serial passport" entry above only checked and fixed the CHIQIM side; if KIRIM carried the same reversal, every demo `effective_qty` would be wrong.
+
+**KIRIM confirmed correct, not reversed.** Queried `gate_weighings` live for all demo KIRIM orders: every row has `gruzheny_kg > pustoy_kg` (loaded > empty, correct direction), `net_kg` lands 2-4% above `declared_total` (plausible truck variance) on every completed row, and the one provisional row (story 8) correctly has `pustoy_kg`/`net_kg` null pending gate stage 2. No fix needed.
+
+**One data inconsistency found and fixed, distinct from the swap the prior entry already corrected:** story 2's (Farg'ona, `10B555XX`) CHIQIM `gate_weighings` had `net_kg=3200` against a single dispatched pallet actually weighing 1000kg — the swap fix corrected direction but never re-checked each story's own values against its dispatch. Corrected live (`gruzheny_kg` 4200→2000, `net_kg` now 1000) and in `supabase/seed/demo-data-2026-07-20.sql`, matching the 1000kg tare every other story's truck already uses.
+
+**Correction to this session's own initial read:** first pass through the seed file (read before `git fetch` picked up PR #31) mistook the already-merged CHIQIM swap and story 9 as still live-only/undocumented. Re-reading the "Serial passport" entry above showed both were already fixed/added there, file included — only the story-2 mismatch above was genuinely new.
+
+**Also confirmed before designing the new views:** SPEC.md has no written content past §3.2.5 — §3.2.6/§3.2.9 are new spec text this task authors, not a pre-existing locked design, and the companion doc SPEC.md pointed to (`docs/SPEC-reporting-v1.10-revision.md`) doesn't exist in this repo. Per user direction: original numbering kept (§3.2.6 stock-on-hand, §3.2.7 client report reserved, §3.2.8 yield reserved, §3.2.9 WIP, §3.2.10 Rahbar aggregates reserved) and written directly into SPEC.md from here on; the dangling companion-doc reference is removed as part of this task.

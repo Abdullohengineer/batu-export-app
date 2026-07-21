@@ -1,15 +1,19 @@
 import type { ChiqimReportRow } from '../../lib/reportQuery'
 
 // Row-expand content — see KirimRowDetail.tsx's own note: this row's extra
-// fields only, not the full serial passport (§3.2.5, out of scope).
+// fields only. The full serial passport (§3.2.5) opens from the button
+// below, scoped to this row's PARENT serial (row.serial), not the pallet
+// itself — a passport is one serial's whole life, not one pallet's.
 export function ChiqimRowDetail({
   row,
   typeName,
   calibreLabel,
+  onOpenPassport,
 }: {
   row: ChiqimReportRow
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
+  onOpenPassport: (serial: string) => void
 }) {
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -36,6 +40,16 @@ export function ChiqimRowDetail({
           {!row.requestId && <div>Hali hech qanday CHIQIM so'roviga bog'lanmagan.</div>}
         </>
       )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpenPassport(row.serial)
+        }}
+        className="text-sm font-medium text-slate-700 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+      >
+        Seriya pasportini ko'rish →
+      </button>
     </div>
   )
 }

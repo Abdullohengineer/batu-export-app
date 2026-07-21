@@ -26,6 +26,7 @@ export function ReportTableRow({
   ownerName,
   typeName,
   calibreLabel,
+  onOpenPassport,
 }: {
   row: ReportRow
   expanded: boolean
@@ -33,6 +34,7 @@ export function ReportTableRow({
   ownerName: (id: string) => string
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
+  onOpenPassport: (serial: string) => void
 }) {
   const qty = row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg
 
@@ -110,9 +112,9 @@ export function ReportTableRow({
         <tr className="border-b border-slate-200 dark:border-slate-700">
           <td colSpan={REPORT_TABLE_COLUMN_COUNT} className="bg-slate-50 px-3 py-3 dark:bg-slate-900/40">
             {row.kind === 'kirim' ? (
-              <KirimRowDetail row={row} />
+              <KirimRowDetail row={row} onOpenPassport={onOpenPassport} />
             ) : (
-              <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} />
+              <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
             )}
           </td>
         </tr>

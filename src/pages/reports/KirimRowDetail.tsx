@@ -1,10 +1,10 @@
 import type { KirimReportRow } from '../../lib/reportQuery'
 
-// Row-expand content — NOT the full serial passport (§3.2.5, out of scope
-// this prompt: no wash-cycle-by-wash-cycle breakdown, no dispatches). Just
-// this row's own additional fields, same "expand reveals the rest" contract
-// as every other card in this app.
-export function KirimRowDetail({ row }: { row: KirimReportRow }) {
+// Row-expand content — this row's own additional fields, same "expand
+// reveals the rest" contract as every other card in this app. The FULL
+// serial passport (§3.2.5) is a deeper drill-down from here, not inline —
+// see the "Seriya pasportini ko'rish" button below and SerialPassportModal.tsx.
+export function KirimRowDetail({ row, onOpenPassport }: { row: KirimReportRow; onOpenPassport: (serial: string) => void }) {
   const hasTarget = row.targetMoisturePct !== null || row.targetSo2MgKg !== null
 
   return (
@@ -34,6 +34,16 @@ export function KirimRowDetail({ row }: { row: KirimReportRow }) {
           {row.targetSo2MgKg !== null && ` (talab: ${row.targetSo2MgKg} mg/kg)`}
         </div>
       )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpenPassport(row.serial)
+        }}
+        className="text-sm font-medium text-slate-700 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+      >
+        Seriya pasportini ko'rish →
+      </button>
     </div>
   )
 }

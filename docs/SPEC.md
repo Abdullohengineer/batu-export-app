@@ -1,9 +1,9 @@
 # BATU EXPORT — Ombor & Logistika App
 ## Master Design Specification
 
-**Version:** 1.17
+**Version:** 1.18
 **Date:** 21 July 2026
-**Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED (redesigned v1.9; §5.5.5 re-wash re-entry quantity basis OPEN) · Rahbar (business owner) — DESIGNED · Weight authority (§2.16) — LOCKED (v1.10 prompt 1) · Hisobot query engine + results view (§3.2.1-3.2.4) — LOCKED, **desktop table, server-side query** (v1.16) · **Serial passport (§3.2.5) — LOCKED, first saved view applied** (v1.17) · remaining saved views §3.2.6+ not yet applied, see `docs/SPEC-reporting-v1.10-revision.md`
+**Status:** Manager — LOCKED · Client report — LOCKED · Qorovul — LOCKED · Storage Manager §1–§5 — LOCKED · Laborator — LOCKED (redesigned v1.9; §5.5.5 re-wash re-entry quantity basis OPEN) · Rahbar (business owner) — DESIGNED · Weight authority (§2.16) — LOCKED (v1.10 prompt 1) · Hisobot query engine + results view (§3.2.1-3.2.4) — LOCKED, **desktop table, server-side query** (v1.16) · Serial passport (§3.2.5) — LOCKED (v1.17) · **Stock on hand (§3.2.6) and WIP/stuck (§3.2.9) — LOCKED, applied** (v1.18) · §3.2.7 client report, §3.2.8 yield, §3.2.10 Rahbar aggregates — reserved section numbers, not yet built; written into this document directly as each is built, no separate companion doc
 
 ---
 
@@ -107,11 +107,14 @@ A serial whose lab result is **out of spec** (e.g. SO₂ too high) can be sent b
 - 🔒 **Yield-loss is recalculated at the second `Tugallash` and is FINAL** — whether higher or lower than the first.
 - Client-visible in the passport/report (the re-wash explains any yield change).
 
-### 2.14 Configurable thresholds 🔒 (NEW)
+### 2.14 Configurable thresholds 🔒 (NEW; extended v1.18 — §3.2.9 WIP view)
 Exception rules are **settings, not hardcoded** — editable in Administration (§6.4):
 - **Sera kechikdi** — sulfur result overdue after *N* days (default 2).
-- **Moykada turib qoldi** — serial idle in Moyka longer than *N* days.
-- **G'ayrioddiy yo'qotish** — yield-loss above *X* %.
+- **Moykada turib qoldi** — serial idle in Moyka longer than *N* days (default 7).
+- **G'ayrioddiy yo'qotish** — yield-loss above *X* % (default 22).
+- **Xom ashyo kutilmoqda** *(v1.18)* — raw received, not yet sent to Moyka, longer than *N* days (default 3).
+- **Tahlil kechikdi** *(v1.18 — resolves §7 open question 9)* — a finished batch awaiting its CHIQIM lab check longer than *N* days (default 2). Untested stock cannot ship (§5.5.3 hard gate), so this is the highest-value row on the WIP view.
+- **Jo'natish kechikdi** *(v1.18)* — a CHIQIM request neither fully loaded (Ombor) nor departed (Qorovul gate stage 2) longer than *N* days (default 2).
 
 ### 2.15 Technical architecture 🔒 (NEW)
 **Stack:** React + Vite + TS + Tailwind (PWA) · **Netlify** (frontend, auto-deploy from GitHub) · **Supabase** (Postgres + Auth + RLS + Storage) · Dexie/IndexedDB (offline queue).
@@ -138,7 +141,7 @@ Exception rules are **settings, not hardcoded** — editable in Administration (
 
 ## 2.16 WEIGHT AUTHORITY & EFFECTIVE QUANTITY 🔒 (NEW, v1.10)
 
-*Renumbered from the source revision's "§2.15" — SPEC.md already has an unrelated §2.15 ("Technical architecture," above). See `docs/SPEC-reporting-v1.10-revision.md` for the revision as originally written, and DECISIONS.md for the renumbering note.*
+*Renumbered from the source revision's "§2.15" — SPEC.md already has an unrelated §2.15 ("Technical architecture," above). See DECISIONS.md for the renumbering note (the source revision's own companion doc was never actually created in this repo — every section it would have held is now written directly into this document as each is built, per v1.18).*
 
 Three weights exist for the same material. **All three are permanently retained; none overwrites another.**
 
@@ -186,7 +189,7 @@ Segmented **`KIRIM | CHIQIM`** tabs switch the screen. Each = create button + li
 
 ### 3.2 HISOBOT (Reporting) 🔒 — query engine + results view APPLIED (v1.14 / Step 10 prompt 1)
 
-*Supersedes this document's own prior §3.2 "Tarix" text (chronological event log, sub-tabbed by direction) — that functionality is now this section, built out as the unified engine the v1.10 revision called for. §3.4 Kuzatuv and §3.5 Client report, further down this document, are **NOT yet superseded** — they still describe not-yet-built functionality (serial passport lenses, the full client balance report) and stay as the only spec reference for it until the saved views that absorb them (§3.2.5 passport, §3.2.6 stock-on-hand, §3.2.7 client report — see `docs/SPEC-reporting-v1.10-revision.md`) are actually built. Until then, §2.11's and §6.3's own mentions of "Tarix"/"Kuzatuv" as Rahbar's reporting toolkit are still accurate in spirit (same underlying screen) even though this section's own name changed.*
+*Supersedes this document's own prior §3.2 "Tarix" text (chronological event log, sub-tabbed by direction) — that functionality is now this section, built out as the unified engine the v1.10 revision called for. §3.4 Kuzatuv and §3.5 Client report, further down this document, are **NOT yet superseded** — they still describe not-yet-built functionality (the full client balance report) and stay as the only spec reference for it until the saved view that absorbs them (§3.2.7 client report) is actually built. Until then, §2.11's and §6.3's own mentions of "Tarix"/"Kuzatuv" as Rahbar's reporting toolkit are still accurate in spirit (same underlying screen) even though this section's own name changed. Each saved view is written directly into this section as it's built (§3.2.5 passport, §3.2.6 stock-on-hand, §3.2.9 WIP — all now below); §3.2.7 client report, §3.2.8 yield, §3.2.10 Rahbar aggregates remain reserved numbers with no body yet.*
 
 🔒 **One shared query engine, results table, totals strip, and filter bar — the foundation every later saved view is built on, not a screen in its own right.** Available to **Menejer and Rahbar** (`/menejer/hisobot` and `/rahbar/hisobotlar` — identical component, no write actions on either side, so Rahbar's read-only rule §2.12 needs no special-casing here).
 
@@ -216,7 +219,7 @@ Direction (KIRIM / CHIQIM / both) · date range + presets · buyurtmachi · mahs
 
 The active date basis is **printed on screen and on every export** (*"sana asosi: kelish"* / *"jo'natish"*). Two people producing two different numbers from the same screen is how a reporting layer loses credibility, and an unlabelled date basis is the usual cause.
 
-🔒 **A CHIQIM/pallet row with no governing dispatch event yet (status omborda / band qilingan) has no date to range-filter on.** Left out of the default (date-ranged) view — the default stays a clean history of things that actually happened — but reachable by explicitly selecting that exact status, which overrides the date filter for rows of that status only. This is deliberate plumbing for the future stock-on-hand saved view (§3.2.6, out of scope this prompt), not a gap in this one.
+🔒 **A CHIQIM/pallet row with no governing dispatch event yet (status omborda / band qilingan) has no date to range-filter on.** Left out of the default (date-ranged) view — the default stays a clean history of things that actually happened — but reachable by explicitly selecting that exact status, which overrides the date filter for rows of that status only. This was deliberate plumbing for the stock-on-hand saved view (§3.2.6) — now built, confirmed the same shape: `stock_on_hand_rows` derives its `available`/`band_qilingan`/`awaiting_lab`/`qayta_yuvish` buckets from the identical claimed/verdict logic, just without a date filter at all (stock-on-hand is a snapshot of *now*, not an event history).
 
 #### 3.2.4 Results table + totals strip 🔒
 
@@ -247,6 +250,50 @@ Contents, in lifecycle order:
 - **Joriy holat** — by kalibr, **three states, not two**: `omborda` (in storage, unclaimed), `band qilingan` (claimed onto a manifest but the truck hasn't cleared gate stage 2 — physically still on site), `jo'natilgan` (departed). A pallet is deducted from *available* stock the instant it's scanned onto a manifest (§5.4) — well before gate stage 2 — but that is not the same as being physically gone; only `jo'natilgan` counts as collected. §3.5's client report reads this same three-way split for "held for client," which must include reserved-but-not-departed.
 
 **Implemented as:** `get_serial_passport(p_serial text) returns jsonb` — one RPC, one round trip, returning the whole nested document (order/gate/intake/kirimLab/effectiveQty/cycles/dispatches/currentPosition) rather than several flat queries, given how heterogeneous the shape is. `src/lib/serialPassport.ts` (types + fetch) + `src/pages/reports/SerialPassportModal.tsx` (first modal in this codebase, same "first of its kind, deliberately" precedent as §3.2.4's first `<table>` — the content is too dense for the row-expand `<tr>` it's reached from).
+
+#### 3.2.6 Ombor qoldig'i — stock on hand 🔒 (v1.18 — first saved view built after the passport)
+
+**A snapshot of *now*, not an event history** — the one saved view on this engine with no date filter at all. Available to Menejer and Rahbar, same screen, same read-only rule as §3.2 itself.
+
+Grouped **buyurtmachi → mahsulot turi → kalibr**. Konditirskiy needs no special-case: it already carries its own calibre (§2.3, numberless), so it naturally lands in its own group per client rather than blending into a numbered calibre's total.
+
+Five states, per batch:
+- **Available** — `in_stock`, unclaimed, current wash cycle carries an `o'tdi` verdict (§5.5.3 hard gate) — the only state actually dispatchable today.
+- **Band qilingan** — claimed onto a CHIQIM manifest, that dispatch's gate stage 2 not yet complete. Reserved, still physically on site — same three-state distinction §3.2.5's passport established (`Joriy holat`), reused here rather than re-invented.
+- **Awaiting lab** — `in_stock`, unclaimed, no CHIQIM lab result yet for the current cycle.
+- **Flagged qayta yuvish** — `in_stock`, unclaimed, current cycle's verdict is `qayta_yuvish` (§5.5.4: the lab has flagged it, Ombor hasn't voided/re-sent yet).
+- **Raw not yet washed** — cycle-1 balance (`effective_qty`, §2.16 — never `actual_qty` directly, same figure `useMoykaSerials.ts`'s own cycle-1 cap already reads — minus whatever's already been sent for cycle 1) that hasn't gone to Moyka at all. A re-wash's own voided-but-not-yet-resent material is a *different* state (§3.2.9's own WIP row, not this one) — it already went through Moyka once.
+
+**Ageing.** Each batch shows days held, anchored on the event that put it in its current bucket (a finished pallet's `received_date`; a raw balance's `storage_intake.confirmed_at`). **`> 90` days flags red.** Not a §2.14 setting — the task named 90 days directly, unlike the WIP thresholds below.
+
+**Lab turnaround (§3.2.9 part C), shown here as one header stat:** the average number of days between a wash cycle producing pallets and its CHIQIM verdict landing, over every *completed* check — the benchmark an in-progress "awaiting lab" WIP row's own elapsed days is read against.
+
+**Implemented as:** `stock_on_hand_rows` (view, one row per pallet or per raw balance, feeds ageing + passport drill-down) + `stock_on_hand_summary(p_owner_id)` (function, the grouped client→product→calibre→bucket aggregate the UI actually renders — same detail/aggregate split as `report_query_page`/`report_totals`) + `lab_turnaround_avg()` (function). `supabase/migrations/0028_stock_on_hand_and_wip.sql`. Same furniture as §3.2.4 throughout: a `<table>`, row expand, and the §3.2.5 passport reached from any row — no new interaction pattern.
+
+#### 3.2.7 Client report — RESERVED, not yet built
+
+Section number held per the original v1.10 revision plan. §3.5 (below) is still the only spec text for this until it's actually designed.
+
+#### 3.2.8 Moisture-adjusted yield — RESERVED, not yet built
+
+Section number held per the original v1.10 revision plan.
+
+#### 3.2.9 Kutilayotgan ishlar — WIP / stuck 🔒 (v1.18)
+
+**An exceptions list, not a history or a snapshot of stock.** One row per thing that has sat beyond its configured threshold (§2.14) — every threshold here is a `settings_limits` value, editable in Administration, not hardcoded. Available to Menejer and Rahbar; the natural forerunner of the Rahbar exceptions list named in §6.2 (§3.2.10, reserved, would aggregate this across the business — not built this prompt).
+
+Seven checks, each its own row kind:
+1. **Raw received, not sent to Moyka** — cycle-1 balance untouched beyond **Xom ashyo kutilmoqda** (default 3 days, §2.14).
+2. **Sent to Moyka, not returned** — cycle still `active` beyond **Moykada turib qoldi** (default 7 days) — the same threshold §5.2/§5.3's own idle flag already uses; this view surfaces it, doesn't duplicate its definition.
+3. **Awaiting lab test** — a finished cycle with no CHIQIM verdict yet, beyond **Tahlil kechikdi** (default 2 days). Highest-value row: untested stock cannot ship (§5.5.3).
+4. **Moisture in, SO₂ pending** — beyond **Sera kechikdi** (default 2 days). Natural products (no SO₂ target) are excluded outright, never overdue (§5.5.1, §7 item 10) — this is the exact mechanism, not a new one.
+5. **Flagged qayta yuvish, not yet re-sent** — a cycle whose CHIQIM verdict is `qayta_yuvish` with no next-cycle `wash_cycles` row yet. **Shows unconditionally, no threshold** — the moment the lab flags it, it's actionable.
+6. **Open CHIQIM requests not loaded / not departed** — neither Ombor's `ombor_finished_at` nor Qorovul's gate-stage-2 `completed_at` set, beyond **Jo'natish kechikdi** (default 2 days).
+7. **Serials with provisional weight** — gate stage 2 outstanding. **Shows unconditionally, no threshold** — every day it stays provisional is itself the signal.
+
+**Lab turnaround, per batch (part C).** Row kind 3 (awaiting lab) shows its own elapsed days inline — that figure *is* an in-progress turnaround measurement, read against §3.2.6's header average for context (is this batch slower than usual, or normal for this lab).
+
+**Implemented as:** `wip_rows` (view, one shared row shape, `wip_kind` distinguishing the seven checks; reuses `report_kirim_rows.provisional` directly for row kind 7 rather than re-deriving it). `supabase/migrations/0028_stock_on_hand_and_wip.sql`. Same table/expand/passport furniture as §3.2.4 and §3.2.6 — no new interaction pattern.
 
 ### 3.3 Product settings 🔒
 Add categories / types / calibres (incl. Konditirskiy) → `MAHSULOT_TURLARI`.
@@ -487,12 +534,12 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 6. ~~Sulfur unit~~ — 🔒 **RESOLVED: mg/kg (SO₂)**, entered by the **Laborator**.
 7. ~~Laborator CHIQIM scope~~ — ~~RESOLVED: CHIQIM mirrors KIRIM exactly~~ — 🔒 **REOPENED and re-resolved (v1.9): Laborator CHIQIM is NOT a mirror of KIRIM.** Trigger, purpose, and outcome all differ — CHIQIM triggers on Moyka output (not dispatch) and carries a hard-gating verdict; KIRIM is descriptive-only with no verdict. See §5.5.
 8. **NEW OPEN (v1.9)** — re-send quantity basis for re-wash material returning to §5.2 (§5.5.5). Must be resolved before §5.5.5 is built.
-9. **NEW OPEN (v1.9)** — should an untested batch raise a "Tahlil kechikdi" exception on the Rahbar's §6.2 list alongside "Sera kechikdi"? Likely yes and cheap; the threshold pattern already exists in §2.14.
+9. ~~NEW OPEN (v1.9) — untested-batch exception~~ — 🔒 **RESOLVED (v1.18):** yes — "Tahlil kechikdi" (§2.14), surfaced as the highest-value row on the §3.2.9 WIP view.
 10. **CLARIFIED (v1.9)** — "Sera kechikdi" must exclude products with no SO₂ target (§5.5.1). A natural product is never overdue.
 11. ~~Accounting weight basis~~ — 🔒 **RESOLVED (v1.10): gate net** (§2.16).
 12. **NEW OPEN (v1.10)** — should the gate-net update (§2.16.2) notify Menejer when variance against declared exceeds a threshold, or only display it (current, this prompt's build)? Notification implies §2.14 threshold config — deliberately not built this prompt.
-13. **PARTIALLY RESOLVED (v1.14)** — the unified §3.2 reporting layer's query engine, results table, totals strip, and filter bar (§3.2.1-3.2.4) are now applied and built (Step 10 prompt 1). **Still CARRIED, out of scope for that prompt:** the saved views built on top of this engine — serial passport (§3.2.5, the row-expand's eventual full target), stock-on-hand with ageing (§3.2.6), client balance report consolidation (§3.2.7, §3.4/§3.5 below still hold the only spec text for this until then), moisture-adjusted yield (§3.2.8), WIP/stuck (§3.2.9), Rahbar aggregates (§3.2.10) — all specified in `docs/SPEC-reporting-v1.10-revision.md`, none yet applied to this document or built.
-14. **NEW OPEN (v1.14)** — the "status" filter's two dateless pallet states (omborda / band qilingan, §3.2.2) are real plumbing for the future stock-on-hand view but return nothing in today's results table unless explicitly selected (§3.2.3) — confirm this is still the right shape once §3.2.6 is actually built, rather than assuming this prompt's judgment call carries over unchanged.
+13. **PARTIALLY RESOLVED (v1.18)** — the unified §3.2 reporting layer's query engine, results table, totals strip, filter bar (§3.2.1-3.2.4), serial passport (§3.2.5), stock on hand (§3.2.6), and WIP/stuck (§3.2.9) are now applied and built. **Still CARRIED:** client balance report consolidation (§3.2.7 — §3.4/§3.5 below still hold the only spec text for this until then), moisture-adjusted yield (§3.2.8), Rahbar aggregates (§3.2.10) — reserved section numbers, written into this document directly as each is actually built (no separate companion doc).
+14. ~~NEW OPEN (v1.14) — dateless pallet states~~ — 🔒 **RESOLVED (v1.18):** confirmed the same shape carries over unchanged — §3.2.6's `stock_on_hand_rows` derives `band_qilingan`/`omborda` from the identical claimed/verdict logic §3.2.2 already established, just without a date filter (a snapshot of now, not a history).
 
 ---
 
@@ -526,6 +573,7 @@ Surfaces problems rather than making him hunt. Each row clicks through to the **
 ## 9. Changelog
 | Version | Date | Change |
 |---|---|---|
+| 1.18 | 2026-07-21 | 🔒 **Stock on hand (§3.2.6) and WIP/stuck (§3.2.9) applied — both written directly into this document now, the dangling `docs/SPEC-reporting-v1.10-revision.md` reference removed** (that file never existed in this repo; original section numbering kept regardless — §3.2.7 client report, §3.2.8 yield, §3.2.10 Rahbar aggregates stay reserved). §3.2.6: a snapshot of *now*, grouped buyurtmachi→tur→kalibr, five states (available / band qilingan / awaiting lab / qayta yuvish / raw not washed), ageing with a fixed >90-day flag, and a lab-turnaround header average. §3.2.9: seven threshold-based exception rows (raw idle, Moyka idle, lab-test overdue, SO₂ overdue, qayta-yuvish pending, CHIQIM-dispatch overdue, provisional weight), five of seven reading a `settings_limits` threshold (§2.14, three new keys added), two showing unconditionally. §2.14 gained three new configurable thresholds; §7 items 9 and 14 resolved. Before this prompt, KIRIM-side `gate_weighings` were independently re-verified correct (not reversed, unlike the CHIQIM bug v1.17 already fixed); one further data inconsistency (story 2's CHIQIM `net_kg` not matching its own dispatched pallet) found and corrected live + in the seed file. `supabase/migrations/0028_stock_on_hand_and_wip.sql`. See DECISIONS.md "Stock-on-hand + WIP saved views." |
 | 1.17 | 2026-07-21 | 🔒 **Serial passport applied (§3.2.5) — first real body, previously a forward-reference only.** One parent serial's whole life, reached as a drill-down from any Hisobot row's existing expand panel (a button, opening a modal — not a route, not inline in the row-expand itself, which stays as-is). Reads underlying records directly, not through Ombor's active-cycle-only finished-goods view (§5.3's own v1.10 amendment names this exact requirement). Contents in lifecycle order: buyurtma + `effective_qty`, darvoza (both stages, photos, actors), qabul qilish (+ the KIRIM descriptive lab check, per §5.5.2's "feeds... the serial passport" line — not explicitly listed in this prompt's own requirements but included per that citation), every wash cycle 1..N (sent kg, every pallet including voided ones and what replaced them, Konditirskiy retained across cycles, CHIQIM lab verdict), every dispatch this serial contributed to, and current position by kalibr in **three states** (omborda / band qilingan / jo'natilgan — a manifest-scanned pallet is deducted from available stock before gate stage 2, per §5.4, but isn't collected until it actually departs; the client report's "held for client" figure must include this reserved-but-not-departed state, not just departed). One RPC, `get_serial_passport`, returning the whole nested document in one round trip (`supabase/migrations/0027_serial_passport.sql`). Found and fixed a real, pre-existing data bug while building this: the CHIQIM demo-data seed script (v1.16-era) had `gruzheny_kg`/`pustoy_kg` swapped on every dispatch (CHIQIM reverses KIRIM's stage order — confirmed against `QorovulChiqimTab.tsx`), producing a negative `net_kg` invisible until the passport first surfaced a CHIQIM dispatch's own gate weight. See DECISIONS.md "Serial passport." |
 | 1.16 | 2026-07-20 | 🔒 **Hisobot moved server-side (§3.2.4) — retroactively logged** (built same-session as v1.15 but this document's own Version/Changelog were not updated at the time; corrected now while touching this section for §3.2.5). Filtering, pagination (100 rows/page), and totals-over-the-full-filtered-set all moved from the client into Postgres (`report_kirim_rows`/`report_chiqim_rows`/`report_rows` views + `report_filtered_rows`/`report_query_page`/`report_totals` functions, `supabase/migrations/0026_report_server_side_query.sql`), removing the old `FETCH_CAP=500` silent-truncation point entirely. `effective_qty` (§2.16) now has two implementations by necessity — TypeScript for Ombor's live screens, SQL for this engine — guarded by a new parity test (`report-effective-qty-parity.spec.ts`) rather than left to drift. Export fetches the full filtered set in chunks, never just the visible page. See DECISIONS.md "Reporting engine: server-side query." |
 | 1.15 | 2026-07-20 | 🔒 **Hisobot results view reworked for desktop (§3.2.4, Step 10 prompt 2) — corrects v1.14's phone-density call, same day.** Menejer and Rahbar use this screen on PCs — phones are Ombor/Qorovul/Laborator's surface, not this one. Results now render as a real `<table>` (the first in this codebase; every other screen stays card-based, unchanged) — all primary columns visible, quantity right-aligned and comparable down the column, many rows scannable together. Row expand unchanged in behaviour (same detail components), just triggered from a table row instead of a card header. Filter bar (§3.2.2) now expanded by default (the collapse toggle stays, for a narrower window). Horizontal scroll on narrow viewports via a fixed minimum table width, never at the cost of the desktop layout. New: `src/pages/reports/ReportResultsTable.tsx`, `src/pages/reports/ReportTableRow.tsx` (replaces `ReportRowCard.tsx`, deleted). Also this prompt: confirmed the `useEffectiveQty` refresh-race guard (v1.13) is still exactly as shipped — the general out-of-order-refresh fix is in place, but the specific "-1,200kg" symptom's root cause (a second rapid form submission on `IntakeAcceptForm` not firing) was never fixed, only diagnosed; reproduced again live via the full e2e suite this session, unchanged from the 2026-07-19 DECISIONS.md entry. |

@@ -1,16 +1,25 @@
--- Demo data for evaluating the Hisobot reporting layer (SPEC.md v1.10 §3.2).
--- Written 2026-07-20. See docs/DECISIONS.md "Demo data for reporting pilot"
--- for the full rationale. NOT TEST-prefixed on purpose -- the reporting
--- engine's isTestPlate() filter (reportQuery.ts) excludes any TEST- plate,
--- so this data uses ordinary-looking plates/drivers to remain visible.
+-- Demo data for evaluating the Hisobot reporting layer (SPEC.md §3.2).
+-- Written 2026-07-20. NOT TEST-prefixed on purpose -- the reporting engine's
+-- isTestPlate() filter (reportQuery.ts) excludes any TEST- plate, so this
+-- data uses ordinary-looking plates/drivers to remain visible.
 --
 -- Removability: every row this script creates is reachable from one of the
 -- FOUR owners it creates below (Boysun/Farg'ona/Samarqand/Toshkent), which
 -- exist ONLY for this seed and are referenced by nothing else in the system
 -- at the time this was written. supabase/seed/demo-data-2026-07-20-cleanup.sql
--- removes exactly this data, scoped by those owner_ids, in dependency order.
+-- removes exactly this data, scoped by those owner_ids, in dependency order
+-- (owner-name scoped, so it covers story 9 below with no changes needed).
 --
--- Eight "stories" (KIRIM orders), spread 2026-05-04 to 2026-07-16 (~3 months):
+-- History: the CHIQIM gruzheny_kg/pustoy_kg reversal (all 6 dispatches) and
+-- story 9 itself were both found/added by the 2026-07-21 "Serial passport"
+-- session (see docs/DECISIONS.md) -- fixed live AND in this file already,
+-- not a live-only patch. This session (2026-07-21, "Stock-on-hand + WIP
+-- saved views") found one thing that fix missed: story 2's net_kg (3200)
+-- didn't match its own dispatched pallet (an actual single 1000kg pallet)
+-- -- corrected here and live to gruzheny_kg=2000/pustoy_kg=1000 (net 1000),
+-- the same 1000kg tare every other story's truck already uses.
+--
+-- Nine "stories" (KIRIM orders), spread 2026-05-04 to 2026-07-16 (~3 months):
 --   1. Boysun / Subxon / single-line / sulfur target / fully dispatched incl. Konditirskiy
 --   2. Farg'ona / Isfara / single-line / natural (no SO2) / partially dispatched, 2 pallets left in stock
 --   3. Samarqand / Subxon+Qand qizil / MULTI-line / one line dispatched, other line's pallets awaiting CHIQIM lab
@@ -19,7 +28,7 @@
 --   6. Farg'ona / Qand qizil / single-line / natural / RE-WASH #2 (cycle 1 qayta_yuvish -> cycle 2 o'tdi)
 --   7. Samarqand / Subxon / single-line / raw never sent to Moyka (still-in-storage raw stock)
 --   8. Toshkent / Isfara / single-line / gate stage 2 NOT done (provisional effective_qty), KIRIM lab not yet done
---   9. Samarqand / Isfara / single-line / cycle 1 FAILS lab (qayta_yuvish) and is NOT yet re-sent -- a real
+--   9. Samarqand / Isfara / single-line / cycle 1 FAILS lab (qayta_yuvish), voided, NOT yet re-sent -- a real
 --      WIP state the stuck-items view needs: distinct from stories 4/6, which show the re-wash already done
 
 do $$
@@ -133,8 +142,12 @@ begin
     returning id into v_request_id;
   insert into dispatch_manifest (request_id, barcode2, loaded_at) values
     (v_request_id, 'PLT-' || v_serial || '-06-1', '2026-05-25 07:30:00+00');
+  -- net_kg originally didn't match this request's own dispatched pallet
+  -- (3200 vs. an actual 1000kg pallet) -- corrected live 2026-07-21 to
+  -- gruzheny_kg=2000 (net 1000), the same 1000kg tare every other story's
+  -- truck already uses.
   insert into gate_weighings (dir, request_id, gruzheny_kg, pustoy_kg, stage1_created_by, stage1_completed_at, stage2_created_by, completed_at)
-    values ('chiqim', v_request_id, 4200, 1000, v_qorovul, '2026-05-25 08:30:00+00', v_qorovul, '2026-05-25 09:00:00+00');
+    values ('chiqim', v_request_id, 2000, 1000, v_qorovul, '2026-05-25 08:30:00+00', v_qorovul, '2026-05-25 09:00:00+00');
 
   -- ============================================================
   -- STORY 3 -- Samarqand / Subxon + Qand qizil / MULTI-line

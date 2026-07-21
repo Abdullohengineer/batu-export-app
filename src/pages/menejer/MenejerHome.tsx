@@ -15,6 +15,8 @@ export function MenejerHome() {
             { to: '/menejer', label: 'KIRIM', end: true },
             { to: '/menejer/chiqim', label: 'CHIQIM' },
             { to: '/menejer/hisobot', label: 'Hisobot' },
+            { to: '/menejer/qoldiq', label: "Ombor qoldig'i" },
+            { to: '/menejer/kutilmoqda', label: 'Kutilayotgan ishlar' },
           ]}
         />
       }

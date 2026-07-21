@@ -14,7 +14,8 @@ async function uploadGatePhoto(file: File) {
 
 export function QorovulKirimTab() {
   const { profile } = useAuth()
-  const { productTypes } = useProductTypes()
+  // §3.3: includeInactive=true -- resolves type names on historical trip lines.
+  const { productTypes } = useProductTypes(true)
   const { trips, loading, refresh } = useKirimTrips()
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
   const [activeStage, setActiveStage] = useState<1 | 2 | null>(null)

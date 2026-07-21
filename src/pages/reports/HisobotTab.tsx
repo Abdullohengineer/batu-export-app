@@ -34,9 +34,12 @@ export function HisobotTab() {
   // KirimRowDetail.tsx/ChiqimRowDetail.tsx). Not a route; local modal state.
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
 
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- resolves ids on historical rows, and the
+  // filter bar (ReportFilterBar, below) must still be able to select a
+  // deactivated client/type/calibre to filter their history.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
 
   // §requirement 3: totals are computed server-side (report_totals) over
   // the FULL filtered set, never summed from `rows` (which is only ever one

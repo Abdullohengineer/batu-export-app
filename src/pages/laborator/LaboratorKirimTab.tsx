@@ -13,8 +13,9 @@ import { GatePhoto } from '../../components/GatePhoto'
 // nothing here gates anything (SPEC.md v1.9 §5.5.2).
 export function LaboratorKirimTab() {
   const { profile } = useAuth()
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
+  // §3.3: includeInactive=true -- resolves names on historical serials.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
   const { awaiting, sulfurPending, finished, loading, refresh } = useLaboratorKirim()
 
   const [activeTahlil, setActiveTahlil] = useState<string | null>(null)

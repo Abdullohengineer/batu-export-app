@@ -32,8 +32,9 @@ import { EntityNotes } from '../../components/EntityNotes'
 // list, so it has no send action or expand of its own.
 export function OmborMoykaTab() {
   const { profile } = useAuth()
-  const { productTypes } = useProductTypes()
-  const { owners } = useOwners()
+  // §3.3: includeInactive=true -- resolves names on in-flight/historical serials.
+  const { productTypes } = useProductTypes(true)
+  const { owners } = useOwners(true)
   const { serials, loading, refresh } = useMoykaSerials()
   const { serials: processing, loading: processingLoading } = useMoykaOutput()
   const [activeSerial, setActiveSerial] = useState<string | null>(null)

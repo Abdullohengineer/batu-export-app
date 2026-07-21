@@ -28,8 +28,9 @@ async function uploadGatePhoto(file: File) {
 // it — qorovul has no write policy on chiqim_requests).
 export function QorovulChiqimTab() {
   const { profile } = useAuth()
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- resolves names on historical trip lines.
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
   const { trips, loading, refresh } = useChiqimTrips()
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [activeStage, setActiveStage] = useState<1 | 2 | null>(null)

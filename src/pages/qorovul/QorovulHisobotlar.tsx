@@ -24,7 +24,10 @@ export function QorovulHisobotlar() {
   })
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const { owners } = useOwners()
+  // §3.3: includeInactive=true -- ownerName's own ?? '—' fallback was
+  // silently swallowing a deactivated client's real name, not just a
+  // missing one.
+  const { owners } = useOwners(true)
   const { rows, loading } = useGateHistory(filters)
 
   function ownerName(id: string | null) {

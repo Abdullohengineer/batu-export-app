@@ -30,9 +30,11 @@ function detailText(row: ExceptionRow): string {
 // ageing, §3.2.9's lab-overdue, the existing abnormal_loss_pct), one new
 // (high re-wash rate, §2.14's new high_rewash_rate_pct). Rahbar-only.
 export function RahbarExceptionsTab() {
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- resolves ids on exception rows that may
+  // reference a since-deactivated client/type/calibre.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
   const { rows, loading } = useRahbarExceptions()
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
 

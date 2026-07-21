@@ -14,9 +14,10 @@ export function WipTab() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
 
-  const { owners } = useOwners()
-  const { productTypes } = useProductTypes()
-  const { calibres } = useCalibres()
+  // §3.3: includeInactive=true -- resolves ids on in-flight/historical rows.
+  const { owners } = useOwners(true)
+  const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
   const { rows, loading } = useWipRows()
 
   function ownerName(id: string) {

@@ -45,6 +45,15 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoSizes, setPhotoSizes] = useState<{ original: number; compressed: number } | null>(null)
   const [compressing, setCompressing] = useState(false)
+  // 🚧 TEMPORARY DIAGNOSTIC BUILD -- this state + its catch block below and
+  // its render below are all new for on-device error capture (see
+  // docs/DECISIONS.md "Qorovul photo upload silent failure"); remove all
+  // three once the real error has been captured. This form's own compression
+  // call had the exact same missing-catch defect as PhotoField.tsx's, just
+  // never noticed because setPhotoFile(file) below sets the RAW file before
+  // compression is attempted, so a compression failure here silently uploads
+  // the uncompressed original instead of losing the photo outright.
+  const [photoError, setPhotoError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedLines, setSavedLines] = useState<SavedLine[] | null>(null)
@@ -66,6 +75,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
   async function handlePhotoChange(file: File | null) {
     setPhotoFile(file)
     setPhotoSizes(null)
+    setPhotoError(null)
     if (!file) return
 
     setCompressing(true)
@@ -73,6 +83,12 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
       const { blob, originalSize, compressedSize } = await compressImage(file)
       setPhotoSizes({ original: originalSize, compressed: compressedSize })
       setPhotoFile(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }))
+    } catch (err) {
+      // 🚧 TEMPORARY DIAGNOSTIC BUILD -- raw error, not a friendly message,
+      // see the photoError state's own comment above. Remove this whole
+      // catch block on revert (this function had none before).
+      setPhotoError(err instanceof Error ? `${err.name}: ${err.message}` : String(err))
+      console.error('KirimForm: compressImage failed', err)
     } finally {
       setCompressing(false)
     }
@@ -316,6 +332,11 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
         {photoSizes && (
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {formatBytes(photoSizes.original)} → {formatBytes(photoSizes.compressed)}
+          </p>
+        )}
+        {photoError && (
+          <p className="mt-1 text-sm font-medium text-red-600 dark:text-red-400" role="alert">
+            {photoError}
           </p>
         )}
       </div>

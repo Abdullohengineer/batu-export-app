@@ -45,14 +45,15 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoSizes, setPhotoSizes] = useState<{ original: number; compressed: number } | null>(null)
   const [compressing, setCompressing] = useState(false)
-  // 🚧 TEMPORARY DIAGNOSTIC BUILD -- this state + its catch block below and
-  // its render below are all new for on-device error capture (see
-  // docs/DECISIONS.md "Qorovul photo upload silent failure"); remove all
-  // three once the real error has been captured. This form's own compression
-  // call had the exact same missing-catch defect as PhotoField.tsx's, just
-  // never noticed because setPhotoFile(file) below sets the RAW file before
-  // compression is attempted, so a compression failure here silently uploads
-  // the uncompressed original instead of losing the photo outright.
+  // This form's own compression call had the exact same missing-catch
+  // defect as PhotoField.tsx's (see docs/DECISIONS.md "Qorovul photo
+  // upload silent failure") -- just never noticed, because setPhotoFile(file)
+  // below sets the RAW file before compression is attempted, so a
+  // compression failure here silently uploaded the uncompressed original
+  // instead of losing the photo outright. Kept as-is (raw file stays
+  // attached on failure, submit still proceeds with it) -- only the
+  // silence is fixed here, not that fallback behavior, which is this
+  // form's own pre-existing design, not something this task asked to change.
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,10 +85,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
       setPhotoSizes({ original: originalSize, compressed: compressedSize })
       setPhotoFile(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }))
     } catch (err) {
-      // 🚧 TEMPORARY DIAGNOSTIC BUILD -- raw error, not a friendly message,
-      // see the photoError state's own comment above. Remove this whole
-      // catch block on revert (this function had none before).
-      setPhotoError(err instanceof Error ? `${err.name}: ${err.message}` : String(err))
+      setPhotoError("Rasmni siqishda xatolik yuz berdi — boshqa rasm tanlang yoki qayta urinib ko'ring.")
       console.error('KirimForm: compressImage failed', err)
     } finally {
       setCompressing(false)
@@ -325,6 +323,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
         <input
           type="file"
           accept="image/*"
+          capture="environment"
           onChange={(e) => handlePhotoChange(e.target.files?.[0] ?? null)}
           className="mt-1 w-full text-sm text-slate-700 dark:text-slate-300"
         />

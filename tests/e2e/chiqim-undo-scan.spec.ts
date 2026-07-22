@@ -2,18 +2,29 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
-import { uniqueTestId, seedDispatchablePallets } from './helpers/fixtures'
+import { uniqueTestId, seedDispatchablePallets, E2E_OWNER_NAME } from './helpers/fixtures'
+import { teardownFixtures } from './helpers/teardown'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
 
-// Ombor "undo scan" — a real DELETE on dispatch_manifest, available from
-// request creation up to Qorovul's gate stage-2 completion, enforced by the
-// ombor_deletes RLS policy (0021), not just UI hiding. Fixture pallets
-// (2x 2000kg Subxon/Kalibr 6) are seeded fresh every run via
-// seedDispatchablePallets (Step 9: self-generating test fixtures — see
-// DECISIONS.md) instead of a one-time hand-written SQL fixture, so this
-// spec never again goes stale/voided between sessions.
+// Survivor 3/4: RLS refusal — load-bearing, cannot be folded into any other
+// survivor (see docs/DECISIONS.md "e2e suite consolidation"). Ombor "undo
+// scan" is a real DELETE on dispatch_manifest, available from request
+// creation up to Qorovul's gate stage-2 completion, enforced by the
+// ombor_deletes RLS policy, not just UI hiding. This is the ONE test in the
+// whole suite whose entire point is proving a DELETE is genuinely refused at
+// the database level, not merely absent from the UI — caught a real
+// silent-delete bug historically and stays exactly as strict.
+let kirimPlates: string[] = []
+let chiqimPlates: string[] = []
+
+test.afterEach(async () => {
+  await teardownFixtures({ kirimPlates, chiqimPlates })
+  kirimPlates = []
+  chiqimPlates = []
+})
+
 test('Ombor undoes a post-finish scan, pallet becomes available again, then a post-stage-2 undo is blocked by RLS', async ({ page }) => {
   // 9 total role switches (3 for seedDispatchablePallets + 6 for the flow
   // itself) — comfortably over the 30s default, same latency-budget reason
@@ -26,14 +37,16 @@ test('Ombor undoes a post-finish scan, pallet becomes available again, then a po
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
-  const { pallets } = await seedDispatchablePallets(page, {
+  const { pallets, kirimPlate } = await seedDispatchablePallets(page, {
     count: 2,
     weightKgEach: 2000,
     typeLabel: 'Subxon',
     calibreLabel: 'Kalibr 6',
   })
+  kirimPlates.push(kirimPlate)
   const [BARCODE_1, BARCODE_2] = [pallets[0].barcode2, pallets[1].barcode2]
   const PLATE = uniqueTestId('CHIQIM')
+  chiqimPlates.push(PLATE)
 
   // --- Menejer: create the request, confirm the pallets are NOT yet flagged
   // unavailable (feasibility hint should be silent — exact match). ---
@@ -44,8 +57,8 @@ test('Ombor undoes a post-finish scan, pallet becomes available again, then a po
   await page.locator('div:has(> label:text-is("Moshina raqami")) > input').fill(PLATE)
   await page.locator('div:has(> label:text-is("Haydovchi ismi")) > input').fill('TEST Driver')
   const menejerSelects = page.locator('form:has-text("Yangi CHIQIM") select')
-  await expect(page.getByRole('option', { name: 'Test Client A' })).toBeAttached()
-  await menejerSelects.nth(0).selectOption({ label: 'Test Client A' })
+  await expect(page.getByRole('option', { name: E2E_OWNER_NAME })).toBeAttached()
+  await menejerSelects.nth(0).selectOption({ label: E2E_OWNER_NAME })
   await menejerSelects.nth(1).selectOption({ label: 'Subxon' })
   await menejerSelects.nth(2).selectOption({ label: 'Kalibr 6' })
   await page.locator('input[placeholder="Miqdori (kg)"]').fill('4000')

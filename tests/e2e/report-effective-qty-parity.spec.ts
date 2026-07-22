@@ -1,28 +1,30 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginAs, type TestRole } from './helpers/login'
-import { uniqueRealLookingPlate } from './helpers/fixtures'
+import { uniqueRealLookingPlate, E2E_OWNER_NAME } from './helpers/fixtures'
+import { teardownFixtures } from './helpers/teardown'
 import { deriveEffectiveQty } from '../../src/lib/weightAuthority'
 
-// 🔒 effective_qty now has TWO independent implementations — weightAuthority.ts
-// (TypeScript, read by Ombor/Moyka's live screens, which can't practically
-// query Postgres for a derived value on every keystroke) and
-// report_kirim_rows (SQL, the reporting engine — moved server-side this task
-// specifically so filtering/pagination/totals don't require re-fetching and
-// re-deriving every row client-side, see DECISIONS.md "Reporting engine:
-// server-side query"). Two implementations of the same "one derived truth"
-// invariant is a real drift risk — CLAUDE.md's "derive, don't store" assumes
-// exactly one place computes a given derived value. This test is what keeps
-// the two honest: it seeds the same raw inputs directly (bypassing the UI —
-// effective-qty.spec.ts already covers the full accept-workflow separately)
-// and asserts weightAuthority.ts's pure function and report_kirim_rows agree
-// on every branch. If either side changes without the other, this fails
-// loudly instead of the two silently disagreeing in production.
+// Survivor 4/4: `effective_qty` parity — the drift guard. effective_qty now
+// has TWO independent implementations — weightAuthority.ts (TypeScript,
+// read by Ombor/Moyka's live screens, which can't practically query
+// Postgres for a derived value on every keystroke) and report_kirim_rows
+// (SQL, the reporting engine — moved server-side so filtering/pagination/
+// totals don't require re-fetching and re-deriving every row client-side,
+// see DECISIONS.md "Reporting engine: server-side query"). Two
+// implementations of the same "one derived truth" invariant is a real drift
+// risk — CLAUDE.md's "derive, don't store" assumes exactly one place
+// computes a given derived value. This test is what keeps the two honest:
+// it seeds the same raw inputs directly (bypassing the UI on purpose — the
+// UI-wiring risk this deliberately skips is covered by unit tests on the
+// derivation logic itself, weightAuthority.test.ts, kept in the 79) and
+// asserts weightAuthority.ts's pure function and report_kirim_rows agree on
+// every branch. If either side changes without the other, this fails loudly
+// instead of the two silently disagreeing in production.
 //
 // Not TEST--prefixed on purpose: report_kirim_rows excludes any TEST- plate
-// (isTestPlate, ported from reportQuery.ts into the view's own WHERE clause)
-// — uniqueRealLookingPlate() is the established exception for exactly this
-// case (tests/e2e/helpers/fixtures.ts's own comment lists this file as its
-// newest consumer).
+// (isTestPlate, ported from reportQuery.ts into the view's own WHERE
+// clause) — uniqueRealLookingPlate() is the established exception for
+// exactly this case.
 
 async function switchRole(page: Page, role: TestRole): Promise<void> {
   const logoutButton = page.getByRole('button', { name: 'Chiqish' })
@@ -47,10 +49,10 @@ interface OrderFixture {
 
 async function seedOrder(page: Page, fixture: OrderFixture): Promise<string[]> {
   await switchRole(page, 'MENEJER')
-  const { orderId, ownerId } = await page.evaluate(
-    async ({ plate }) => {
+  const { orderId } = await page.evaluate(
+    async ({ plate, ownerName }) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
-      const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', 'Test Client A').single()
+      const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', ownerName).single()
       if (ownerErr) throw new Error(`owner lookup: ${ownerErr.message}`)
       const { data: type, error: typeErr } = await w.supabase.from('product_types').select('id').eq('name', 'Subxon').single()
       if (typeErr) throw new Error(`type lookup: ${typeErr.message}`)
@@ -68,7 +70,7 @@ async function seedOrder(page: Page, fixture: OrderFixture): Promise<string[]> {
       if (orderErr) throw new Error(`kirim_orders insert: ${orderErr.message}`)
       return { orderId: order.order_id as string, ownerId: owner.id as string, typeId: type.id as string }
     },
-    { plate: fixture.plate },
+    { plate: fixture.plate, ownerName: E2E_OWNER_NAME },
   )
 
   const serials: string[] = []
@@ -134,28 +136,41 @@ async function seedOrder(page: Page, fixture: OrderFixture): Promise<string[]> {
   return serials
 }
 
+let kirimPlates: string[] = []
+
+test.afterEach(async () => {
+  await teardownFixtures({ kirimPlates })
+  kirimPlates = []
+})
+
 test('report_kirim_rows agrees with deriveEffectiveQty on every branch', async ({ page }) => {
   test.setTimeout(60_000)
 
   // --- Scenario A: declared_pre_intake — no storage_intake row at all ---
+  const plateA = uniqueRealLookingPlate()
+  kirimPlates.push(plateA)
   const [serialA] = await seedOrder(page, {
-    plate: uniqueRealLookingPlate(),
+    plate: plateA,
     lines: [{ declaredQty: 1000, intakeActualQty: null }],
     gate: null,
   })
 
   // --- Scenario B: intake_provisional, single-line — intake exists, gate
   // stage 2 not done (stage1 only) ---
+  const plateB = uniqueRealLookingPlate()
+  kirimPlates.push(plateB)
   const [serialB] = await seedOrder(page, {
-    plate: uniqueRealLookingPlate(),
+    plate: plateB,
     lines: [{ declaredQty: 2000, intakeActualQty: 1900 }],
     gate: { gruzhenyKg: 2900, pustoyKg: 900, completed: false },
   })
 
   // --- Scenario C: intake_provisional, multi-line — same "not yet gate
   // stage 2" branch applies before the single/multi split is even reached ---
+  const plateC = uniqueRealLookingPlate()
+  kirimPlates.push(plateC)
   const [serialC1, serialC2] = await seedOrder(page, {
-    plate: uniqueRealLookingPlate(),
+    plate: plateC,
     lines: [
       { declaredQty: 500, intakeActualQty: 480 },
       { declaredQty: 500, intakeActualQty: 510 },
@@ -166,8 +181,10 @@ test('report_kirim_rows agrees with deriveEffectiveQty on every branch', async (
   // --- Scenario D: intake_multi_line_final — gate stage 2 done, but a
   // multi-line truck's effective_qty stays each line's OWN intake, never
   // the gate net (§2.16.1's own headline rule) ---
+  const plateD = uniqueRealLookingPlate()
+  kirimPlates.push(plateD)
   const [serialD1, serialD2] = await seedOrder(page, {
-    plate: uniqueRealLookingPlate(),
+    plate: plateD,
     lines: [
       { declaredQty: 700, intakeActualQty: 690 },
       { declaredQty: 700, intakeActualQty: 705 },
@@ -177,8 +194,10 @@ test('report_kirim_rows agrees with deriveEffectiveQty on every branch', async (
 
   // --- Scenario E: gate_net_final — single-line, gate stage 2 done, the
   // gate net becomes the effective_qty ---
+  const plateE = uniqueRealLookingPlate()
+  kirimPlates.push(plateE)
   const [serialE] = await seedOrder(page, {
-    plate: uniqueRealLookingPlate(),
+    plate: plateE,
     lines: [{ declaredQty: 3000, intakeActualQty: 2900 }],
     gate: { gruzhenyKg: 4100, pustoyKg: 1000, completed: true }, // net_kg = 3100
   })

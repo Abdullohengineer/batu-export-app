@@ -2,53 +2,53 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
-import { uniqueTestId } from './helpers/fixtures'
+import { uniqueTestId, E2E_OWNER_NAME } from './helpers/fixtures'
+import { teardownFixtures } from './helpers/teardown'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
-const PLATE = uniqueTestId('REWASH')
 
-// Step 8 prompt 2, split 2d: re-wash cycle-awareness retrofit + void/re-
-// entry (SPEC.md v1.9 §5.5.4/§5.5.5). Full real chain, one serial, two wash
-// cycles:
-//
-// Cycle 1: 5000kg raw -> Moyka -> received as Kalibr 6 (4500kg) +
-// Konditirskiy (500kg) -> Tugallash (0% loss) -> Lab CHIQIM verdict
-// "Qayta yuvish" (fails).
-// Ombor voids the Kalibr 6 pallet (4500kg) — NOT the Konditirskiy one —
-// and the serial reappears in Moykaga Chiqarish Window 1 with exactly
-// 4500kg available (the voided amount, not the original 5000kg).
-// Cycle 2: 4500kg re-wash input -> Moyka -> received as Kalibr 6 (4000kg) +
-// a SECOND, separate Konditirskiy pallet (300kg) -> Tugallash — loss must
-// be computed against 4500kg (the re-wash input), not the original 5000kg
-// -> Lab CHIQIM verdict "O'tdi" (passes).
-//
-// Confirms: calibre pallets voided, Konditirskiy from cycle 1 untouched,
-// cycle 2 gets its own Konditirskiy barcode (both stay in_stock,
-// independently), cycle 2's loss math is right, and the hard gate opens up
-// once cycle 2 passes.
-test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, re-wash input is exact, cycle 2 loss is against the re-wash input, o_tdi reopens availability', async ({ page }) => {
+// Survivor 2/4: Re-wash + hard gate. Backbone is the full void/re-send/pass
+// cycle (fail lab -> void calibre pallets, Konditirskiy untouched -> re-wash
+// input is exact -> cycle 2 loss is against the re-wash input, not the
+// original intake -> o_tdi reopens availability), with the hard gate's two
+// directions (Menejer's feasibility checker, Ombor's CHIQIM scan) inserted
+// right after the cycle-1 "Qayta yuvish" verdict, applied to THIS serial
+// rather than a second parallel one — and a real dispatch attempt after
+// cycle 2 passes, proving the gate actually reopens rather than just
+// checking lab_results/finished_pallets columns directly. Subsumes
+// rewash-full-cycle.spec.ts and laborator-chiqim-hard-gate.spec.ts; see
+// docs/DECISIONS.md "e2e suite consolidation" for the merge reasoning.
+let kirimPlates: string[] = []
+let chiqimPlates: string[] = []
+
+test.afterEach(async () => {
+  await teardownFixtures({ kirimPlates, chiqimPlates })
+  kirimPlates = []
+  chiqimPlates = []
+})
+
+test('Qayta_yuvish hard-gates availability (both directions), void preserves Konditirskiy, cycle 2 reopens dispatch', async ({ page }) => {
   // Step 9 regression pass: effective_qty added extra per-refresh queries to
-  // useMoykaSerials/useMoykaOutput (fetchEffectiveQty, called on every
-  // refresh of both hooks — see DECISIONS.md "Weight authority & effective
-  // quantity"). This test's own two full wash cycles were already tight
-  // against the 30s default; confirmed via a 90s diagnostic run that the
-  // app logic is unaffected (passes cleanly, ~1.1min) — this is a latency
-  // budget fix, not a functional one. See DECISIONS.md "Step 9 regression
-  // pass" for the full investigation.
-  test.setTimeout(120_000)
+  // useMoykaSerials/useMoykaOutput — this test's own two full wash cycles
+  // plus the inserted hard-gate checks are comfortably over the 30s default
+  // (see DECISIONS.md "Step 9 regression pass").
+  test.setTimeout(150_000)
   const consoleErrors: string[] = []
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text())
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
+  const PLATE = uniqueTestId('REWASH')
+  kirimPlates.push(PLATE)
+
   // --- Menejer: KIRIM order, one line ---
   await loginAs(page, 'MENEJER')
   await expect(page.getByRole('heading', { name: 'Yangi KIRIM' })).toBeVisible()
   await page.locator('div:has(> label:text-is("Moshina raqami")) > input').fill(PLATE)
   await page.locator('div:has(> label:text-is("Haydovchi ismi")) > input').fill('TEST Driver')
-  await page.locator('div:has(> label:text-is("Buyurtmachi")) select').selectOption({ label: 'Test Client A' })
+  await page.locator('div:has(> label:text-is("Buyurtmachi")) select').selectOption({ label: E2E_OWNER_NAME })
   const row1 = page.locator('form div.space-y-1.rounded-md').nth(0)
   await row1.locator('select').selectOption({ label: 'Subxon' })
   await row1.getByPlaceholder('Miqdori (kg)').fill('5000')
@@ -56,8 +56,9 @@ test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, r
 
   const savedPanel = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: 'Subxon' })
   await expect(savedPanel.locator('span.font-mono').first()).toHaveText(/^\d{6}-\d{3}$/, { timeout: 20000 })
-  const serial = await savedPanel.locator('span.font-mono').first().textContent()
-  if (!serial) throw new Error('serial not captured')
+  const serialText = await savedPanel.locator('span.font-mono').first().textContent()
+  if (!serialText) throw new Error('serial not captured')
+  const serial: string = serialText
 
   // --- Qorovul: gate stage 1 ---
   await page.getByRole('button', { name: 'Chiqish' }).click()
@@ -82,9 +83,7 @@ test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, r
   {
     const omborGroup = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: PLATE })
     await expect(omborGroup).toBeVisible()
-    const lineRow = omborGroup
-      .locator('span', { hasText: serial })
-      .locator('xpath=ancestor::div[contains(@class, "rounded-md")][1]')
+    const lineRow = omborGroup.locator('span', { hasText: serial }).locator('xpath=ancestor::div[contains(@class, "rounded-md")][1]')
     await lineRow.getByRole('button', { name: 'Qabul qilish' }).click()
     await page.locator(`#actual-${serial}`).fill('5000')
     await lineRow.locator('div:has(> label:text-is("Uyum rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
@@ -100,9 +99,6 @@ test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, r
     await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
     const yuborishUchun = page.getByRole('heading', { name: 'Yuborish uchun' }).locator('xpath=following-sibling::div[1]')
     await expect(yuborishUchun).toBeVisible({ timeout: 20000 })
-    // Not scoped to a specific border color — a re-wash row renders amber
-    // (border-amber-300), not the default slate-200, per OmborMoykaTab.tsx's
-    // isRewash styling.
     const row = yuborishUchun.locator('.rounded-md', { hasText: serial })
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: 'Moykaga yuborish' }).click()
@@ -115,14 +111,9 @@ test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, r
   await sendToMoyka('5000')
 
   // --- Ombor: receive cycle 1 pallets (Kalibr 6 4500kg + Konditirskiy
-  // 500kg), then Tugallash ---
-  //
-  // Fresh navigation before EACH pallet receipt (not once per cycle) — same
-  // React-controlled-input race documented in DECISIONS.md for the Moyka
-  // send form: two rapid submits sharing one component mount can have the
-  // second one fire before React's own onChange-driven state has actually
-  // committed the fill, even though the DOM's raw value (and toHaveValue)
-  // already reads correctly. Re-navigating forces a fresh mount per action.
+  // 500kg), then Tugallash. Fresh navigation before EACH pallet receipt —
+  // forces a fresh mount per action (see DECISIONS.md "self-generating
+  // test fixtures" for the underlying React-controlled-input race). ---
   async function receivePallet(calibreLabel: string, weight: string) {
     await page.getByRole('link', { name: 'Skladga KIRIM' }).click()
     await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
@@ -138,8 +129,6 @@ test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, r
     await weightInput.press('Tab')
     await expect(weightInput).toHaveValue(weight)
     await row.getByRole('button', { name: 'Qabul qilish' }).click()
-    // Positive check: the new pallet's barcode actually rendered, not just
-    // that the click happened.
     await expect(row.getByText(`PLT-${serial}-`).first()).toBeVisible({ timeout: 20000 })
   }
   async function produceAndFinish(pallets: { calibre: string; weight: string }[]) {
@@ -183,24 +172,65 @@ test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, r
     await expect(finishedRow).toContainText('Qayta yuvish')
   }
 
+  // --- Hard gate, BOTH directions, on THIS still-failed serial (before
+  // Ombor voids it) — laborator-chiqim-hard-gate.spec.ts's own risk, merged
+  // in here rather than proven on a second, separate serial. ---
+  const CHIQIM_PLATE = uniqueTestId('REWASH-OUT')
+  chiqimPlates.push(CHIQIM_PLATE)
+  {
+    // Direction 1: Menejer's feasibility checker. The 4,500kg physically
+    // sits in finished_pallets as in_stock, but the hard gate excludes it
+    // from useAvailableFinishedStock, so checkFeasibility's nearestBelow is
+    // always 0 for this gated stock (see laborator-chiqim-hard-gate.spec.ts's
+    // own comment on why the exact "above" figure isn't asserted — it floats
+    // with whatever unrelated stock exists elsewhere at the moment this runs).
+    await page.getByRole('button', { name: 'Chiqish' }).click()
+    await page.waitForURL('**/login')
+    await loginAs(page, 'MENEJER')
+    await page.getByRole('link', { name: 'CHIQIM' }).click()
+    await expect(page.getByRole('heading', { name: 'Yangi CHIQIM' })).toBeVisible()
+    await page.locator('div:has(> label:text-is("Moshina raqami")) > input').fill(CHIQIM_PLATE)
+    await page.locator('div:has(> label:text-is("Haydovchi ismi")) > input').fill('TEST Driver')
+    const chiqimSelects = page.locator('form:has-text("Yangi CHIQIM") select')
+    await chiqimSelects.nth(0).selectOption({ label: E2E_OWNER_NAME })
+    await chiqimSelects.nth(1).selectOption({ label: 'Subxon' })
+    await chiqimSelects.nth(2).selectOption({ label: 'Kalibr 6' })
+    await page.locator('input[placeholder="Miqdori (kg)"]').fill('4000')
+    await expect(page.getByRole('status')).toContainText(/(eng ko'p|eng yaqin): 0 kg/)
+
+    // Save anyway (the soft-warning never blocks save, §3.1) — this becomes
+    // the one open request direction 2 uses below, and again once cycle 2
+    // passes, rather than a second throwaway request.
+    await page.getByRole('button', { name: 'Saqlash' }).click()
+    await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
+
+    // Direction 2: Ombor's CHIQIM scan. Passed the client-target soft
+    // warning stage but never passed the lab — not_lab_passed, refused,
+    // never accepted onto the manifest.
+    await page.getByRole('button', { name: 'Chiqish' }).click()
+    await page.waitForURL('**/login')
+    await loginAs(page, 'OMBOR')
+    await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
+    const omborW1 = page.getByRole('heading', { name: "Yuklash uchun so'rovlar" }).locator('xpath=following-sibling::div[1]')
+    const omborRequest = omborW1.getByRole('button', { name: new RegExp(CHIQIM_PLATE) })
+    await expect(omborRequest).toBeVisible()
+    await omborRequest.click()
+    const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
+    await barcodeInput.fill(`PLT-${serial}-06-1`)
+    await page.getByRole('button', { name: 'Skanerlash' }).click()
+    await expect(page.getByText("laboratoriya tekshiruvidan o'tmagan")).toBeVisible()
+  }
+
   // --- Ombor: red flag visible, void cycle 1's calibre pallets ---
-  await page.getByRole('button', { name: 'Chiqish' }).click()
-  await page.waitForURL('**/login')
-  await loginAs(page, 'OMBOR')
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
   {
     const tugallangan = page.getByRole('heading', { name: 'Tugallangan' }).locator('xpath=following-sibling::div[1]')
     const row = tugallangan.locator('.rounded-md', { hasText: serial })
     await expect(row).toBeVisible()
     await expect(row).toContainText('Qayta yuvish kerak')
-    // The toggle only wraps the header line, not the totals/flag line below
-    // it — row.click() lands on the card's bounding-box center and can miss
-    // it (same fix as the Tayyor Mahsulot active-list toggle elsewhere).
     await row.locator('button', { hasText: '⋯' }).click()
     await row.getByRole('button', { name: 'Qayta yuvishga yuborish' }).click()
     await row.getByRole('button', { name: 'Ha, qayta yuvishga yuborish' }).click()
-    // Flag clears once voided — the serial's active cycle moves to 2, so
-    // the cycle-1 qayta_yuvish verdict no longer matches the active cycle.
     await expect(row.getByText('Qayta yuvish kerak')).toHaveCount(0, { timeout: 20000 })
   }
 
@@ -257,7 +287,30 @@ test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, r
     await expect(finishedRow).toContainText("O'tdi")
   }
 
-  // --- Direct DB check, same session (dev-only window.supabase) ---
+  // --- Confirm dispatchable, for real: scan cycle 2's own new barcode
+  // into the SAME still-open request the gate check above created —
+  // succeeds now, closing the loop rewash-full-cycle.spec.ts never fully
+  // closed (it only ever checked lab_results/finished_pallets columns
+  // directly, never actually tried to dispatch the fixed pallet). ---
+  await page.getByRole('button', { name: 'Chiqish' }).click()
+  await page.waitForURL('**/login')
+  await loginAs(page, 'OMBOR')
+  await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
+  {
+    const omborW1 = page.getByRole('heading', { name: "Yuklash uchun so'rovlar" }).locator('xpath=following-sibling::div[1]')
+    const omborRequest = omborW1.getByRole('button', { name: new RegExp(CHIQIM_PLATE) })
+    await expect(omborRequest).toBeVisible({ timeout: 20000 })
+    await omborRequest.click()
+    const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
+    await barcodeInput.fill(`PLT-${serial}-06-2`)
+    await page.getByRole('button', { name: 'Skanerlash' }).click()
+    await expect(page.getByText('✓ Aniq mos keldi')).toBeVisible()
+    await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
+    await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
+    await expect(omborRequest).not.toBeVisible()
+  }
+
+  // --- Direct DB check ---
   const result = await page.evaluate(async (serialArg) => {
     const w = window as unknown as { supabase: { from: (t: string) => any } }
     const { data: labResults } = await w.supabase
@@ -295,7 +348,7 @@ test('Full re-wash cycle: qayta_yuvish voids calibre pallets not Konditirskiy, r
   expect(cycle1Kn.weight_kg).toBe(500)
 
   const cycle2Calibre = pallets.find((p) => p.wash_cycle === 2 && !p.calibres.is_numberless)!
-  expect(cycle2Calibre.status).toBe('in_stock')
+  expect(cycle2Calibre.status).toBe('in_stock') // claimed onto a manifest, but status is derived elsewhere — never flips on dispatch
   expect(cycle2Calibre.weight_kg).toBe(4000)
 
   const cycle2Kn = pallets.find((p) => p.wash_cycle === 2 && p.calibres.is_numberless)!

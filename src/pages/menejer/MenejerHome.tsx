@@ -1,30 +1,27 @@
 import { Outlet } from 'react-router-dom'
-import { RoleShell } from '../../components/RoleShell'
-import { RoleTabs } from '../../components/RoleTabs'
+import { AppNavShell } from '../../components/AppNavShell'
 
-// Layout for Menejer's screens: header tabs + the active tab via <Outlet/>
-// (§1.1 — segmented KIRIM|CHIQIM tabs), same nested-route shape Qorovul/Ombor
-// already use. Previously a flat page (KIRIM only, no CHIQIM existed yet).
+// Layout for Menejer's screens — nav restructure (mockup "BATU-Manager-
+// Screens-MASTER.pdf"): mobile drawer / desktop sidebar via AppNavShell,
+// replacing the RoleShell+RoleTabs top-tab bar every other role still uses.
+// Same nested-route shape (Outlet), same nav destinations/labels/order as
+// before -- only the chrome around them changed.
 export function MenejerHome() {
   return (
-    <RoleShell
+    <AppNavShell
       title="Menejer"
-      nav={
-        <RoleTabs
-          tabs={[
-            { to: '/menejer', label: 'KIRIM', end: true },
-            { to: '/menejer/chiqim', label: 'CHIQIM' },
-            { to: '/menejer/hisobot', label: 'Hisobot' },
-            { to: '/menejer/qoldiq', label: "Ombor qoldig'i" },
-            { to: '/menejer/kutilmoqda', label: 'Kutilayotgan ishlar' },
-            { to: '/menejer/mijoz-hisoboti', label: 'Mijoz hisoboti' },
-            { to: '/menejer/hosildorlik', label: 'Hosildorlik' },
-            { to: '/menejer/mijozlar', label: 'Mijozlar' },
-          ]}
-        />
-      }
+      navItems={[
+        { to: '/menejer', label: 'KIRIM', end: true },
+        { to: '/menejer/chiqim', label: 'CHIQIM' },
+        { to: '/menejer/hisobot', label: 'Hisobot' },
+        { to: '/menejer/qoldiq', label: "Ombor qoldig'i" },
+        { to: '/menejer/kutilmoqda', label: 'Kutilayotgan ishlar' },
+        { to: '/menejer/mijoz-hisoboti', label: 'Mijoz hisoboti' },
+        { to: '/menejer/hosildorlik', label: 'Hosildorlik' },
+        { to: '/menejer/mijozlar', label: 'Mijozlar' },
+      ]}
     >
       <Outlet />
-    </RoleShell>
+    </AppNavShell>
   )
 }

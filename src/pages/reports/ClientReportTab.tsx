@@ -7,6 +7,8 @@ import { defaultDateRange } from '../../lib/dateRange'
 import { CLIENT_REPORT_LABELS, type ReportLocale } from '../../lib/clientReportLabels'
 import { downloadClientReportExcel } from '../../lib/clientReportExport'
 import { SerialPassportModal } from './SerialPassportModal'
+import { Button } from '../../components/ui/Button'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top text-sm'
@@ -65,63 +67,52 @@ export function ClientReportTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          {t.selectClient}
-          <select
-            value={ownerId}
-            onChange={(e) => setOwnerId(e.target.value)}
-            className="mt-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
-          >
-            <option value="">—</option>
-            {owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          {t.from}
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+        <select
+          value={ownerId}
+          onChange={(e) => setOwnerId(e.target.value)}
+          className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        >
+          <option value="">{t.selectClient}</option>
+          {owners.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">
           <input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="mt-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           />
-        </label>
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          {t.to}
+          —
           <input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="mt-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           />
         </label>
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
             onClick={() => setLocale('uz')}
-            className={`rounded-md border px-2 py-1 text-xs font-medium ${locale === 'uz' ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900' : 'border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
+            className={`rounded-full border px-3 py-1.5 text-sm font-medium ${locale === 'uz' ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900' : 'border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
           >
             O'zbekcha
           </button>
           <button
             type="button"
             onClick={() => setLocale('ru')}
-            className={`rounded-md border px-2 py-1 text-xs font-medium ${locale === 'ru' ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900' : 'border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
+            className={`rounded-full border px-3 py-1.5 text-sm font-medium ${locale === 'ru' ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900' : 'border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
           >
             Русский
           </button>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={!report || exporting}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            {exporting ? '…' : t.exportExcel}
-          </button>
+          <Button variant="success" size="md" onClick={handleExport} disabled={!report || exporting}>
+            {exporting ? '…' : `↓ ${t.exportExcel}`}
+          </Button>
         </div>
       </div>
 
@@ -130,9 +121,7 @@ export function ClientReportTab() {
       ) : loading ? (
         <p className="text-sm text-slate-400">{t.loading}</p>
       ) : error ? (
-        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400" role="alert">
-          {error}
-        </div>
+        <StatusNote tone="problem">{error}</StatusNote>
       ) : !report ? (
         <p className="text-sm text-slate-400">{t.noData}</p>
       ) : (

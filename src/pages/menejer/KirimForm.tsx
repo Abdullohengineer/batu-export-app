@@ -10,6 +10,7 @@ import { FormField, TextInput } from '../../components/ui/FormField'
 import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { toneStyles } from '../../components/ui/tokens'
 
 interface TypeRow {
   key: string
@@ -181,7 +182,11 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 p-6 dark:border-slate-800">
-      <SectionHeading>Yangi KIRIM</SectionHeading>
+      {/* Text stays "Yangi KIRIM" (not the mockup's "Yangi kiruvchi
+          buyurtma") -- e2e asserts getByRole('heading', {name:'Yangi
+          KIRIM'}) in full-chain/rewash-hard-gate/chiqim-undo-scan specs.
+          Only the tone (mockup's blue section-title treatment) changed. */}
+      <SectionHeading tone="info">Yangi KIRIM</SectionHeading>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <FormField label="Sana">
@@ -223,12 +228,9 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Tur + Miqdori</span>
-          <Button type="button" variant="ghost" size="md" onClick={addRow}>
-            + Tur qo'shish
-          </Button>
-        </div>
+        <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Mahsulotlar — bir moshinada bir nechta tur bo'lsa qator qo'shing
+        </span>
 
         {rows.map((row) => (
           // className="space-y-1" preserved from the original row div: e2e
@@ -300,15 +302,44 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
             </div>
           </Card>
         ))}
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="md"
+          fullWidth
+          onClick={addRow}
+          className="border border-dashed !border-blue-300 !text-blue-700 hover:bg-blue-50 dark:!border-blue-800 dark:!text-blue-400 dark:hover:bg-blue-950/30"
+        >
+          + Tur qo'shish
+        </Button>
       </div>
 
-      <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900">
-        <span className="font-medium text-slate-700 dark:text-slate-300">Jami avto</span>
-        <span className="font-semibold text-slate-900 dark:text-slate-100">{jamiAvto.toLocaleString()} kg</span>
-      </div>
+      <Card tone="info">
+        <div className="flex items-center justify-between text-sm">
+          <span className={`font-medium ${toneStyles.info.text}`}>Jami (avto)</span>
+          <span className={`font-semibold ${toneStyles.info.text}`}>
+            {jamiAvto.toLocaleString()} kg · {rows.filter((r) => r.typeId).length} tur
+          </span>
+        </div>
+      </Card>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Hujjat rasmi</label>
+      {/* Mockup shows a "Seriya raqami ... avtomatik" preview box here, but
+          the real serial only exists once next_serial() runs server-side on
+          insert (§2.1/§3.1) -- there is nothing real to show before submit.
+          This note keeps the mockup's intent (serial is automatic, not
+          typed) without fabricating a number; the real one still appears in
+          the savedLines panel below once the insert actually returns it. */}
+      <Card tone="info">
+        <span className={`text-sm font-medium ${toneStyles.info.text}`}>Seriya raqami</span>
+        <span className={`block text-sm ${toneStyles.info.text}`}>Saqlagandan keyin avtomatik beriladi</span>
+      </Card>
+
+      <div className="rounded-md border border-dashed border-slate-300 p-3 dark:border-slate-700">
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Hujjat rasmi <span className="font-normal text-slate-400">· ixtiyoriy</span>
+        </label>
+        <p className="mt-1 text-xs text-slate-400">Mijoz nakladnoyasini biriktirish</p>
         <input
           type="file"
           accept="image/*"

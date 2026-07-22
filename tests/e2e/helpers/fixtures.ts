@@ -47,6 +47,25 @@ export function uniqueRealLookingPlate(): string {
   return `${runToken.slice(-5)}${String(counter).padStart(2, '0')}`
 }
 
+// The one real owner every e2e fixture references — never a dedicated
+// fixture-only client. "Test Client A/B/C" (the prior fixture owners) were
+// deleted outright by the clean-room reset (DECISIONS.md "Clean-room reset
+// for client-report verification") along with every other operational row;
+// the 5 owners that replaced them are real business names with no
+// dedicated e2e-safe placeholder among them, and owners can no longer be
+// created-and-deleted per-test either (§3.3's RLS tightening removed
+// DELETE from `owners` entirely — deactivate-only, by design). Reusing an
+// existing owner is safe: every CHILD row a test creates under it
+// (kirim_orders, chiqim_requests, etc.) is deleted in that test's own
+// teardown (helpers/teardown.ts), so this owner ends every run with zero
+// residual rows attached — the owner itself is never renamed or modified.
+// Picked "Boysun..." specifically because it carries no hand-computed
+// reference numbers elsewhere in this project (unlike "Nukus Agro
+// Eksport", which docs/DECISIONS.md's client-report fixture depends on
+// exactly) — an e2e run's own fixtures can never perturb a number some
+// other verification already locked in.
+export const E2E_OWNER_NAME = 'Boysun Quritilgan Mevalar'
+
 async function switchRole(page: Page, role: TestRole): Promise<void> {
   const logoutButton = page.getByRole('button', { name: 'Chiqish' })
   if ((await logoutButton.count()) > 0) {
@@ -64,6 +83,8 @@ export interface SeededPallet {
 export interface SeedDispatchableResult {
   serial: string
   pallets: SeededPallet[]
+  /** kirim_orders.plate this fixture created — register with teardownFixtures({ kirimPlates: [...] }). */
+  kirimPlate: string
 }
 
 // Seeds N real, immediately-dispatchable finished_pallets — in_stock,
@@ -91,9 +112,9 @@ export async function seedDispatchablePallets(
 
   await switchRole(page, 'MENEJER')
   const serial = await page.evaluate(
-    async ({ typeLabel, plate }) => {
+    async ({ typeLabel, plate, ownerName }) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
-      const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', 'Test Client A').single()
+      const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', ownerName).single()
       if (ownerErr) throw new Error(`owner lookup: ${ownerErr.message}`)
       const { data: type, error: typeErr } = await w.supabase.from('product_types').select('id').eq('name', typeLabel).single()
       if (typeErr) throw new Error(`type lookup: ${typeErr.message}`)
@@ -117,7 +138,7 @@ export async function seedDispatchablePallets(
       if (lineErr) throw new Error(`kirim_lines insert: ${lineErr.message}`)
       return line.serial as string
     },
-    { typeLabel, plate: seedPlate },
+    { typeLabel, plate: seedPlate, ownerName: E2E_OWNER_NAME },
   )
 
   await switchRole(page, 'OMBOR')
@@ -182,10 +203,11 @@ export async function seedDispatchablePallets(
     barcode2: `PLT-${serial}-${calibreCode}-${i + 1}`,
     weightKg: weightKgEach,
   }))
-  return { serial, pallets }
+  return { serial, pallets, kirimPlate: seedPlate }
 }
 
-// The negative-case fixture for menejer-chiqim-finished-view.spec.ts: a
+// The negative-case fixture (originally written for menejer-chiqim-
+// finished-view.spec.ts, now folded into full-chain.spec.ts): a
 // chiqim_request that WOULD appear in the finished view (status
 // 'olib_ketildi', so a naive query returns it) if the view's own
 // TEST-prefix filter didn't specifically exclude it. Inserted directly as
@@ -197,9 +219,9 @@ export async function seedDispatchablePallets(
 export async function seedFilteredFinishedRequest(page: Page): Promise<{ plate: string }> {
   const plate = uniqueTestId('FILTERED')
   await switchRole(page, 'MENEJER')
-  await page.evaluate(async (plate) => {
+  await page.evaluate(async ({ plate, ownerName }) => {
     const w = window as unknown as { supabase: { from: (t: string) => any } }
-    const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', 'Test Client A').single()
+    const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', ownerName).single()
     if (ownerErr) throw new Error(`owner lookup: ${ownerErr.message}`)
     const { error } = await w.supabase.from('chiqim_requests').insert({
       request_date: new Date().toISOString().slice(0, 10),
@@ -209,6 +231,6 @@ export async function seedFilteredFinishedRequest(page: Page): Promise<{ plate: 
       status: 'olib_ketildi',
     })
     if (error) throw new Error(`chiqim_requests insert: ${error.message}`)
-  }, plate)
+  }, { plate, ownerName: E2E_OWNER_NAME })
   return { plate }
 }

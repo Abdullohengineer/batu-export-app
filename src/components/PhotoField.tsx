@@ -37,7 +37,11 @@ export function PhotoField({
       // blocks submit the same way whether this is a first attempt or a
       // failed replacement of an already-attached photo.
       onChange(null)
-      setError("Rasmni siqishda xatolik yuz berdi — boshqa rasm tanlang yoki qayta urinib ko'ring.")
+      // 🚧 TEMPORARY DIAGNOSTIC BUILD -- revert to the friendly message below
+      // once the real on-device error has been captured (remote USB
+      // debugging won't connect, so this stands in for the console).
+      // Revert to: setError("Rasmni siqishda xatolik yuz berdi — boshqa rasm tanlang yoki qayta urinib ko'ring.")
+      setError(err instanceof Error ? `${err.name}: ${err.message}` : String(err))
       // Logged deliberately (no other component in this app does this) --
       // the current investigation's own next step is capturing the real
       // thrown error via real-device remote debugging (Safari Web Inspector /

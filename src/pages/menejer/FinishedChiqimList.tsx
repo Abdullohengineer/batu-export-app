@@ -8,6 +8,8 @@ import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { GatePhoto } from '../../components/GatePhoto'
 import { Card } from '../../components/ui/Card'
 import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusPill } from '../../components/ui/StatusPill'
+import { SerialChip } from '../../components/ui/SerialChip'
 
 function fmt(ts: string | null) {
   return ts ? new Date(ts).toLocaleString() : '—'
@@ -59,18 +61,21 @@ export function FinishedChiqimList() {
               <button
                 type="button"
                 onClick={() => setExpanded(isExpanded ? null : request.id)}
-                className="flex min-h-12 w-full items-center justify-between text-left text-base"
+                className="flex min-h-12 w-full items-center gap-3 text-left"
               >
-                <div>
-                  <span className="text-slate-900 dark:text-slate-100">
-                    {request.request_date} · {request.plate} · {request.driver}
+                <SerialChip>So'rov</SerialChip>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-base text-slate-900 dark:text-slate-100">
+                    {ownerName(request.owner_id)} · {request.plate}
                   </span>
-                  <span className="ml-2 text-slate-500 dark:text-slate-400">{ownerName(request.owner_id)}</span>
-                </div>
-                <span className="text-sm text-slate-500 dark:text-slate-400">Olib ketildi</span>
+                  <span className="block text-sm text-slate-500 dark:text-slate-400">
+                    {request.request_date} · {request.driver} · {request.lines.length} qator
+                  </span>
+                </span>
+                <StatusPill tone="ok">Olib ketildi</StatusPill>
               </button>
               <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                {request.lines.length} qator · net {w?.net_kg?.toLocaleString() ?? '—'} kg · {fmt(w?.completed_at ?? null)}
+                net {w?.net_kg?.toLocaleString() ?? '—'} kg · {fmt(w?.completed_at ?? null)}
               </div>
 
               {isExpanded && (

@@ -8,6 +8,8 @@ import { defaultDateRange } from '../../lib/dateRange'
 import { downloadYieldExcel } from '../../lib/yieldExport'
 import { YieldTable } from './YieldTable'
 import { SerialPassportModal } from './SerialPassportModal'
+import { Button } from '../../components/ui/Button'
+import { toneStyles } from '../../components/ui/tokens'
 
 // §3.2.8 Moisture-adjusted yield — per serial/product/client/period, same
 // "a lookup is a filter, not a separate screen" principle §3.2's whole
@@ -63,63 +65,49 @@ export function YieldTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          Buyurtmachi
-          <select
-            value={ownerId}
-            onChange={(e) => setOwnerId(e.target.value)}
-            className="mt-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
-          >
-            <option value="">Barchasi</option>
-            {owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          Mahsulot turi
-          <select
-            value={typeId}
-            onChange={(e) => setTypeId(e.target.value)}
-            className="mt-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
-          >
-            <option value="">Barchasi</option>
-            {productTypes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          Dan
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+        <select
+          value={ownerId}
+          onChange={(e) => setOwnerId(e.target.value)}
+          className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        >
+          <option value="">Buyurtmachi: Hammasi</option>
+          {owners.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={typeId}
+          onChange={(e) => setTypeId(e.target.value)}
+          className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        >
+          <option value="">Mahsulot turi: Hammasi</option>
+          {productTypes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">
           <input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="mt-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           />
-        </label>
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          Gacha
+          —
           <input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="mt-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           />
         </label>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exporting || rows.length === 0}
-          className="ml-auto rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-        >
-          {exporting ? 'Tayyorlanmoqda…' : 'Excel yuklab olish'}
-        </button>
+        <Button variant="success" size="md" className="ml-auto" onClick={handleExport} disabled={exporting || rows.length === 0}>
+          {exporting ? 'Tayyorlanmoqda…' : '↓ Excel yuklab olish'}
+        </Button>
       </div>
 
       <p className="text-xs text-slate-400">{YIELD_LOSS_BASIS_NOTE}</p>
@@ -130,7 +118,10 @@ export function YieldTab() {
         <p className="text-sm text-slate-400">Tanlangan davrda tugallangan seriya yo'q.</p>
       ) : (
         <>
-          <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-slate-200 bg-slate-50/95 px-4 py-2 text-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+          <div
+            className={`sticky top-0 z-10 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-md border px-4 py-2 text-sm backdrop-blur ${toneStyles.info.border} ${toneStyles.info.bg}`}
+          >
+            <span className={`text-xs font-semibold uppercase tracking-wide ${toneStyles.info.text}`}>Filtrlangan jami</span>
             <span className="text-slate-700 dark:text-slate-300">
               Xom (yuborilgan): <span className="font-medium text-slate-900 dark:text-slate-100">{Math.round(totalRawConsumed).toLocaleString()} kg</span>
             </span>

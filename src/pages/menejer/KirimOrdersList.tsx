@@ -8,7 +8,17 @@ import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { Card } from '../../components/ui/Card'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
-import { toneStyles } from '../../components/ui/tokens'
+import { StatusPill } from '../../components/ui/StatusPill'
+import { SerialChip } from '../../components/ui/SerialChip'
+import { toneStyles, type Tone } from '../../components/ui/tokens'
+
+// kirim_orders.status has exactly these two values (confirmed against the
+// live DB, not assumed) -- a plain display-label + tone map, no new status
+// or transition introduced.
+const STATUS_LABEL: Record<string, { label: string; tone: Tone }> = {
+  kutilmoqda: { label: 'Kutilmoqda', tone: 'pending' },
+  qabul_qilindi: { label: 'Qabul qilindi', tone: 'ok' },
+}
 
 interface KirimLine {
   serial: string
@@ -96,14 +106,20 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
           <button
             type="button"
             onClick={() => toggle(order.order_id)}
-            className="flex min-h-12 w-full items-center justify-between text-left text-base"
+            className="flex min-h-12 w-full items-center gap-3 text-left"
           >
-            <span className="text-slate-900 dark:text-slate-100">
-              {order.order_date} · {order.plate} · {order.driver}
+            <SerialChip>{order.kirim_lines[0]?.serial ?? '—'}</SerialChip>
+            <span className="min-w-0 flex-1">
+              <span className="block text-base text-slate-900 dark:text-slate-100">
+                {order.plate} · {order.driver}
+              </span>
+              <span className="block text-sm text-slate-500 dark:text-slate-400">
+                {order.order_date} · {order.declared_total?.toLocaleString() ?? 0} kg
+              </span>
             </span>
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              {order.declared_total?.toLocaleString() ?? 0} kg · {order.status}
-            </span>
+            <StatusPill tone={STATUS_LABEL[order.status]?.tone ?? 'neutral'}>
+              {STATUS_LABEL[order.status]?.label ?? order.status}
+            </StatusPill>
           </button>
           {expanded.has(order.order_id) && (
             <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 dark:border-slate-700">
@@ -123,7 +139,6 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                         </>
                       )}
                     </span>
-                    <span className="text-slate-500 dark:text-slate-500">{order.status}</span>
                     {pendingRewash.has(line.serial) && (
                       <span className={`font-medium ${toneStyles.problem.text}`}>Qayta yuvish kerak</span>
                     )}

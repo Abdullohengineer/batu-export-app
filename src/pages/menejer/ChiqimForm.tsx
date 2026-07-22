@@ -12,6 +12,7 @@ import { FormField, TextInput } from '../../components/ui/FormField'
 import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { toneStyles } from '../../components/ui/tokens'
 
 interface LineRow {
   key: string
@@ -153,7 +154,9 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 p-6 dark:border-slate-800">
-      <SectionHeading>Yangi CHIQIM</SectionHeading>
+      {/* Text stays "Yangi CHIQIM" -- e2e asserts getByRole('heading',
+          {name:'Yangi CHIQIM'}). Only the tone changed. */}
+      <SectionHeading tone="info">Yangi CHIQIM</SectionHeading>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <FormField label="Sana">
@@ -190,12 +193,9 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Tur + Kalibr + Miqdori</span>
-          <Button type="button" variant="ghost" size="md" onClick={addRow}>
-            + Tur qo'shish
-          </Button>
-        </div>
+        <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Tur va kalibr bo'yicha — kerakcha qator qo'shing
+        </span>
 
         {rows.map((row) => {
           const hint = feasibilityHint(row)
@@ -256,12 +256,27 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
             </Card>
           )
         })}
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="md"
+          fullWidth
+          onClick={addRow}
+          className="border border-dashed !border-blue-300 !text-blue-700 hover:bg-blue-50 dark:!border-blue-800 dark:!text-blue-400 dark:hover:bg-blue-950/30"
+        >
+          + Tur/kalibr qo'shish
+        </Button>
       </div>
 
-      <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900">
-        <span className="font-medium text-slate-700 dark:text-slate-300">Jami avto</span>
-        <span className="font-semibold text-slate-900 dark:text-slate-100">{jamiAvto.toLocaleString()} kg</span>
-      </div>
+      <Card tone="info">
+        <div className="flex items-center justify-between text-sm">
+          <span className={`font-medium ${toneStyles.info.text}`}>Jami (avto)</span>
+          <span className={`font-semibold ${toneStyles.info.text}`}>
+            {jamiAvto.toLocaleString()} kg · {rows.filter((r) => r.typeId && r.calibreId).length} qator
+          </span>
+        </div>
+      </Card>
 
       {error && <StatusNote tone="problem">{error}</StatusNote>}
 

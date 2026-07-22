@@ -11,6 +11,8 @@ import { downloadReportExcel } from '../../lib/reportExport'
 import { dateBasisLabel, defaultReportFilters } from '../../lib/reportQuery'
 import { ReportResultsTable } from './ReportResultsTable'
 import { SerialPassportModal } from './SerialPassportModal'
+import { Button } from '../../components/ui/Button'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 // §3.2 HISOBOT (Reporting) — the shared query engine + results table +
 // totals strip + filter bar (§3.2.1-3.2.4, applied to SPEC.md this step).
@@ -112,21 +114,12 @@ export function HisobotTab() {
               Keyingi →
             </button>
           </div>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={exporting || totalCount === 0}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            {exporting ? 'Tayyorlanmoqda…' : 'Excel yuklab olish'}
-          </button>
+          <Button variant="success" size="md" onClick={handleExport} disabled={exporting || totalCount === 0}>
+            {exporting ? 'Tayyorlanmoqda…' : '↓ Excel yuklab olish'}
+          </Button>
         </div>
 
-        {exportError && (
-          <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400" role="alert">
-            {exportError}
-          </div>
-        )}
+        {exportError && <StatusNote tone="problem">{exportError}</StatusNote>}
 
         {showVoidedCallout && voidedBarcodeMatch && (
           <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/30">

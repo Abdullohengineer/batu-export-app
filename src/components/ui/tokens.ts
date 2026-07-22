@@ -12,7 +12,7 @@
 // note). This file just gives each an ONE name instead of four copy-pasted
 // class strings per usage.
 
-export type Tone = 'neutral' | 'pending' | 'problem' | 'ok'
+export type Tone = 'neutral' | 'pending' | 'problem' | 'ok' | 'info'
 
 // Touch-target sizing — factory floor, gloved/hurried thumb, not a mouse.
 // Tailwind's default spacing scale already has the right numbers; the only
@@ -79,5 +79,17 @@ export const toneStyles: Record<Tone, ToneStyle> = {
     text: 'text-emerald-600 dark:text-emerald-400',
     border: 'border-emerald-300 dark:border-emerald-900',
     bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+  },
+  // Added for the nav/visual-redesign pass (mockup "BATU-Manager-Screens-
+  // MASTER.pdf"): a highlight/interactive-secondary color threaded
+  // consistently through the mockup (form section titles, "+ Tur qo'shish",
+  // the auto-summed totals box, the auto-generated seriya box, drill-down
+  // links) that the 4 existing tones don't cover -- none of them mean
+  // "informational highlight," they're all status states. One new named
+  // tone, not ad hoc blue classes scattered per usage.
+  info: {
+    text: 'text-blue-700 dark:text-blue-400',
+    border: 'border-blue-200 dark:border-blue-900',
+    bg: 'bg-blue-50 dark:bg-blue-950/30',
   },
 }

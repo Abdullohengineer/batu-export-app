@@ -6,6 +6,8 @@ import { useProfileNames } from '../../lib/useProfileNames'
 import { useFinishedChiqimRequests } from '../../lib/useFinishedChiqimRequests'
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { GatePhoto } from '../../components/GatePhoto'
+import { Card } from '../../components/ui/Card'
+import { SectionHeading } from '../../components/ui/SectionHeading'
 
 function fmt(ts: string | null) {
   return ts ? new Date(ts).toLocaleString() : '—'
@@ -46,18 +48,18 @@ export function FinishedChiqimList() {
 
   return (
     <div>
-      <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yakunlangan so'rovlar</h2>
+      <SectionHeading>Yakunlangan so'rovlar</SectionHeading>
       <div className="mt-2 space-y-2">
         {requests.length === 0 && <p className="text-sm text-slate-400">Hali yakunlangan so'rov yo'q.</p>}
         {requests.map((request) => {
           const isExpanded = expanded === request.id
           const w = request.weighing
           return (
-            <div key={request.id} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+            <Card key={request.id}>
               <button
                 type="button"
                 onClick={() => setExpanded(isExpanded ? null : request.id)}
-                className="flex w-full items-center justify-between text-left"
+                className="flex min-h-12 w-full items-center justify-between text-left text-base"
               >
                 <div>
                   <span className="text-slate-900 dark:text-slate-100">
@@ -65,9 +67,9 @@ export function FinishedChiqimList() {
                   </span>
                   <span className="ml-2 text-slate-500 dark:text-slate-400">{ownerName(request.owner_id)}</span>
                 </div>
-                <span className="text-slate-500 dark:text-slate-400">Olib ketildi</span>
+                <span className="text-sm text-slate-500 dark:text-slate-400">Olib ketildi</span>
               </button>
-              <div className="mt-1 text-slate-500 dark:text-slate-400">
+              <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 {request.lines.length} qator · net {w?.net_kg?.toLocaleString() ?? '—'} kg · {fmt(w?.completed_at ?? null)}
               </div>
 
@@ -137,7 +139,7 @@ export function FinishedChiqimList() {
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           )
         })}
       </div>

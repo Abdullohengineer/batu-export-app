@@ -6,6 +6,12 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useLaboratorChiqim, type AwaitingCycle, type ChiqimLabResultRow } from '../../lib/useLaboratorChiqim'
 import { ChiqimTahlilForm, type ChiqimTahlilValues } from './ChiqimTahlilForm'
 import { GatePhoto } from '../../components/GatePhoto'
+import { Card } from '../../components/ui/Card'
+import { Button } from '../../components/ui/Button'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
+import { TextInput } from '../../components/ui/FormField'
+import { toneStyles } from '../../components/ui/tokens'
 
 const VERDICT_LABEL: Record<string, string> = { o_tdi: "O'tdi", qayta_yuvish: 'Qayta yuvish' }
 
@@ -99,15 +105,15 @@ export function LaboratorChiqimTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Tahlil kutilmoqda</h2>
+        <SectionHeading>Tahlil kutilmoqda</SectionHeading>
         <div className="mt-2 space-y-2">
           {awaiting.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan partiya yo'q.</p>}
           {awaiting.map((cycle) => {
             const isActive = activeTahlil === cycle.washCycleId
             const jamiKg = cycle.pallets.reduce((sum, p) => sum + p.weight_kg, 0)
             return (
-              <div key={cycle.washCycleId} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
-                <div className="flex items-center justify-between">
+              <Card key={cycle.washCycleId}>
+                <div className="flex items-center justify-between text-base">
                   <div>
                     <span className="font-mono text-slate-900 dark:text-slate-100">{cycle.serial}</span>
                     <span className="ml-2 text-slate-500 dark:text-slate-400">
@@ -118,12 +124,9 @@ export function LaboratorChiqimTab() {
                     </div>
                   </div>
                   {!isActive && (
-                    <button
-                      onClick={() => setActiveTahlil(cycle.washCycleId)}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                    >
+                    <Button variant="secondary" size="md" onClick={() => setActiveTahlil(cycle.washCycleId)}>
                       Tahlil
-                    </button>
+                    </Button>
                   )}
                 </div>
                 {isActive && (
@@ -135,18 +138,18 @@ export function LaboratorChiqimTab() {
                     onSubmit={(v) => handleTahlil(cycle, v)}
                   />
                 )}
-              </div>
+              </Card>
             )
           })}
         </div>
       </div>
 
       <div>
-        <h2 className="text-sm font-medium text-amber-600 dark:text-amber-400">Sera kutilmoqda</h2>
+        <SectionHeading tone="pending">Sera kutilmoqda</SectionHeading>
         <div className="mt-2 space-y-2">
           {sulfurPending.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan sera yo'q.</p>}
           {sulfurPending.map((row) => (
-            <div key={row.id} className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+            <Card key={row.id} tone="pending">
               <div>
                 <span className="font-mono text-slate-900 dark:text-slate-100">{row.serial}</span>
                 <span className="ml-2 text-slate-500 dark:text-slate-400">
@@ -157,50 +160,42 @@ export function LaboratorChiqimTab() {
                 </div>
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <input
+                <TextInput
                   type="number"
                   min="0"
                   step="0.1"
                   placeholder="SO₂ mg/kg"
                   value={seraValue[row.id] ?? ''}
                   onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
-                  className="w-32 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  className="w-32"
                 />
-                <button
-                  onClick={() => handleSera(row, 'o_tdi')}
-                  disabled={seraSaving === row.id}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-                >
+                <Button variant="success" size="md" disabled={seraSaving === row.id} onClick={() => handleSera(row, 'o_tdi')}>
                   {seraSaving === row.id ? '…' : "O'tdi"}
-                </button>
-                <button
-                  onClick={() => handleSera(row, 'qayta_yuvish')}
-                  disabled={seraSaving === row.id}
-                  className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
-                >
+                </Button>
+                <Button variant="danger" size="md" disabled={seraSaving === row.id} onClick={() => handleSera(row, 'qayta_yuvish')}>
                   {seraSaving === row.id ? '…' : 'Qayta yuvish'}
-                </button>
+                </Button>
               </div>
               {seraError && (
-                <p className="mt-1 text-sm font-medium text-red-600 dark:text-red-400" role="alert">
-                  {seraError}
-                </p>
+                <div className="mt-1">
+                  <StatusNote tone="problem">{seraError}</StatusNote>
+                </div>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       </div>
 
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yakunlangan</h2>
+        <SectionHeading>Yakunlangan</SectionHeading>
         <div className="mt-2 space-y-2">
           {finished.length === 0 && <p className="text-sm text-slate-400">Yakunlangan tahlil yo'q.</p>}
           {finished.map((row) => (
-            <div key={row.id} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+            <Card key={row.id}>
               <button
                 type="button"
                 onClick={() => setExpandedFinished(expandedFinished === row.id ? null : row.id)}
-                className="flex w-full items-center justify-between text-left"
+                className="flex min-h-12 w-full items-center justify-between text-left text-base"
               >
                 <div>
                   <span className="font-mono text-slate-900 dark:text-slate-100">{row.serial}</span>
@@ -208,18 +203,12 @@ export function LaboratorChiqimTab() {
                     {typeName(row.type_id)} · {ownerName(row.owner_id)} · sikl {row.cycleNo}
                   </span>
                 </div>
-                <span
-                  className={
-                    row.verdict === 'qayta_yuvish'
-                      ? 'font-medium text-red-600 dark:text-red-400'
-                      : 'font-medium text-emerald-600 dark:text-emerald-400'
-                  }
-                >
+                <span className={`text-sm font-medium ${row.verdict === 'qayta_yuvish' ? toneStyles.problem.text : toneStyles.ok.text}`}>
                   {row.verdict ? VERDICT_LABEL[row.verdict] : '—'}
                 </span>
               </button>
               {expandedFinished === row.id && (
-                <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
                   <div>
                     Namligi {row.moisture_pct}%{' '}
                     <span className="text-slate-400 dark:text-slate-500">
@@ -236,7 +225,7 @@ export function LaboratorChiqimTab() {
                   <GatePhoto path={row.sample_photo} label="Namuna rasmi" bucket="lab-photos" />
                 </div>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       </div>

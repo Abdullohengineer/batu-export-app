@@ -4,6 +4,10 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useKirimTrips, type KirimTrip } from '../../lib/useKirimTrips'
 import { GateStageForm, type GateStageValues } from './GateStageForm'
+import { Card } from '../../components/ui/Card'
+import { Button } from '../../components/ui/Button'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { Stat } from '../../components/ui/Stat'
 
 async function uploadGatePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
@@ -83,23 +87,14 @@ export function QorovulKirimTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3 text-center text-sm">
-        <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
-          <div className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{notStarted.length}</div>
-          <div className="text-slate-500 dark:text-slate-400">Kutilmoqda</div>
-        </div>
-        <div className="rounded-md border border-red-200 p-3 dark:border-red-900">
-          <div className="text-2xl font-semibold text-red-600 dark:text-red-400">{inProgress.length}</div>
-          <div className="text-slate-500 dark:text-slate-400">Kirdi·bo'shatilmoqda</div>
-        </div>
-        <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
-          <div className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{completed.length}</div>
-          <div className="text-slate-500 dark:text-slate-400">Yakunlandi</div>
-        </div>
+      <div className="grid grid-cols-3 gap-3">
+        <Stat value={notStarted.length} label="Kutilmoqda" />
+        <Stat value={inProgress.length} label="Kirdi·bo'shatilmoqda" tone={inProgress.length > 0 ? 'problem' : 'neutral'} />
+        <Stat value={completed.length} label="Yakunlandi" />
       </div>
 
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Faol</h2>
+        <SectionHeading>Faol</SectionHeading>
         <div className="mt-2 space-y-2">
           {activeWindow.length === 0 && <p className="text-sm text-slate-400">Faol reys yo'q.</p>}
           {activeWindow.map((trip) => {
@@ -107,11 +102,8 @@ export function QorovulKirimTab() {
             const isActive = activeOrderId === trip.order.order_id
 
             return (
-              <div
-                key={trip.order.order_id}
-                className={`rounded-md border p-3 ${isRed ? 'border-red-300 dark:border-red-900' : 'border-slate-200 dark:border-slate-700'}`}
-              >
-                <div className="flex items-center justify-between text-sm">
+              <Card key={trip.order.order_id} tone={isRed ? 'problem' : 'neutral'}>
+                <div className="flex items-center justify-between text-base">
                   <div>
                     <span className="font-medium text-slate-900 dark:text-slate-100">
                       {trip.order.plate} · {trip.order.driver}
@@ -121,15 +113,16 @@ export function QorovulKirimTab() {
                     </div>
                   </div>
                   {!isActive && (
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="md"
                       onClick={() => {
                         setActiveOrderId(trip.order.order_id)
                         setActiveStage(isRed ? 2 : 1)
                       }}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
                       {isRed ? 'Yakunlash' : 'Qabul qilish'}
-                    </button>
+                    </Button>
                   )}
                 </div>
 
@@ -140,29 +133,32 @@ export function QorovulKirimTab() {
                     onSubmit={(values) => (activeStage === 1 ? handleStage1(trip, values) : handleStage2(trip, values))}
                   />
                 )}
-              </div>
+              </Card>
             )
           })}
         </div>
       </div>
 
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yakunlangan</h2>
+        <SectionHeading>Yakunlangan</SectionHeading>
         <div className="mt-2 space-y-2">
           {completed.length === 0 && <p className="text-sm text-slate-400">Hali yakunlangan reys yo'q.</p>}
           {completed.map((trip) => (
-            <div
-              key={trip.order.order_id}
-              className="flex items-center justify-between rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700"
-            >
-              <span className="text-slate-900 dark:text-slate-100">
-                {trip.order.plate} · {trip.order.driver}
-              </span>
-              <span className="text-slate-500 dark:text-slate-400">
-                {trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg ·{' '}
-                {trip.weighing?.completed_at ? new Date(trip.weighing.completed_at).toLocaleString() : ''}
-              </span>
-            </div>
+            <Card key={trip.order.order_id} padding="compact">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-900 dark:text-slate-100">
+                  {trip.order.plate} · {trip.order.driver}
+                </span>
+                <div className="text-right">
+                  <div className="text-base font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                    {trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {trip.weighing?.completed_at ? new Date(trip.weighing.completed_at).toLocaleString() : ''}
+                  </div>
+                </div>
+              </div>
+            </Card>
           ))}
         </div>
       </div>

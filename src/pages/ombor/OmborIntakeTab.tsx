@@ -12,6 +12,11 @@ import { hasRawRemainder } from '../../lib/stageMembership'
 import { IntakeAcceptForm, type IntakeAcceptValues } from './IntakeAcceptForm'
 import { IntakeDetailView } from './IntakeDetailView'
 import { Barcode1Display } from './Barcode1Display'
+import { Card } from '../../components/ui/Card'
+import { Button } from '../../components/ui/Button'
+import { IconButton } from '../../components/ui/IconButton'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 async function uploadPilePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
@@ -129,11 +134,11 @@ export function OmborIntakeTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Kutilmoqda</h2>
+        <SectionHeading>Kutilmoqda</SectionHeading>
         <div className="mt-2 space-y-3">
           {pendingByOrder.size === 0 && <p className="text-sm text-slate-400">Kutilayotgan reys yo'q.</p>}
           {[...pendingByOrder.entries()].map(([orderId, orderLines]) => (
-            <div key={orderId} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+            <Card key={orderId}>
               <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
                 {orderLines[0].plate} · {orderLines[0].driver} · {orderLines[0].order_date}
               </div>
@@ -143,26 +148,16 @@ export function OmborIntakeTab() {
                   const isActive = activeSerial === line.serial
 
                   return (
-                    <div
-                      key={line.serial}
-                      className={
-                        acceptable
-                          ? 'rounded-md border border-slate-300 p-2 text-sm dark:border-slate-600'
-                          : 'rounded-md border border-slate-100 bg-slate-50 p-2 text-sm text-slate-400 dark:border-slate-800 dark:bg-slate-900'
-                      }
-                    >
-                      <div className="flex items-center justify-between">
+                    <Card key={line.serial} padding="compact" className={acceptable ? '' : 'opacity-60'}>
+                      <div className="flex items-center justify-between text-base">
                         <span className={acceptable ? 'text-slate-900 dark:text-slate-100' : ''}>
                           {line.serial} · {typeName(line.type_id)} · {line.declared_qty.toLocaleString()} kg
                         </span>
                         {acceptable ? (
                           !isActive && (
-                            <button
-                              onClick={() => setActiveSerial(line.serial)}
-                              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                            >
+                            <Button variant="secondary" size="md" onClick={() => setActiveSerial(line.serial)}>
                               Qabul qilish
-                            </button>
+                            </Button>
                           )
                         ) : (
                           <span className="text-xs italic">kutilmoqda (darvoza)</span>
@@ -178,17 +173,17 @@ export function OmborIntakeTab() {
                           onSubmit={(values) => handleAccept(line, values)}
                         />
                       )}
-                    </div>
+                    </Card>
                   )
                 })}
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       </div>
 
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Qabul qilingan mahsulotlar</h2>
+        <SectionHeading>Qabul qilingan mahsulotlar</SectionHeading>
         <div className="mt-2 space-y-2">
           {received.length === 0 && <p className="text-sm text-slate-400">Hali qabul qilingan yo'q.</p>}
           {received.map((line) => {
@@ -196,9 +191,9 @@ export function OmborIntakeTab() {
             const eqValue = eq?.value ?? line.intake.actual_qty
             const remaining = Math.max(0, eqValue - (sentBySerial.get(line.serial) ?? 0))
             return (
-            <div key={line.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+            <Card key={line.serial}>
               <div className="flex items-center justify-between">
-                <span className="text-slate-900 dark:text-slate-100">
+                <span className="text-base text-slate-900 dark:text-slate-100">
                   {line.serial} · {typeName(line.type_id)} ·{' '}
                   {eq?.provisional ? 'tarozi kutilmoqda' : `${eqValue.toLocaleString()} kg`} · Qoldiq:{' '}
                   {remaining.toLocaleString()} kg
@@ -215,38 +210,40 @@ export function OmborIntakeTab() {
                       }}
                     />
                   )}
-                  <button
-                    onClick={() => setExpandedSerial(expandedSerial === line.serial ? null : line.serial)}
-                    className="rounded-md px-2 py-1 text-slate-500 hover:text-slate-700 dark:text-slate-400"
-                    aria-label="Batafsil"
-                  >
+                  <IconButton label="Batafsil" onClick={() => setExpandedSerial(expandedSerial === line.serial ? null : line.serial)}>
                     ⋯
-                  </button>
+                  </IconButton>
                 </div>
               </div>
               {/* §5.1 amend: gate-vs-declared variance, shown once gate stage 2 is known. */}
               {eq?.truckVariance && Math.abs(eq.truckVariance.diffKg) > 0 && (
-                <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                  Darvoza neta reys bo'yicha e'lon qilingandan {eq.truckVariance.diffKg >= 0 ? '+' : ''}
-                  {eq.truckVariance.diffKg.toLocaleString()} kg ({eq.truckVariance.diffPct >= 0 ? '+' : ''}
-                  {eq.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
+                <div className="mt-1">
+                  <StatusNote tone="pending">
+                    Darvoza neta reys bo'yicha e'lon qilingandan {eq.truckVariance.diffKg >= 0 ? '+' : ''}
+                    {eq.truckVariance.diffKg.toLocaleString()} kg ({eq.truckVariance.diffPct >= 0 ? '+' : ''}
+                    {eq.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
+                  </StatusNote>
                 </div>
               )}
               {eq?.lineReconciliation && Math.abs(eq.lineReconciliation.diffKg) > 0 && (
-                <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                  Qatorlar yig'indisi darvoza netasidan {eq.lineReconciliation.diffKg >= 0 ? '+' : ''}
-                  {eq.lineReconciliation.diffKg.toLocaleString()} kg farq qiladi (bir necha turdagi reys).
+                <div className="mt-1">
+                  <StatusNote tone="pending">
+                    Qatorlar yig'indisi darvoza netasidan {eq.lineReconciliation.diffKg >= 0 ? '+' : ''}
+                    {eq.lineReconciliation.diffKg.toLocaleString()} kg farq qiladi (bir necha turdagi reys).
+                  </StatusNote>
                 </div>
               )}
               {eq?.provisionalVarianceFlag && (
-                <div className="mt-1 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                  Diqqat: tarozi kutilayotganda yuborilgan, keyin darvoza netasi sezilarli farq qildi.
+                <div className="mt-1">
+                  <StatusNote tone="problem">
+                    Diqqat: tarozi kutilayotganda yuborilgan, keyin darvoza netasi sezilarli farq qildi.
+                  </StatusNote>
                 </div>
               )}
               {expandedSerial === line.serial && (
                 <IntakeDetailView line={line} ownerName={ownerName(line.owner_id)} typeName={typeName(line.type_id)} />
               )}
-            </div>
+            </Card>
             )
           })}
         </div>

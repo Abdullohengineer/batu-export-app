@@ -1,6 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { PhotoField } from '../../components/PhotoField'
 import type { IntakeLine } from '../../lib/useIntakeLines'
+import { Button } from '../../components/ui/Button'
+import { FormField, TextInput } from '../../components/ui/FormField'
+import { StatusNote } from '../../components/ui/StatusNote'
+import { toneStyles } from '../../components/ui/tokens'
 
 export interface IntakeAcceptValues {
   actualQty: number
@@ -64,43 +68,43 @@ export function IntakeAcceptForm({
       onSubmit={handleSubmit}
       className="mt-3 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900"
     >
-      <div className="grid grid-cols-2 gap-3 text-sm">
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <div className="text-slate-500 dark:text-slate-400">Seriya</div>
-          <div className="font-mono text-slate-900 dark:text-slate-100">{line.serial}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">Seriya</div>
+          <div className="font-mono text-base text-slate-900 dark:text-slate-100">{line.serial}</div>
         </div>
         <div>
-          <div className="text-slate-500 dark:text-slate-400">Tur</div>
-          <div className="text-slate-900 dark:text-slate-100">{typeName}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">Tur</div>
+          <div className="text-base text-slate-900 dark:text-slate-100">{typeName}</div>
         </div>
         <div>
-          <div className="text-slate-500 dark:text-slate-400">Buyurtma (kutilgan, kg)</div>
-          <div className="text-slate-900 dark:text-slate-100">{line.declared_qty.toLocaleString()}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">Buyurtma (kutilgan, kg)</div>
+          <div className="text-base text-slate-900 dark:text-slate-100">{line.declared_qty.toLocaleString()}</div>
         </div>
+        {/* Not FormField: the label's `htmlFor` pairs explicitly with this
+            input's `id` (`#actual-${serial}`, an e2e locator target) --
+            FormField's label doesn't accept htmlFor, so this field keeps its
+            own label and uses TextInput directly, same resolution as
+            ChiqimTahlilForm's composite-label field. */}
         <div>
-          <label className="block text-slate-500 dark:text-slate-400" htmlFor={`actual-${line.serial}`}>
+          <label className="block text-xs text-slate-500 dark:text-slate-400" htmlFor={`actual-${line.serial}`}>
             Aniq (kg)
           </label>
-          <input
-            id={`actual-${line.serial}`}
-            type="number"
-            min="0"
-            step="0.1"
-            required
-            value={actualQty}
-            onChange={(e) => setActualQty(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          />
+          <div className="mt-1">
+            <TextInput
+              id={`actual-${line.serial}`}
+              type="number"
+              min="0"
+              step="0.1"
+              required
+              value={actualQty}
+              onChange={(e) => setActualQty(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
-      <p
-        className={
-          isKamChiqdi
-            ? 'text-sm font-medium text-red-600 dark:text-red-400'
-            : 'text-sm text-slate-500 dark:text-slate-400'
-        }
-      >
+      <p className={`text-sm ${isKamChiqdi ? `font-medium ${toneStyles.problem.text}` : 'text-slate-500 dark:text-slate-400'}`}>
         Farq: {varianceKg >= 0 ? '+' : ''}
         {varianceKg.toLocaleString()} kg ({variancePct >= 0 ? '+' : ''}
         {variancePct.toFixed(1)}%){isKamChiqdi && ' — Kam chiqdi'}
@@ -108,37 +112,19 @@ export function IntakeAcceptForm({
 
       <PhotoField label="Uyum rasmi" required onChange={setPilePhoto} />
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Komment (ixtiyoriy)</label>
-        <input
-          type="text"
-          value={komment}
-          onChange={(e) => setKomment(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        />
-      </div>
+      <FormField label="Komment (ixtiyoriy)">
+        <TextInput type="text" value={komment} onChange={(e) => setKomment(e.target.value)} />
+      </FormField>
 
-      {error && (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
 
       <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-        >
+        <Button type="submit" variant="primary" size="lg" disabled={submitting}>
           {submitting ? 'Saqlanmoqda…' : 'Qabul qilish'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-3 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
-        >
+        </Button>
+        <Button type="button" variant="ghost" size="md" onClick={onCancel}>
           Bekor qilish
-        </button>
+        </Button>
       </div>
     </form>
   )

@@ -6,6 +6,12 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useAuth } from '../../lib/AuthProvider'
 import { useAvailableFinishedStock } from '../../lib/useAvailableFinishedStock'
 import { checkFeasibility } from '../../lib/chiqimFeasibility'
+import { Button } from '../../components/ui/Button'
+import { Card } from '../../components/ui/Card'
+import { FormField, TextInput } from '../../components/ui/FormField'
+import { IconButton } from '../../components/ui/IconButton'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 interface LineRow {
   key: string
@@ -147,46 +153,29 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 p-6 dark:border-slate-800">
-      <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yangi CHIQIM</h2>
+      <SectionHeading>Yangi CHIQIM</SectionHeading>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Sana</label>
-          <input
-            type="date"
-            required
-            value={sana}
-            onChange={(e) => setSana(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          />
-        </div>
+        <FormField label="Sana">
+          <TextInput type="date" required value={sana} onChange={(e) => setSana(e.target.value)} />
+        </FormField>
+        {/* Not FormField for this field or the next: same direct-child
+            locator constraint as KirimForm's "Moshina raqami"/"Haydovchi
+            ismi" fields -- see that file's comment. */}
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Moshina raqami</label>
-          <input
-            type="text"
-            required
-            value={plate}
-            onChange={(e) => setPlate(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          />
+          <TextInput type="text" required value={plate} onChange={(e) => setPlate(e.target.value)} className="mt-1" />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Haydovchi ismi</label>
-          <input
-            type="text"
-            required
-            value={driver}
-            onChange={(e) => setDriver(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          />
+          <TextInput type="text" required value={driver} onChange={(e) => setDriver(e.target.value)} className="mt-1" />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Buyurtmachi</label>
+        <FormField label="Buyurtmachi">
           <select
             required
             value={ownerId}
             onChange={(e) => setOwnerId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            className="w-full rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
             <option value="" disabled>
               Tanlang…
@@ -197,31 +186,27 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
               </option>
             ))}
           </select>
-        </div>
+        </FormField>
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Tur + Kalibr + Miqdori</span>
-          <button
-            type="button"
-            onClick={addRow}
-            className="text-sm font-medium text-slate-700 underline dark:text-slate-300"
-          >
+          <Button type="button" variant="ghost" size="md" onClick={addRow}>
             + Tur qo'shish
-          </button>
+          </Button>
         </div>
 
         {rows.map((row) => {
           const hint = feasibilityHint(row)
           return (
-            <div key={row.key} className="space-y-1">
+            <Card key={row.key} padding="compact">
               <div className="flex items-center gap-2">
                 <select
                   required
                   value={row.typeId}
                   onChange={(e) => updateRow(row.key, { typeId: e.target.value })}
-                  className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="" disabled>
                     Tur…
@@ -236,7 +221,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   required
                   value={row.calibreId}
                   onChange={(e) => updateRow(row.key, { calibreId: e.target.value })}
-                  className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="" disabled>
                     Kalibr…
@@ -247,7 +232,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                     </option>
                   ))}
                 </select>
-                <input
+                <TextInput
                   type="number"
                   min="0"
                   step="0.1"
@@ -255,25 +240,20 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   placeholder="Miqdori (kg)"
                   value={row.qty}
                   onChange={(e) => updateRow(row.key, { qty: e.target.value })}
-                  className="w-40 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  className="w-40"
                 />
                 {rows.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeRow(row.key)}
-                    aria-label="Qatorni o'chirish"
-                    className="rounded-md px-2 py-2 text-sm text-slate-400 hover:text-red-600"
-                  >
+                  <IconButton label="Qatorni o'chirish" tone="danger" onClick={() => removeRow(row.key)}>
                     ✕
-                  </button>
+                  </IconButton>
                 )}
               </div>
               {hint && (
-                <p className="text-xs font-medium text-amber-600 dark:text-amber-400" role="status">
-                  {hint}
-                </p>
+                <div className="mt-1">
+                  <StatusNote tone="pending">{hint}</StatusNote>
+                </div>
               )}
-            </div>
+            </Card>
           )
         })}
       </div>
@@ -283,32 +263,24 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
         <span className="font-semibold text-slate-900 dark:text-slate-100">{jamiAvto.toLocaleString()} kg</span>
       </div>
 
-      {error && (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
 
       {savedLines && (
-        <div className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+        <Card>
           {savedLines.map((line) => (
-            <div key={line.key} className="flex items-center justify-between">
+            <div key={line.key} className="flex items-center justify-between text-sm">
               <span className="text-slate-600 dark:text-slate-400">
                 {typeName(line.typeId)} · {calibreLabel(line.calibreId)}
               </span>
               <span className="font-mono text-slate-900 dark:text-slate-100">{line.qtyKg.toLocaleString()} kg</span>
             </div>
           ))}
-        </div>
+        </Card>
       )}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-      >
+      <Button type="submit" variant="primary" size="lg" fullWidth disabled={submitting}>
         {submitting ? 'Saqlanmoqda…' : 'Saqlash'}
-      </button>
+      </Button>
     </form>
   )
 }

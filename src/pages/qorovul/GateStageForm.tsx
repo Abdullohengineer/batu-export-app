@@ -1,5 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { PhotoField } from '../../components/PhotoField'
+import { Button } from '../../components/ui/Button'
+import { FormField, TextInput } from '../../components/ui/FormField'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 export interface GateStageValues {
   weightKg: number
@@ -88,18 +91,16 @@ export function GateStageForm({
     >
       {stage === 1 && <PhotoField label="Moshina raqami rasmi" required onChange={setPlatePhoto} />}
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{weightLabel}</label>
-        <input
+      <FormField label={weightLabel}>
+        <TextInput
           type="number"
           min="0"
           step="0.1"
           required
           value={weightKg}
           onChange={(e) => setWeightKg(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         />
-      </div>
+      </FormField>
 
       <PhotoField label="Tarozi rasmi" required onChange={setScalePhoto} />
 
@@ -107,27 +108,15 @@ export function GateStageForm({
         <PhotoField label="Chiqish hujjati rasmi" required onChange={setDepartureDocPhoto} />
       )}
 
-      {error && (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
 
       <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-        >
+        <Button type="submit" variant="primary" size="lg" disabled={submitting}>
           {submitting ? 'Saqlanmoqda…' : stage === 1 ? 'Qabul qilish' : 'Yakunlash'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-3 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
-        >
+        </Button>
+        <Button type="button" variant="ghost" size="md" onClick={onCancel}>
           Bekor qilish
-        </button>
+        </Button>
       </div>
     </form>
   )

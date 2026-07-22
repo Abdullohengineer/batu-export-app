@@ -323,7 +323,6 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           onChange={(e) => handlePhotoChange(e.target.files?.[0] ?? null)}
           className="mt-1 w-full text-sm text-slate-700 dark:text-slate-300"
         />

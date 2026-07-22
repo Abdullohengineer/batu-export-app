@@ -5,6 +5,7 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarExceptions } from '../../lib/useRahbarDashboard'
 import { EXCEPTION_KIND_LABEL, type ExceptionRow } from '../../lib/rahbarDashboard'
 import { SerialPassportModal } from '../reports/SerialPassportModal'
+import { IconButton } from '../../components/ui/IconButton'
 
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top text-sm'
@@ -82,13 +83,9 @@ export function RahbarExceptionsTab() {
                   <td className={`${td} text-slate-700 dark:text-slate-300`}>{detailText(row)}</td>
                   <td className={`${td} text-right`}>
                     {row.serial && (
-                      <button
-                        type="button"
-                        onClick={() => setPassportSerial(row.serial)}
-                        className="text-slate-600 underline decoration-dotted hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
-                      >
+                      <IconButton label="Pasportni ochish" onClick={() => setPassportSerial(row.serial)}>
                         →
-                      </button>
+                      </IconButton>
                     )}
                   </td>
                 </tr>

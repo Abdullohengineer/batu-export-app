@@ -5,6 +5,10 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { usePendingRewash } from '../../lib/usePendingRewash'
 import { useEffectiveQty } from '../../lib/effectiveQty'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
+import { Card } from '../../components/ui/Card'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
+import { toneStyles } from '../../components/ui/tokens'
 
 interface KirimLine {
   serial: string
@@ -85,24 +89,24 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="space-y-2">
-      <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yuborilgan KIRIM buyurtmalari</h2>
+      <SectionHeading>Yuborilgan KIRIM buyurtmalari</SectionHeading>
       {orders.length === 0 && <p className="text-sm text-slate-400">Hali buyurtma yo'q.</p>}
       {orders.map((order) => (
-        <div key={order.order_id} className="rounded-md border border-slate-200 dark:border-slate-700">
+        <Card key={order.order_id} padding="compact">
           <button
             type="button"
             onClick={() => toggle(order.order_id)}
-            className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
+            className="flex min-h-12 w-full items-center justify-between text-left text-base"
           >
             <span className="text-slate-900 dark:text-slate-100">
               {order.order_date} · {order.plate} · {order.driver}
             </span>
-            <span className="text-slate-500 dark:text-slate-400">
+            <span className="text-sm text-slate-500 dark:text-slate-400">
               {order.declared_total?.toLocaleString() ?? 0} kg · {order.status}
             </span>
           </button>
           {expanded.has(order.order_id) && (
-            <div className="space-y-1 border-t border-slate-200 px-3 py-2 dark:border-slate-700">
+            <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 dark:border-slate-700">
               {order.kirim_lines.map((line) => {
                 const eq = effectiveQty.get(line.serial)
                 return (
@@ -121,28 +125,28 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                     </span>
                     <span className="text-slate-500 dark:text-slate-500">{order.status}</span>
                     {pendingRewash.has(line.serial) && (
-                      <span className="font-medium text-red-600 dark:text-red-400">Qayta yuvish kerak</span>
+                      <span className={`font-medium ${toneStyles.problem.text}`}>Qayta yuvish kerak</span>
                     )}
                   </div>
                   {/* §5.1 amend: gate-vs-declared variance, once gate stage 2 is known. */}
                   {eq?.truckVariance && Math.abs(eq.truckVariance.diffKg) > 0 && (
-                    <div className="text-xs text-amber-700 dark:text-amber-400">
+                    <StatusNote tone="pending">
                       Darvoza neta reys bo'yicha e'lon qilingandan {eq.truckVariance.diffKg >= 0 ? '+' : ''}
                       {eq.truckVariance.diffKg.toLocaleString()} kg ({eq.truckVariance.diffPct >= 0 ? '+' : ''}
                       {eq.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
-                    </div>
+                    </StatusNote>
                   )}
                   {eq?.provisionalVarianceFlag && (
-                    <div className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+                    <StatusNote tone="problem">
                       Diqqat: tarozi kutilayotganda yuborilgan, keyin darvoza netasi sezilarli farq qildi.
-                    </div>
+                    </StatusNote>
                   )}
                 </div>
                 )
               })}
             </div>
           )}
-        </div>
+        </Card>
       ))}
     </div>
   )

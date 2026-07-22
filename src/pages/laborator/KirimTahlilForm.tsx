@@ -1,5 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { PhotoField } from '../../components/PhotoField'
+import { Button } from '../../components/ui/Button'
+import { FormField, TextInput } from '../../components/ui/FormField'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 export interface TahlilValues {
   sampleDate: string
@@ -54,65 +57,41 @@ export function KirimTahlilForm({
       onSubmit={handleSubmit}
       className="mt-3 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900"
     >
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Sana</label>
-        <input
-          type="date"
-          required
-          value={sampleDate}
-          onChange={(e) => setSampleDate(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        />
-      </div>
+      <FormField label="Sana">
+        <TextInput type="date" required value={sampleDate} onChange={(e) => setSampleDate(e.target.value)} />
+      </FormField>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Namligi %</label>
-        <input
+      <FormField label="Namligi %">
+        <TextInput
           type="number"
           min="0"
           step="0.1"
           required
           value={moisture}
           onChange={(e) => setMoisture(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         />
-      </div>
+      </FormField>
 
       <PhotoField label="Namuna rasmi (ixtiyoriy)" onChange={setPhotoFile} />
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-          Nuqson/begona modda qaydi (ixtiyoriy)
-        </label>
+      <FormField label="Nuqson/begona modda qaydi (ixtiyoriy)">
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-base bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
         />
-      </div>
+      </FormField>
 
-      {error && (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
 
       <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-        >
+        <Button type="submit" variant="primary" size="lg" disabled={submitting}>
           {submitting ? 'Saqlanmoqda…' : 'Saqlash'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-3 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
-        >
+        </Button>
+        <Button type="button" variant="ghost" size="md" onClick={onCancel}>
           Bekor qilish
-        </button>
+        </Button>
       </div>
     </form>
   )

@@ -8,6 +8,15 @@ import { useOmborChiqimRequests, type ChiqimRequest } from '../../lib/useOmborCh
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { resolveScan, lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimScan'
 import { currentCycleLabStatus } from '../../lib/labVerdict'
+import { BarcodeCameraScanner } from '../../components/BarcodeCameraScanner'
+import { Card } from '../../components/ui/Card'
+import { Button } from '../../components/ui/Button'
+import { IconButton } from '../../components/ui/IconButton'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
+import { Stat } from '../../components/ui/Stat'
+import { TextInput } from '../../components/ui/FormField'
+import type { Tone } from '../../components/ui/tokens'
 
 interface ScannedPallet {
   barcode2: string
@@ -20,6 +29,17 @@ interface ScannedPallet {
 // (OmborTayyorTab) — collapsed shows request_date · plate · driver · owner
 // + a target-kg summary line; expand reveals the scan form (W1) or the
 // pallet list (W2), never both fetched or rendered eagerly.
+//
+// UX pass prompt 1/2 (see docs/DECISIONS.md "UX pass: design system + Ombor
+// scan-load"): reference implementation for the shared `components/ui/`
+// system, plus camera scanning (`BarcodeCameraScanner`). Presentation and
+// one new input path only — every Supabase call, every `chiqimScan.ts`
+// decision, and every existing button/heading/placeholder string below is
+// unchanged from before this pass; only their layout, styling, and (for
+// the scan input) camera-vs-typed source changed. `processBarcode` is the
+// one factored-out piece: both the manual form and the camera call it, so
+// a camera read behaves byte-for-byte like typing the same code, including
+// a voided/claimed/wrong-stage barcode failing exactly the same way.
 //
 // 🔒 Totals are tracked PER LINE, not per whole request (§5.4: "target
 // LINES with progress bars"; "auto-adds ... to the matching type+calibre
@@ -76,11 +96,15 @@ export function OmborChiqimTab() {
     return totals
   }
 
-  async function handleScan(request: ChiqimRequest, e: FormEvent) {
-    e.preventDefault()
+  // The one shared scan-resolution path — manual submit and the camera
+  // both call this with a raw barcode string, unchanged from the original
+  // handleScan's own lookups/resolveScan call/state update. Returns
+  // whether the scan was accepted, so the manual form knows whether to
+  // clear its input (only on success — same as before this pass, an
+  // operator seeing a rejected code stays able to read/correct it).
+  async function processBarcode(request: ChiqimRequest, barcode2: string): Promise<boolean> {
     setScanError(null)
-    const barcode2 = barcodeInput.trim()
-    if (!barcode2) return
+    if (!barcode2) return false
 
     const { data: pallet } = await supabase
       .from('finished_pallets')
@@ -123,14 +147,22 @@ export function OmborChiqimTab() {
         no_matching_line: 'Bu tur/kalibr ushbu so\'rovda yo\'q.',
       }
       setScanError(messages[result.reason])
-      return
+      return false
     }
 
     setScannedByRequest((m) => ({
       ...m,
       [request.id]: [...(m[request.id] ?? []), { barcode2: pallet!.barcode2, lineId: result.lineId, weight_kg: pallet!.weight_kg }],
     }))
-    setBarcodeInput('')
+    return true
+  }
+
+  async function handleScan(request: ChiqimRequest, e: FormEvent) {
+    e.preventDefault()
+    const barcode2 = barcodeInput.trim()
+    if (!barcode2) return
+    const ok = await processBarcode(request, barcode2)
+    if (ok) setBarcodeInput('')
   }
 
   function removeScan(requestId: string, barcode2: string) {
@@ -218,7 +250,7 @@ export function OmborChiqimTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yuklash uchun so'rovlar</h2>
+        <SectionHeading>Yuklash uchun so'rovlar</SectionHeading>
         <div className="mt-2 space-y-2">
           {open.length === 0 && <p className="text-sm text-slate-400">Ochiq so'rov yo'q.</p>}
           {open.map((request) => {
@@ -227,12 +259,29 @@ export function OmborChiqimTab() {
             const scanned = (scannedByRequest[request.id] ?? []).reduce((sum, s) => sum + s.weight_kg, 0)
             const totalsByLine = lineTotalsFor(request.id)
             const shortfalls = computeShortfallLines(request.lines, totalsByLine)
+            // Aggregate glance-state for the running-total banner —
+            // composed here from the SAME per-line lineStatus() every line
+            // card below already uses, not a new decision. Mirrors the
+            // existing per-line convention exactly: shortfall stays
+            // neutral (still in progress, never a problem on its own),
+            // overage on ANY line is the pending/amber signal, and emerald
+            // only once every line is exact.
+            const lineStatuses = request.lines.map((l) => lineStatus(l.qty_kg, lineTotal(request.id, l.id)))
+            const aggregateTone: Tone =
+              scanned === 0
+                ? 'neutral'
+                : lineStatuses.some((s) => s === 'overage')
+                  ? 'pending'
+                  : lineStatuses.every((s) => s === 'exact')
+                    ? 'ok'
+                    : 'neutral'
+
             return (
-              <div key={request.id} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+              <Card key={request.id}>
                 <button
                   type="button"
                   onClick={() => setExpandedOpen(isExpanded ? null : request.id)}
-                  className="flex w-full items-center justify-between text-left"
+                  className="flex min-h-12 w-full items-center justify-between text-left text-base"
                 >
                   <div>
                     <span className="text-slate-900 dark:text-slate-100">
@@ -242,81 +291,48 @@ export function OmborChiqimTab() {
                   </div>
                   <span className="text-slate-500 dark:text-slate-400">⋯</span>
                 </button>
-                <div className="mt-1 text-slate-500 dark:text-slate-400">
+                <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {request.lines.length} qator · maqsad {target.toLocaleString()} kg
                   {scanned > 0 && <> · skanerlangan {scanned.toLocaleString()} kg</>}
                 </div>
 
                 {isExpanded && (
-                  <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
-                    {request.lines.map((line) => {
-                      const lineScanned = lineTotal(request.id, line.id)
-                      const status = lineStatus(line.qty_kg, lineScanned)
-                      return (
-                        <div key={line.id} className="rounded-md bg-slate-50 p-2 dark:bg-slate-900">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-700 dark:text-slate-300">
-                              {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
-                            </span>
-                            <span className="text-slate-500 dark:text-slate-400">
-                              {lineScanned.toLocaleString()} / {line.qty_kg.toLocaleString()} kg
-                            </span>
-                          </div>
-                          {status === 'exact' && (
-                            <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                              ✓ Aniq mos keldi
-                            </p>
-                          )}
-                          {status === 'overage' && (
-                            <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-                              Ortiqcha: +{(lineScanned - line.qty_kg).toLocaleString()} kg
-                            </p>
-                          )}
-                          {scannedForLine(request.id, line.id).length > 0 && (
-                            <ul className="mt-1 space-y-0.5">
-                              {scannedForLine(request.id, line.id).map((s) => (
-                                <li key={s.barcode2} className="flex items-center justify-between text-xs">
-                                  <span className="font-mono text-slate-600 dark:text-slate-400">
-                                    {s.barcode2} · {s.weight_kg.toLocaleString()} kg
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeScan(request.id, s.barcode2)}
-                                    aria-label="Skanerlashni bekor qilish"
-                                    className="text-slate-400 hover:text-red-600"
-                                  >
-                                    ✕
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      )
-                    })}
+                  <div className="mt-3 space-y-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+                    {/* Ergonomics: the running total is the one thing the
+                        operator needs to read at a glance, every scan — put
+                        first, always visible without scrolling past the
+                        per-line detail below. */}
+                    <Stat
+                      value={`${scanned.toLocaleString()} / ${target.toLocaleString()} kg`}
+                      label="Skanerlangan / maqsad"
+                      tone={aggregateTone}
+                    />
 
-                    <form onSubmit={(e) => handleScan(request, e)} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Barcode #2 ni kiriting yoki skanerlang"
-                        value={barcodeInput}
-                        onChange={(e) => setBarcodeInput(e.target.value)}
-                        className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                      />
-                      <button
-                        type="submit"
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                      >
-                        Skanerlash
-                      </button>
-                    </form>
-                    {scanError && (
-                      <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
-                        {scanError}
-                      </p>
-                    )}
+                    {/* Scan zone — the repeated action (10-20x per truck).
+                        Camera first (the primary, minimal-tap path), manual
+                        entry kept directly beneath as a fallback — both
+                        call the same processBarcode. */}
+                    <div className="space-y-2">
+                      <BarcodeCameraScanner onDecode={(code) => processBarcode(request, code)} />
+                      <form onSubmit={(e) => handleScan(request, e)} className="flex items-center gap-2">
+                        <TextInput
+                          placeholder="Barcode #2 ni kiriting yoki skanerlang"
+                          value={barcodeInput}
+                          onChange={(e) => setBarcodeInput(e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button type="submit" variant="secondary" size="md">
+                          Skanerlash
+                        </Button>
+                      </form>
+                      {scanError && <StatusNote tone="problem">{scanError}</StatusNote>}
+                    </div>
 
-                    <div className="border-t border-slate-200 pt-2 dark:border-slate-700">
+                    {/* Finish — the one-time action at the end. Kept right
+                        after the scan zone (thumb-reachable without
+                        scrolling past a growing scanned-pallet list),
+                        never blocked by a shortfall (§5.4/§3.1). */}
+                    <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
                       {confirming === request.id ? (
                         <div className="space-y-2">
                           <p className="text-sm text-slate-700 dark:text-slate-300">
@@ -331,42 +347,80 @@ export function OmborChiqimTab() {
                               . Baribir yakunlansinmi?
                             </p>
                           )}
-                          {finishError && (
-                            <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
-                              {finishError}
-                            </p>
-                          )}
+                          {finishError && <StatusNote tone="problem">{finishError}</StatusNote>}
                           <div className="flex gap-2">
-                            <button
-                              onClick={() => handleFinish(request)}
-                              disabled={finishing}
-                              className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-                            >
+                            <Button variant="primary" size="lg" onClick={() => handleFinish(request)} disabled={finishing}>
                               {finishing ? 'Yakunlanmoqda…' : 'Ha, yakunlash'}
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="md"
                               onClick={() => {
                                 setConfirming(null)
                                 setFinishError(null)
                               }}
-                              className="rounded-md px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
                             >
                               Bekor qilish
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => setConfirming(request.id)}
-                          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                        >
+                        <Button variant="primary" size="lg" fullWidth onClick={() => setConfirming(request.id)}>
                           Yuklashni yakunlash
-                        </button>
+                        </Button>
                       )}
+                    </div>
+
+                    {/* Per-line detail — verification, checked occasionally
+                        rather than every scan; the aggregate Stat above
+                        already covers "am I done." */}
+                    <div className="space-y-2">
+                      {request.lines.map((line) => {
+                        const lineScanned = lineTotal(request.id, line.id)
+                        const status = lineStatus(line.qty_kg, lineScanned)
+                        return (
+                          <Card
+                            key={line.id}
+                            tone={status === 'exact' ? 'ok' : status === 'overage' ? 'pending' : 'neutral'}
+                            padding="compact"
+                          >
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-slate-700 dark:text-slate-300">
+                                {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
+                              </span>
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {lineScanned.toLocaleString()} / {line.qty_kg.toLocaleString()} kg
+                              </span>
+                            </div>
+                            {status === 'exact' && <StatusNote tone="ok">✓ Aniq mos keldi</StatusNote>}
+                            {status === 'overage' && (
+                              <StatusNote tone="pending">Ortiqcha: +{(lineScanned - line.qty_kg).toLocaleString()} kg</StatusNote>
+                            )}
+                            {scannedForLine(request.id, line.id).length > 0 && (
+                              <ul className="mt-1 space-y-0.5">
+                                {scannedForLine(request.id, line.id).map((s) => (
+                                  <li key={s.barcode2} className="flex items-center justify-between text-xs">
+                                    <span className="font-mono text-slate-600 dark:text-slate-400">
+                                      {s.barcode2} · {s.weight_kg.toLocaleString()} kg
+                                    </span>
+                                    <IconButton
+                                      label="Skanerlashni bekor qilish"
+                                      tone="danger"
+                                      onClick={() => removeScan(request.id, s.barcode2)}
+                                    >
+                                      ✕
+                                    </IconButton>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </Card>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
-              </div>
+              </Card>
             )
           })}
         </div>
@@ -376,18 +430,18 @@ export function OmborChiqimTab() {
           independent of Qorovul's gate weighing (CHIQIM per-role
           finalization). Same collapsed-by-default pattern as S3W2. */}
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yuklandi</h2>
+        <SectionHeading>Yuklandi</SectionHeading>
         <div className="mt-2 space-y-2">
           {finished.length === 0 && <p className="text-sm text-slate-400">Hali yuklangan so'rov yo'q.</p>}
           {finished.map((request) => (
-            <div key={request.id} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+            <Card key={request.id}>
               <button
                 type="button"
                 onClick={() => {
                   setExpandedFinished(expandedFinished === request.id ? null : request.id)
                   setUndoError(null)
                 }}
-                className="flex w-full items-center justify-between text-left"
+                className="flex min-h-12 w-full items-center justify-between text-left text-base"
               >
                 <div>
                   <span className="text-slate-900 dark:text-slate-100">
@@ -397,7 +451,7 @@ export function OmborChiqimTab() {
                 </div>
                 <span className="text-slate-500 dark:text-slate-400">⋯</span>
               </button>
-              <div className="mt-1 text-slate-500 dark:text-slate-400">
+              <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 maqsad {requestTarget(request).toLocaleString()} kg · yuklangan {request.ombor_finished_at}
               </div>
               {expandedFinished === request.id && (
@@ -434,28 +488,23 @@ export function OmborChiqimTab() {
                             <span className="font-mono text-slate-600 dark:text-slate-400">
                               {m.barcode2} · {typeName(m.type_id)} · {calibreLabel(m.calibre_id)} · {m.weight_kg.toLocaleString()} kg
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => handleUndoScan(m.id)}
+                            <IconButton
+                              label="Skanerlashni bekor qilish"
+                              tone="danger"
                               disabled={undoingId === m.id}
-                              aria-label="Skanerlashni bekor qilish"
-                              className="text-slate-400 hover:text-red-600 disabled:opacity-50"
+                              onClick={() => handleUndoScan(m.id)}
                             >
                               ✕
-                            </button>
+                            </IconButton>
                           </li>
                         ))}
                       </ul>
                     )}
-                    {undoError && (
-                      <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                        {undoError}
-                      </p>
-                    )}
+                    {undoError && <StatusNote tone="problem">{undoError}</StatusNote>}
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       </div>

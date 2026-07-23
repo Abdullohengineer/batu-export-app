@@ -12,6 +12,7 @@ export interface KirimOrderRow {
   order_date: string
   plate: string
   driver: string
+  owner_id: string
   declared_total: number | null
   status: string
 }
@@ -44,7 +45,7 @@ export function useKirimTrips() {
       const [{ data: orders }, { data: lines }, { data: weighings }] = await Promise.all([
         supabase
           .from('kirim_orders')
-          .select('order_id, order_date, plate, driver, declared_total, status')
+          .select('order_id, order_date, plate, driver, owner_id, declared_total, status')
           .order('created_at', { ascending: false }),
         supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id'),
         supabase

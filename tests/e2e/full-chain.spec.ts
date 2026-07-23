@@ -112,24 +112,24 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await page.waitForURL('**/login')
   await loginAs(page, 'QOROVUL')
   {
-    const faol = page.getByRole('heading', { name: 'Faol' }).locator('xpath=following-sibling::div[1]')
+    const faol = page.getByRole('heading', { name: '1 · Faol yuklar' }).locator('xpath=following-sibling::div[1]')
     const gateRow = faol.locator('.rounded-md', { hasText: PLATE_IN })
     await expect(gateRow).toBeVisible()
     await gateRow.getByRole('button', { name: 'Qabul qilish' }).click()
-    await gateRow.locator('div:has(> label:text-is("Moshina raqami rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+    await gateRow.locator('div:has(> label:text-is("Moshina rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await expect(gateRow.getByText('Siqilmoqda…')).toHaveCount(0)
     await gateRow.locator('div:has(> label:text-is("Yuk bilan vazn (Гружёный)")) input[type="number"]').fill('6200')
-    await gateRow.locator('div:has(> label:text-is("Tarozi rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+    await gateRow.locator('div:has(> label:text-is("Yuk bilan vazn rasmi (tarozi)")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await expect(gateRow.getByText('Siqilmoqda…')).toHaveCount(0)
-    await gateRow.getByRole('button', { name: 'Qabul qilish' }).click()
+    await gateRow.getByRole('button', { name: 'Saqlash' }).click()
     await expect(faol.locator('.rounded-md.border-red-300', { hasText: PLATE_IN })).toBeVisible()
 
     await gateRow.getByRole('button', { name: 'Yakunlash' }).click()
     await gateRow.locator('div:has(> label:text-is("Bo\'sh vazn (Пустой)")) input[type="number"]').fill('500')
-    await gateRow.locator('div:has(> label:text-is("Tarozi rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+    await gateRow.locator('div:has(> label:text-is("Bo\'sh vazn rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await expect(gateRow.getByText('Siqilmoqda…')).toHaveCount(0)
     await gateRow.getByRole('button', { name: 'Yakunlash' }).click()
-    const yakunlangan = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
+    const yakunlangan = page.getByRole('heading', { name: '2 · Yakunlangan' }).locator('xpath=following-sibling::div[1]')
     await expect(yakunlangan.locator('.rounded-md', { hasText: PLATE_IN })).toContainText('5,700 kg', { timeout: 20000 })
   }
 
@@ -351,14 +351,14 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await loginAs(page, 'QOROVUL')
   await page.getByRole('link', { name: 'CHIQIM' }).click()
   {
-    const faol = page.getByRole('heading', { name: 'Faol' }).locator('xpath=following-sibling::div[1]')
+    const faol = page.getByRole('heading', { name: '1 · Faol yuklar' }).locator('xpath=following-sibling::div[1]')
     const gateRow = faol.locator('.rounded-md', { hasText: PLATE_OUT })
     await expect(gateRow).toBeVisible()
     await gateRow.getByRole('button', { name: 'Qabul qilish' }).click()
-    await gateRow.locator('div:has(> label:text-is("Moshina raqami rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+    await gateRow.locator('div:has(> label:text-is("Moshina rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await gateRow.locator('div:has(> label:text-is("Bo\'sh vazn (Пустой)")) input[type="number"]').fill('8000')
-    await gateRow.locator('div:has(> label:text-is("Tarozi rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
-    await gateRow.getByRole('button', { name: 'Qabul qilish' }).click()
+    await gateRow.locator('div:has(> label:text-is("Bo\'sh vazn rasmi (tarozi)")) input[type="file"]').setInputFiles(TEST_PHOTO)
+    await gateRow.getByRole('button', { name: 'Saqlash' }).click()
     await expect(faol.locator('.rounded-md.border-red-300', { hasText: PLATE_OUT })).toBeVisible()
   }
 
@@ -387,15 +387,15 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await loginAs(page, 'QOROVUL')
   await page.getByRole('link', { name: 'CHIQIM' }).click()
   {
-    const faol2 = page.getByRole('heading', { name: 'Faol' }).locator('xpath=following-sibling::div[1]')
+    const faol2 = page.getByRole('heading', { name: '1 · Faol yuklar' }).locator('xpath=following-sibling::div[1]')
     const gateRow2 = faol2.locator('.rounded-md', { hasText: PLATE_OUT })
     await expect(gateRow2).toBeVisible()
     await gateRow2.getByRole('button', { name: 'Yakunlash' }).click()
     await gateRow2.locator('div:has(> label:text-is("Yuk bilan vazn (Гружёный)")) input[type="number"]').fill('12600')
-    await gateRow2.locator('div:has(> label:text-is("Tarozi rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+    await gateRow2.locator('div:has(> label:text-is("Yuk bilan vazn rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await gateRow2.locator('div:has(> label:text-is("Chiqish hujjati rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await gateRow2.getByRole('button', { name: 'Yakunlash' }).click()
-    const yakunlangan = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
+    const yakunlangan = page.getByRole('heading', { name: '2 · Yakunlangan' }).locator('xpath=following-sibling::div[1]')
     await expect(yakunlangan.locator('.rounded-md', { hasText: PLATE_OUT })).toBeVisible({ timeout: 20000 })
   }
 

@@ -34,16 +34,12 @@ const SUBTITLE: Record<'kirim' | 'chiqim', [string, string]> = {
 // reverses which stage records which weight and adds a third mandatory
 // photo at stage 2.
 //
-// `tripInfo`/`savedWeightKg` (nav/visual-redesign pass) are presentational
-// only, built entirely from data the parent tabs already fetch in full
-// (order/request/lines/weighing) -- not from any new query. `tripInfo`
-// deliberately has no "Buyurtmachi" (owner) row: neither useKirimTrips.ts
-// nor useChiqimTrips.ts selects an owner reference at all, and adding one
-// would mean widening an existing .select() -- a data-shape change the
-// task's own guardrail rules out. Flagged in docs/DECISIONS.md rather than
-// built. `tripInfo` is only ever passed at stage 1 (the mockup's own stage-2
-// screens drop the full manager-values block, showing just the saved weight
-// below instead) and `savedWeightKg` only at stage 2.
+// `tripInfo`/`savedWeightKg` are presentational only, built entirely from
+// data the parent tabs fetch (order/request/lines/weighing/owner) -- this
+// component has no query of its own either way. `tripInfo` is only ever
+// passed at stage 1 (the mockup's own stage-2 screens drop the full
+// manager-values block, showing just the saved weight below instead) and
+// `savedWeightKg` only at stage 2.
 export function GateStageForm({
   stage,
   dir = 'kirim',
@@ -82,6 +78,10 @@ export function GateStageForm({
   // current field is the empty weight, so the already-saved one is loaded.
   const savedLabel = stage === 2 ? (dir === 'kirim' ? loadedTitle : emptyTitle) : null
   const subtitle = SUBTITLE[dir][stage - 1]
+  // Mockup labels the scale-reading photo per stage/direction, not with one
+  // generic "Tarozi rasmi" for all four combinations -- "(tarozi)" only at
+  // stage 1, matching the weight-photo pairing shown there.
+  const scalePhotoLabel = `${stageTitle} rasmi${stage === 1 ? ' (tarozi)' : ''}`
 
   const helperCaption =
     stage === 1
@@ -172,7 +172,7 @@ export function GateStageForm({
         </Card>
       )}
 
-      {stage === 1 && <PhotoField label="Moshina raqami rasmi" required onChange={setPlatePhoto} />}
+      {stage === 1 && <PhotoField label="Moshina rasmi" required onChange={setPlatePhoto} />}
 
       {savedLabel && savedWeightKg !== undefined && (
         <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
@@ -201,7 +201,7 @@ export function GateStageForm({
         </div>
       </FormField>
 
-      <PhotoField label="Tarozi rasmi" required onChange={setScalePhoto} />
+      <PhotoField label={scalePhotoLabel} required onChange={setScalePhoto} />
 
       {requireDepartureDoc && <PhotoField label="Chiqish hujjati rasmi" required onChange={setDepartureDocPhoto} />}
 
@@ -217,7 +217,7 @@ export function GateStageForm({
 
       <div className="space-y-1">
         <Button type="submit" variant={stage === 1 ? 'primary' : 'danger'} size="lg" fullWidth disabled={submitting || !canSubmit}>
-          {submitting ? 'Saqlanmoqda…' : stage === 1 ? 'Qabul qilish' : 'Yakunlash'}
+          {submitting ? (stage === 1 ? 'Saqlanmoqda…' : 'Yakunlanmoqda…') : stage === 1 ? 'Saqlash' : 'Yakunlash'}
         </Button>
         <p className="text-center text-xs text-slate-400">{helperCaption}</p>
         <div className="text-center">

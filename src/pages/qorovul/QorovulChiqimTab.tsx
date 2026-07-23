@@ -2,19 +2,30 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
-import { useCalibres } from '../../lib/useCalibres'
 import { useChiqimTrips, type ChiqimTrip } from '../../lib/useChiqimTrips'
 import { GateStageForm, type GateStageValues } from './GateStageForm'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
+import { SerialChip } from '../../components/ui/SerialChip'
 
 async function uploadGatePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
   const { error } = await supabase.storage.from('gate-photos').upload(path, file)
   if (error) throw error
   return path
+}
+
+// mockup "BATU-Qorovul-Screens-v1_1.pdf" p5: DD.MM · HH:MM, not the browser
+// locale default.
+function formatTripTime(iso: string) {
+  const d = new Date(iso)
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}.${mm} · ${hh}:${min}`
 }
 
 // Qorovul's CHIQIM tab (SPEC §4) — mirrors QorovulKirimTab.tsx exactly:
@@ -34,7 +45,6 @@ export function QorovulChiqimTab() {
   const { profile } = useAuth()
   // §3.3: includeInactive=true -- resolves names on historical trip lines.
   const { productTypes } = useProductTypes(true)
-  const { calibres } = useCalibres(true)
   const { trips, loading, refresh } = useChiqimTrips()
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [activeStage, setActiveStage] = useState<1 | 2 | null>(null)
@@ -42,8 +52,18 @@ export function QorovulChiqimTab() {
   function typeName(typeId: string) {
     return productTypes.find((t) => t.id === typeId)?.name ?? typeId
   }
-  function calibreLabel(calibreId: string) {
-    return calibres.find((c) => c.id === calibreId)?.label ?? calibreId
+
+  function typeSummary(trip: ChiqimTrip) {
+    return [...new Set(trip.lines.map((l) => typeName(l.type_id)))].join(' + ')
+  }
+
+  // No declared/requested total column on chiqim_requests (unlike KIRIM's
+  // declared_total) -- derived client-side from the lines already fetched
+  // in full by useChiqimTrips, same as the qty_kg total shown when the
+  // request was created.
+  function requestedSummary(trip: ChiqimTrip) {
+    const totalKg = trip.lines.reduce((sum, l) => sum + l.qty_kg, 0)
+    return `${totalKg.toLocaleString()} kg · ${trip.lines.length} qator`
   }
 
   function closeForm() {
@@ -107,8 +127,8 @@ export function QorovulChiqimTab() {
     <div className="space-y-6">
       <div className="grid grid-cols-3 gap-3">
         <Stat value={notStarted.length} label="Kutilmoqda" />
-        <Stat value={inProgress.length} label="Kirdi·bo'shatilmoqda" tone={inProgress.length > 0 ? 'problem' : 'neutral'} />
-        <Stat value={completed.length} label="Yakunlandi" />
+        <Stat value={inProgress.length} label="Yuklanmoqda" tone={inProgress.length > 0 ? 'problem' : 'neutral'} />
+        <Stat value={completed.length} label="Yakunlandi" tone="ok" />
       </div>
 
       <div>
@@ -118,22 +138,29 @@ export function QorovulChiqimTab() {
           {activeWindow.map((trip) => {
             const isRed = Boolean(trip.weighing && !trip.weighing.completed_at)
             const isActive = activeRequestId === trip.request.id
+            // Plate/driver stay in the meta line in BOTH states -- not just
+            // the mockup's own "who is this truck" cue, but also how e2e
+            // finds this exact row once it's red (hasText: <plate>); the
+            // red-state text must not drop it in favour of the saved-weight
+            // phrase alone.
+            const meta = isRed
+              ? `Bo'sh ${trip.weighing!.pustoy_kg?.toLocaleString() ?? '—'} kg · yuklandi · yuk bilan vazn kutilmoqda · ${trip.request.driver} · ${trip.request.plate}`
+              : `So'ralgan ${requestedSummary(trip)} · ${trip.request.driver} · ${trip.request.plate}`
 
             return (
               <Card key={trip.request.id} tone={isRed ? 'problem' : 'neutral'}>
-                <div className="flex items-center justify-between text-base">
-                  <div>
-                    <span className="font-medium text-slate-900 dark:text-slate-100">
-                      {trip.request.plate} · {trip.request.driver}
-                    </span>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {trip.lines.map((l) => `${typeName(l.type_id)} · ${calibreLabel(l.calibre_id)} — ${l.qty_kg.toLocaleString()} kg`).join(', ')}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SerialChip>So'rov</SerialChip>
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">{typeSummary(trip)}</span>
                     </div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">{meta}</div>
                   </div>
                   {!isActive && (
                     <Button
-                      variant="secondary"
-                      size="md"
+                      variant={isRed ? 'danger' : 'primary'}
+                      size="lg"
                       onClick={() => {
                         setActiveRequestId(trip.request.id)
                         setActiveStage(isRed ? 2 : 1)
@@ -149,6 +176,15 @@ export function QorovulChiqimTab() {
                     stage={activeStage}
                     dir="chiqim"
                     requireDepartureDoc={activeStage === 2}
+                    tripInfo={
+                      activeStage === 1
+                        ? [
+                            { label: "So'ralgan", value: requestedSummary(trip) },
+                            { label: 'Moshina · haydovchi', value: `${trip.request.plate} · ${trip.request.driver}` },
+                          ]
+                        : undefined
+                    }
+                    savedWeightKg={activeStage === 2 ? (trip.weighing?.pustoy_kg ?? undefined) : undefined}
                     onCancel={closeForm}
                     onSubmit={(values) => (activeStage === 1 ? handleStage1(trip, values) : handleStage2(trip, values))}
                   />
@@ -165,17 +201,26 @@ export function QorovulChiqimTab() {
           {completed.length === 0 && <p className="text-sm text-slate-400">Hali yakunlangan reys yo'q.</p>}
           {completed.map((trip) => (
             <Card key={trip.request.id} padding="compact">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-900 dark:text-slate-100">
-                  {trip.request.plate} · {trip.request.driver}
-                </span>
-                <div className="text-right">
-                  <div className="text-base font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                    {trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <SerialChip>So'rov</SerialChip>
+                    <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{typeSummary(trip)}</span>
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {trip.weighing?.completed_at ? new Date(trip.weighing.completed_at).toLocaleString() : ''}
+                  <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                    {trip.request.driver} · {trip.request.plate}
                   </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="text-right">
+                    <div className="text-base font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                      {trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {trip.weighing?.completed_at ? formatTripTime(trip.weighing.completed_at) : ''}
+                    </div>
+                  </div>
+                  <span className="text-lg text-emerald-600 dark:text-emerald-400">✓</span>
                 </div>
               </div>
             </Card>

@@ -184,34 +184,39 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await loginAs(page, 'LABORATOR')
   {
     const w1 = page.getByRole('heading', { name: 'Tahlil kutilmoqda' }).locator('xpath=following-sibling::div[1]')
-    const w2 = page.getByRole('heading', { name: 'Sera kutilmoqda' }).locator('xpath=following-sibling::div[1]')
+    const w2 = page.getByRole('heading', { name: '2 · Sera natijasi kutilmoqda (1 kun)' }).locator('xpath=following-sibling::div[1]')
     const w3 = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
 
-    const subxonW1 = w1.locator('.rounded-md', { hasText: subxonSerial })
+    // div.rounded-md, not bare .rounded-md: SerialChip (a <span>) also
+    // carries rounded-md, so a bare class selector matches both the Card
+    // and its own nested serial chip -- the `div` type selector excludes
+    // the span (nav/visual-redesign pass, real strict-mode violation found
+    // via e2e, not assumed safe from inspection alone).
+    const subxonW1 = w1.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(subxonW1).toBeVisible()
     await subxonW1.getByRole('button', { name: 'Tahlil' }).click()
     await subxonW1.locator('div:has(> label:text-is("Namligi %")) input').fill('7.5')
     await subxonW1.getByRole('button', { name: 'Saqlash' }).click()
-    const subxonW2 = w2.locator('.rounded-md', { hasText: subxonSerial })
+    const subxonW2 = w2.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(subxonW2).toBeVisible()
-    await expect(w3.locator('.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
+    await expect(w3.locator('div.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
     await expect(subxonW2).toContainText('Talab: 50')
 
-    const isfaraW1 = w1.locator('.rounded-md', { hasText: isfaraSerial })
+    const isfaraW1 = w1.locator('div.rounded-md', { hasText: isfaraSerial })
     await expect(isfaraW1).toBeVisible()
     await isfaraW1.getByRole('button', { name: 'Tahlil' }).click()
     await isfaraW1.locator('div:has(> label:text-is("Namligi %")) input').fill('9.5')
     await isfaraW1.getByRole('button', { name: 'Saqlash' }).click()
     // Natural line: skips W2 entirely, lands straight in W3.
-    await expect(w2.locator('.rounded-md', { hasText: isfaraSerial })).toHaveCount(0)
-    const isfaraW3 = w3.locator('.rounded-md', { hasText: isfaraSerial })
+    await expect(w2.locator('div.rounded-md', { hasText: isfaraSerial })).toHaveCount(0)
+    const isfaraW3 = w3.locator('div.rounded-md', { hasText: isfaraSerial })
     await expect(isfaraW3).toBeVisible()
     await expect(isfaraW3).toContainText("Yo'q · naturel")
 
     await subxonW2.locator('input[type="number"]').fill('45')
     await subxonW2.getByRole('button', { name: 'Sera kiritish' }).click()
-    await expect(w2.locator('.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
-    const subxonW3 = w3.locator('.rounded-md', { hasText: subxonSerial })
+    await expect(w2.locator('div.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
+    const subxonW3 = w3.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(subxonW3).toBeVisible()
     await expect(subxonW3).toContainText('45')
 
@@ -293,24 +298,24 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await page.getByRole('link', { name: 'CHIQIM' }).click()
   {
     const w1 = page.getByRole('heading', { name: 'Tahlil kutilmoqda' }).locator('xpath=following-sibling::div[1]')
-    const w2 = page.getByRole('heading', { name: 'Sera kutilmoqda' }).locator('xpath=following-sibling::div[1]')
+    const w2 = page.getByRole('heading', { name: '2 · Sera natijasi kutilmoqda (1 kun)' }).locator('xpath=following-sibling::div[1]')
     const w3 = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
 
-    const row = w1.locator('.rounded-md', { hasText: subxonSerial })
+    const row = w1.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: 'Tahlil' }).click()
     await row.locator('select').selectOption({ index: 1 })
     await row.locator('div:has(> label:text-is("Namligi %")) input').fill('7')
     await row.getByRole('button', { name: 'Saqlash' }).click()
 
-    const w2row = w2.locator('.rounded-md', { hasText: subxonSerial })
+    const w2row = w2.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(w2row).toBeVisible({ timeout: 20000 })
-    await expect(w3.locator('.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
+    await expect(w3.locator('div.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
 
     await w2row.locator('input[type="number"]').fill('40')
     await w2row.getByRole('button', { name: "O'tdi", exact: true }).click()
 
-    const finishedRow = w3.locator('.rounded-md', { hasText: subxonSerial })
+    const finishedRow = w3.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(finishedRow).toBeVisible({ timeout: 20000 })
     await expect(finishedRow).toContainText("O'tdi")
   }

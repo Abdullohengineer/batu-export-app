@@ -162,7 +162,11 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
   {
     const w1 = page.getByRole('heading', { name: 'Tahlil kutilmoqda' }).locator('xpath=following-sibling::div[1]')
     const w3 = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
-    const row = w1.locator('.rounded-md', { hasText: serial })
+    // div.rounded-md, not bare .rounded-md: SerialChip (a <span>) also
+    // carries rounded-md, so a bare class selector matches both the Card
+    // and its own nested serial chip -- the `div` type selector excludes
+    // the span.
+    const row = w1.locator('div.rounded-md', { hasText: serial })
     await expect(row).toBeVisible()
     await expect(row).toContainText('2 ta pallet')
     await expect(row).toContainText('5,000 kg')
@@ -170,7 +174,7 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
     await row.locator('select').selectOption({ index: 1 })
     await row.locator('div:has(> label:text-is("Namligi %")) input').fill('8')
     await row.getByRole('button', { name: 'Qayta yuvish', exact: true }).click()
-    const finishedRow = w3.locator('.rounded-md', { hasText: serial })
+    const finishedRow = w3.locator('div.rounded-md', { hasText: serial })
     await expect(finishedRow).toBeVisible()
     await expect(finishedRow).toContainText('Qayta yuvish')
   }
@@ -277,9 +281,9 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
   {
     const w1 = page.getByRole('heading', { name: 'Tahlil kutilmoqda' }).locator('xpath=following-sibling::div[1]')
     const w3 = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
-    const row = w1.locator('.rounded-md', { hasText: serial })
+    const row = w1.locator('div.rounded-md', { hasText: serial })
     await expect(row).toBeVisible()
-    await expect(row).toContainText('yuvish sikli 2')
+    await expect(row).toContainText('sikl 2')
     await row.getByRole('button', { name: 'Tahlil' }).click()
     await row.locator('select').selectOption({ index: 1 })
     await row.locator('div:has(> label:text-is("Namligi %")) input').fill('7')
@@ -287,7 +291,7 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
     // Both cycles' lab_results rows are legitimately in Yakunlangan now
     // (cycle 1's qayta_yuvish record is real history, never removed) — the
     // serial alone no longer uniquely identifies a row, cycle number does.
-    const finishedRow = w3.locator('.rounded-md', { hasText: serial }).filter({ hasText: 'sikl 2' })
+    const finishedRow = w3.locator('div.rounded-md', { hasText: serial }).filter({ hasText: 'sikl 2' })
     await expect(finishedRow).toBeVisible()
     await expect(finishedRow).toContainText("O'tdi")
   }

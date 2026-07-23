@@ -29,6 +29,7 @@ import { OmborHisobotlar } from './pages/ombor/OmborHisobotlar'
 import { LaboratorHome } from './pages/laborator/LaboratorHome'
 import { LaboratorKirimTab } from './pages/laborator/LaboratorKirimTab'
 import { LaboratorChiqimTab } from './pages/laborator/LaboratorChiqimTab'
+import { LaboratorTarixTab } from './pages/laborator/LaboratorTarixTab'
 
 function App() {
   return (
@@ -123,6 +124,7 @@ function AppRoutes() {
       >
         <Route index element={<LaboratorKirimTab />} />
         <Route path="chiqim" element={<LaboratorChiqimTab />} />
+        <Route path="tarix" element={<LaboratorTarixTab />} />
       </Route>
 
       <Route path="*" element={<Navigate to={homePath} replace />} />

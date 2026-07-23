@@ -13,6 +13,7 @@ export function LaboratorHome() {
           tabs={[
             { to: '/laborator', label: 'KIRIM', end: true },
             { to: '/laborator/chiqim', label: 'CHIQIM' },
+            { to: '/laborator/tarix', label: 'Tarix' },
           ]}
         />
       }

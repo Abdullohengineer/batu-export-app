@@ -17,6 +17,7 @@ import { Button } from '../../components/ui/Button'
 import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { SerialChip } from '../../components/ui/SerialChip'
 
 async function uploadPilePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
@@ -124,66 +125,79 @@ export function OmborIntakeTab() {
     (l) => l.intake.confirmed_at,
   )
 
-  const pendingByOrder = new Map<string, IntakeLine[]>()
-  for (const line of pending) {
-    const group = pendingByOrder.get(line.order_id) ?? []
-    group.push(line)
-    pendingByOrder.set(line.order_id, group)
-  }
-
   return (
     <div className="space-y-6">
       <div>
-        <SectionHeading>Kutilmoqda</SectionHeading>
-        <div className="mt-2 space-y-3">
-          {pendingByOrder.size === 0 && <p className="text-sm text-slate-400">Kutilayotgan reys yo'q.</p>}
-          {[...pendingByOrder.entries()].map(([orderId, orderLines]) => (
-            <Card key={orderId}>
-              <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                {orderLines[0].plate} · {orderLines[0].driver} · {orderLines[0].order_date}
-              </div>
-              <div className="mt-2 space-y-2">
-                {orderLines.map((line) => {
-                  const acceptable = line.gruzheny_kg !== null
-                  const isActive = activeSerial === line.serial
+        <SectionHeading>1 · Qabul kutilmoqda</SectionHeading>
+        <div className="mt-2 space-y-2">
+          {pending.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan reys yo'q.</p>}
+          {pending.map((line) => {
+            const acceptable = line.gruzheny_kg !== null
+            const isActive = activeSerial === line.serial
 
-                  return (
-                    <Card key={line.serial} padding="compact" className={acceptable ? '' : 'opacity-60'}>
-                      <div className="flex items-center justify-between text-base">
-                        <span className={acceptable ? 'text-slate-900 dark:text-slate-100' : ''}>
-                          {line.serial} · {typeName(line.type_id)} · {line.declared_qty.toLocaleString()} kg
-                        </span>
-                        {acceptable ? (
-                          !isActive && (
-                            <Button variant="secondary" size="md" onClick={() => setActiveSerial(line.serial)}>
-                              Qabul qilish
-                            </Button>
-                          )
-                        ) : (
-                          <span className="text-xs italic">kutilmoqda (darvoza)</span>
-                        )}
-                      </div>
+            return (
+              <Card key={line.serial}>
+                <div className="flex items-center gap-2">
+                  <SerialChip>{line.serial}</SerialChip>
+                  <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
+                    {ownerName(line.owner_id)} · {typeName(line.type_id)}
+                  </span>
+                </div>
+                <div className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
+                  {line.plate} · {line.driver} · {line.order_date}
+                </div>
 
-                      {isActive && (
-                        <IntakeAcceptForm
-                          line={line}
-                          typeName={typeName(line.type_id)}
-                          kamChiqdiPct={kamChiqdiPct}
-                          onCancel={() => setActiveSerial(null)}
-                          onSubmit={(values) => handleAccept(line, values)}
-                        />
-                      )}
-                    </Card>
-                  )
-                })}
-              </div>
-            </Card>
-          ))}
+                {!acceptable && (
+                  <div className="mt-2">
+                    <StatusNote tone="pending">
+                      ⏳ Tarozi kutilmoqda — hozircha e'lon qilingan miqdor ko'rsatilmoqda
+                    </StatusNote>
+                  </div>
+                )}
+
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 dark:text-slate-400">E'lon qilingan</span>
+                    <span className="font-medium text-slate-900 dark:text-slate-100">
+                      {line.declared_qty.toLocaleString()} kg
+                    </span>
+                  </div>
+                  {acceptable && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 dark:text-slate-400">Darvoza (yuk bilan)</span>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">
+                        {line.gruzheny_kg!.toLocaleString()} kg
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {acceptable && !isActive && (
+                  <div className="mt-3">
+                    <Button variant="primary" size="lg" fullWidth onClick={() => setActiveSerial(line.serial)}>
+                      Qabul qilish
+                    </Button>
+                  </div>
+                )}
+
+                {isActive && (
+                  <IntakeAcceptForm
+                    line={line}
+                    typeName={typeName(line.type_id)}
+                    ownerName={ownerName(line.owner_id)}
+                    kamChiqdiPct={kamChiqdiPct}
+                    onCancel={() => setActiveSerial(null)}
+                    onSubmit={(values) => handleAccept(line, values)}
+                  />
+                )}
+              </Card>
+            )
+          })}
         </div>
       </div>
 
       <div>
-        <SectionHeading>Qabul qilingan mahsulotlar</SectionHeading>
+        <SectionHeading>2 · Qabul qilingan</SectionHeading>
         <div className="mt-2 space-y-2">
           {received.length === 0 && <p className="text-sm text-slate-400">Hali qabul qilingan yo'q.</p>}
           {received.map((line) => {
@@ -191,14 +205,21 @@ export function OmborIntakeTab() {
             const eqValue = eq?.value ?? line.intake.actual_qty
             const remaining = Math.max(0, eqValue - (sentBySerial.get(line.serial) ?? 0))
             return (
-            <Card key={line.serial}>
-              <div className="flex items-center justify-between">
-                <span className="text-base text-slate-900 dark:text-slate-100">
-                  {line.serial} · {typeName(line.type_id)} ·{' '}
-                  {eq?.provisional ? 'tarozi kutilmoqda' : `${eqValue.toLocaleString()} kg`} · Qoldiq:{' '}
-                  {remaining.toLocaleString()} kg
-                </span>
-                <div className="flex items-center gap-2">
+            <Card key={line.serial} padding="compact">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <SerialChip>{line.serial}</SerialChip>
+                    <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
+                      {ownerName(line.owner_id)} · {typeName(line.type_id)}
+                    </span>
+                  </div>
+                  <div className="truncate text-sm text-slate-500 dark:text-slate-400">
+                    {eq?.provisional ? 'tarozi kutilmoqda' : `Netto ${eqValue.toLocaleString()} kg`} · Qoldiq{' '}
+                    {remaining.toLocaleString()} kg
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
                   {line.intake.barcode1 && (
                     <Barcode1Display
                       data={{

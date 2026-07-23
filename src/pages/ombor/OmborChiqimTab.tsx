@@ -15,6 +15,7 @@ import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { Stat } from '../../components/ui/Stat'
+import { StatusPill } from '../../components/ui/StatusPill'
 import { TextInput } from '../../components/ui/FormField'
 import type { Tone } from '../../components/ui/tokens'
 
@@ -80,11 +81,10 @@ export function OmborChiqimTab() {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
 
-  function scannedForLine(requestId: string, lineId: string): ScannedPallet[] {
-    return (scannedByRequest[requestId] ?? []).filter((s) => s.lineId === lineId)
-  }
   function lineTotal(requestId: string, lineId: string): number {
-    return scannedForLine(requestId, lineId).reduce((sum, s) => sum + s.weight_kg, 0)
+    return (scannedByRequest[requestId] ?? [])
+      .filter((s) => s.lineId === lineId)
+      .reduce((sum, s) => sum + s.weight_kg, 0)
   }
   function requestTarget(request: ChiqimRequest): number {
     return request.lines.reduce((sum, l) => sum + l.qty_kg, 0)
@@ -250,7 +250,7 @@ export function OmborChiqimTab() {
   return (
     <div className="space-y-6">
       <div>
-        <SectionHeading>Yuklash uchun so'rovlar</SectionHeading>
+        <SectionHeading>1 · Yuklashga tayyor — moshina keldi</SectionHeading>
         <div className="mt-2 space-y-2">
           {open.length === 0 && <p className="text-sm text-slate-400">Ochiq so'rov yo'q.</p>}
           {open.map((request) => {
@@ -261,7 +261,7 @@ export function OmborChiqimTab() {
             const shortfalls = computeShortfallLines(request.lines, totalsByLine)
             // Aggregate glance-state for the running-total banner —
             // composed here from the SAME per-line lineStatus() every line
-            // card below already uses, not a new decision. Mirrors the
+            // row below already uses, not a new decision. Mirrors the
             // existing per-line convention exactly: shortfall stays
             // neutral (still in progress, never a problem on its own),
             // overage on ANY line is the pending/amber signal, and emerald
@@ -278,35 +278,121 @@ export function OmborChiqimTab() {
 
             return (
               <Card key={request.id}>
-                <button
-                  type="button"
-                  onClick={() => setExpandedOpen(isExpanded ? null : request.id)}
-                  className="flex min-h-12 w-full items-center justify-between text-left text-base"
-                >
-                  <div>
-                    <span className="text-slate-900 dark:text-slate-100">
-                      {request.request_date} · {request.plate} · {request.driver}
-                    </span>
-                    <span className="ml-2 text-slate-500 dark:text-slate-400">{ownerName(request.owner_id)}</span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-semibold text-slate-900 dark:text-slate-100">
+                      {ownerName(request.owner_id)}
+                    </div>
+                    <div className="truncate text-sm text-slate-500 dark:text-slate-400">
+                      So'rov · {request.request_date} · {request.plate} · {request.driver}
+                    </div>
                   </div>
-                  <span className="text-slate-500 dark:text-slate-400">⋯</span>
-                </button>
-                <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {request.lines.length} qator · maqsad {target.toLocaleString()} kg
-                  {scanned > 0 && <> · skanerlangan {scanned.toLocaleString()} kg</>}
+                  <StatusPill tone="info">Nishon {target.toLocaleString()} kg</StatusPill>
                 </div>
+
+                <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                  {request.lines
+                    .map((l) => `${typeName(l.type_id)} ${calibreLabel(l.calibre_id)} · ${l.qty_kg.toLocaleString()}`)
+                    .join('   ')}
+                </div>
+
+                {/* Gate-weighing status (flagged item #2 of this task's inspect-
+                    and-report): informational only, never gates "Yuklashni
+                    boshlash" below — matches this app's consistent never-block
+                    philosophy (Kam chiqdi, Tugallash warnings, this same
+                    screen's own shortfall note). Both states shown explicitly
+                    so a not-yet-weighed request reads as a real state, not a
+                    rendering gap. */}
+                <div className="mt-2">
+                  {request.gateStage1CompletedAt ? (
+                    <StatusNote tone="ok">
+                      ✓ Qorovul bo'sh vaznni oldi ({(request.gatePustoyKg ?? 0).toLocaleString()} kg) — yuklasa bo'ladi
+                    </StatusNote>
+                  ) : (
+                    <StatusNote tone="pending">Qorovul hali bo'sh vaznni olmagan</StatusNote>
+                  )}
+                </div>
+
+                {!isExpanded && (
+                  <div className="mt-3">
+                    <Button variant="primary" size="lg" fullWidth onClick={() => setExpandedOpen(request.id)}>
+                      Yuklashni boshlash
+                    </Button>
+                  </div>
+                )}
 
                 {isExpanded && (
                   <div className="mt-3 space-y-4 border-t border-slate-200 pt-3 dark:border-slate-700">
-                    {/* Ergonomics: the running total is the one thing the
-                        operator needs to read at a glance, every scan — put
-                        first, always visible without scrolling past the
-                        per-line detail below. */}
-                    <Stat
-                      value={`${scanned.toLocaleString()} / ${target.toLocaleString()} kg`}
-                      label="Skanerlangan / maqsad"
-                      tone={aggregateTone}
-                    />
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1.5 text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 dark:text-slate-400">Buyurtmachi</span>
+                          <span className="font-medium text-slate-900 dark:text-slate-100">{ownerName(request.owner_id)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 dark:text-slate-400">So'rov sanasi</span>
+                          <span className="font-medium text-slate-900 dark:text-slate-100">{request.request_date}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 dark:text-slate-400">Moshina · haydovchi</span>
+                          <span className="font-medium text-slate-900 dark:text-slate-100">
+                            {request.plate} · {request.driver}
+                          </span>
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="md" onClick={() => setExpandedOpen(null)}>
+                        Yopish
+                      </Button>
+                    </div>
+
+                    {/* Nishon lines with live progress bars, replacing the
+                        prior plain-number Cards — same lineStatus()/lineTotal()
+                        data, just visualised per the mockup. */}
+                    <div>
+                      <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Nishon — tur va kalibr bo'yicha
+                      </div>
+                      <div className="space-y-2">
+                        {request.lines.map((line) => {
+                          const lineScanned = lineTotal(request.id, line.id)
+                          const status = lineStatus(line.qty_kg, lineScanned)
+                          const pct = line.qty_kg > 0 ? Math.min(100, (lineScanned / line.qty_kg) * 100) : 0
+                          return (
+                            <div key={line.id}>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-slate-700 dark:text-slate-300">
+                                  {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
+                                </span>
+                                <span
+                                  className={
+                                    status === 'exact'
+                                      ? 'font-medium text-emerald-600 dark:text-emerald-400'
+                                      : status === 'overage'
+                                        ? 'font-medium text-amber-600 dark:text-amber-400'
+                                        : 'text-slate-500 dark:text-slate-400'
+                                  }
+                                >
+                                  {lineScanned.toLocaleString()} / {line.qty_kg.toLocaleString()}
+                                  {status === 'exact' ? ' ✓' : ''}
+                                </span>
+                              </div>
+                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    status === 'exact'
+                                      ? 'bg-emerald-500'
+                                      : status === 'overage'
+                                        ? 'bg-amber-500'
+                                        : 'bg-slate-900 dark:bg-slate-100'
+                                  }`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
 
                     {/* Scan zone — the repeated action (10-20x per truck).
                         Camera first (the primary, minimal-tap path), manual
@@ -328,25 +414,77 @@ export function OmborChiqimTab() {
                       {scanError && <StatusNote tone="problem">{scanError}</StatusNote>}
                     </div>
 
-                    {/* Finish — the one-time action at the end. Kept right
-                        after the scan zone (thumb-reachable without
-                        scrolling past a growing scanned-pallet list),
-                        never blocked by a shortfall (§5.4/§3.1). */}
-                    <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                    {/* Flat scanned-pallet list (mockup: "Skanerlangan
+                        palletlar (N)") — chronological, not regrouped by
+                        line; each row still resolves back to its line for the
+                        type/calibre caption. */}
+                    <div>
+                      <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Skanerlangan palletlar ({(scannedByRequest[request.id] ?? []).length})
+                      </div>
+                      {(scannedByRequest[request.id] ?? []).length === 0 ? (
+                        <p className="text-sm text-slate-400">Hali skanerlangan yo'q.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {(scannedByRequest[request.id] ?? []).map((sc) => {
+                            const line = request.lines.find((l) => l.id === sc.lineId)
+                            return (
+                              <li
+                                key={sc.barcode2}
+                                className="flex items-center justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0 dark:border-slate-800"
+                              >
+                                <span className="min-w-0 flex-1 truncate">
+                                  <span className="font-mono text-xs text-slate-600 dark:text-slate-400">{sc.barcode2}</span>
+                                  {line && (
+                                    <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
+                                      · {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="shrink-0 font-medium text-slate-900 dark:text-slate-100">
+                                  {sc.weight_kg.toLocaleString()} kg
+                                </span>
+                                <IconButton
+                                  label="Skanerlashni bekor qilish"
+                                  tone="danger"
+                                  onClick={() => removeScan(request.id, sc.barcode2)}
+                                >
+                                  ✕
+                                </IconButton>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
+                    </div>
+
+                    {/* Total footer + finish — kept together at the bottom,
+                        thumb-reachable without scrolling past the pallet
+                        list, never blocked by a shortfall (§5.4/§3.1). The
+                        shortfall note is now live during scanning (not just
+                        at confirm), same missingKg computation as before —
+                        no "no whole pallet" claim (flagged item #3, not built). */}
+                    <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+                      <Stat
+                        value={`${scanned.toLocaleString()} / ${target.toLocaleString()} kg`}
+                        label="Umumiy yuklangan"
+                        tone={aggregateTone}
+                      />
+                      {shortfalls.length > 0 && (
+                        <StatusNote tone="pending">
+                          Yetarli emas: {shortfalls
+                            .map((s) => `${typeName(s.line.type_id)} ${calibreLabel(s.line.calibre_id)} — ${s.missingKg.toLocaleString()} kg kam`)
+                            .join(' · ')}
+                          . Baribir yakunlash mumkin — sabab qayd sifatida yoziladi.
+                        </StatusNote>
+                      )}
+
                       {confirming === request.id ? (
                         <div className="space-y-2">
                           <p className="text-sm text-slate-700 dark:text-slate-300">
                             {(scannedByRequest[request.id] ?? []).length} ta pallet, jami {scanned.toLocaleString()} kg
                             yuklanadi.
                           </p>
-                          {shortfalls.length > 0 && (
-                            <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
-                              Yetarli emas: {shortfalls
-                                .map((s) => `${typeName(s.line.type_id)} ${calibreLabel(s.line.calibre_id)} — ${s.missingKg.toLocaleString()} kg kam`)
-                                .join(' · ')}
-                              . Baribir yakunlansinmi?
-                            </p>
-                          )}
                           {finishError && <StatusNote tone="problem">{finishError}</StatusNote>}
                           <div className="flex gap-2">
                             <Button variant="primary" size="lg" onClick={() => handleFinish(request)} disabled={finishing}>
@@ -370,54 +508,6 @@ export function OmborChiqimTab() {
                         </Button>
                       )}
                     </div>
-
-                    {/* Per-line detail — verification, checked occasionally
-                        rather than every scan; the aggregate Stat above
-                        already covers "am I done." */}
-                    <div className="space-y-2">
-                      {request.lines.map((line) => {
-                        const lineScanned = lineTotal(request.id, line.id)
-                        const status = lineStatus(line.qty_kg, lineScanned)
-                        return (
-                          <Card
-                            key={line.id}
-                            tone={status === 'exact' ? 'ok' : status === 'overage' ? 'pending' : 'neutral'}
-                            padding="compact"
-                          >
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-700 dark:text-slate-300">
-                                {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
-                              </span>
-                              <span className="text-slate-500 dark:text-slate-400">
-                                {lineScanned.toLocaleString()} / {line.qty_kg.toLocaleString()} kg
-                              </span>
-                            </div>
-                            {status === 'exact' && <StatusNote tone="ok">✓ Aniq mos keldi</StatusNote>}
-                            {status === 'overage' && (
-                              <StatusNote tone="pending">Ortiqcha: +{(lineScanned - line.qty_kg).toLocaleString()} kg</StatusNote>
-                            )}
-                            {scannedForLine(request.id, line.id).length > 0 && (
-                              <ul className="mt-1 space-y-0.5">
-                                {scannedForLine(request.id, line.id).map((s) => (
-                                  <li key={s.barcode2} className="flex items-center justify-between text-xs">
-                                    <span className="font-mono text-slate-600 dark:text-slate-400">
-                                      {s.barcode2} · {s.weight_kg.toLocaleString()} kg
-                                    </span>
-                                    <IconButton
-                                      label="Skanerlashni bekor qilish"
-                                      tone="danger"
-                                      onClick={() => removeScan(request.id, s.barcode2)}
-                                    >
-                                      ✕
-                                    </IconButton>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </Card>
-                        )
-                      })}
-                    </div>
                   </div>
                 )}
               </Card>
@@ -430,30 +520,32 @@ export function OmborChiqimTab() {
           independent of Qorovul's gate weighing (CHIQIM per-role
           finalization). Same collapsed-by-default pattern as S3W2. */}
       <div>
-        <SectionHeading>Yuklandi</SectionHeading>
+        <SectionHeading>2 · Yuklandi · qorovulga topshirildi</SectionHeading>
         <div className="mt-2 space-y-2">
           {finished.length === 0 && <p className="text-sm text-slate-400">Hali yuklangan so'rov yo'q.</p>}
           {finished.map((request) => (
-            <Card key={request.id}>
+            <Card key={request.id} padding="compact">
               <button
                 type="button"
                 onClick={() => {
                   setExpandedFinished(expandedFinished === request.id ? null : request.id)
                   setUndoError(null)
                 }}
-                className="flex min-h-12 w-full items-center justify-between text-left text-base"
+                className="flex w-full items-center justify-between gap-2 text-left"
               >
-                <div>
-                  <span className="text-slate-900 dark:text-slate-100">
-                    {request.request_date} · {request.plate} · {request.driver}
-                  </span>
-                  <span className="ml-2 text-slate-500 dark:text-slate-400">{ownerName(request.owner_id)}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {ownerName(request.owner_id)}
+                    {request.lines.length > 0 &&
+                      ` · ${[...new Set(request.lines.map((l) => typeName(l.type_id)))].join(' + ')}`}
+                  </div>
+                  <div className="truncate text-sm text-slate-500 dark:text-slate-400">
+                    {request.plate} · {request.driver} · maqsad {requestTarget(request).toLocaleString()} kg · yuklangan{' '}
+                    {request.ombor_finished_at ? new Date(request.ombor_finished_at).toLocaleString() : ''}
+                  </div>
                 </div>
-                <span className="text-slate-500 dark:text-slate-400">⋯</span>
+                <span className="shrink-0 text-slate-500 dark:text-slate-400">⋯</span>
               </button>
-              <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                maqsad {requestTarget(request).toLocaleString()} kg · yuklangan {request.ombor_finished_at}
-              </div>
               {expandedFinished === request.id && (
                 <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 dark:border-slate-700">
                   {request.lines.map((line) => (

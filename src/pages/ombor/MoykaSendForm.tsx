@@ -1,21 +1,35 @@
 import { useState, type FormEvent } from 'react'
 import type { MoykaSerial } from '../../lib/useMoykaSerials'
+import { Button } from '../../components/ui/Button'
+import { TextInput } from '../../components/ui/FormField'
+
+function todayLabel() {
+  const d = new Date()
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
+}
 
 // §5.2 send form: quantity input with live "Qoladi" (available − in-progress
 // input, updated as he types). Over-send is blocked — you can't send more raw
 // than is available (a negative balance is nonsensical, unlike the discretionary
 // declared-vs-actual variance at intake). The persisted balance stays
-// server-derived (Σ moyka_sends) after save.
+// server-derived (Σ moyka_sends) after save. Defaults to the full available
+// balance (same "pre-fill with the figure that's already known" convention
+// IntakeAcceptForm uses for its own weight field) — usually sent in full, and
+// still freely editable down for a partial send.
 export function MoykaSendForm({
   serial,
+  typeName,
+  ownerName,
   onCancel,
   onSubmit,
 }: {
   serial: MoykaSerial
+  typeName: string
+  ownerName: string
   onCancel: () => void
   onSubmit: (qtyKg: number) => Promise<void>
 }) {
-  const [qty, setQty] = useState('')
+  const [qty, setQty] = useState(String(serial.available))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,49 +63,65 @@ export function MoykaSendForm({
       onSubmit={handleSubmit}
       className="mt-3 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900"
     >
-      <div>
-        <label className="block text-sm text-slate-500 dark:text-slate-400" htmlFor={`qty-${serial.serial}`}>
-          Miqdori (kg)
-        </label>
-        <input
-          id={`qty-${serial.serial}`}
-          type="number"
-          min="0"
-          step="0.1"
-          required
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        />
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500 dark:text-slate-400">Seriya</span>
+          <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{serial.serial}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500 dark:text-slate-400">Egasi · tur</span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">
+            {ownerName} · {typeName}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500 dark:text-slate-400">Omborda qoldiq</span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">{serial.available.toLocaleString()} kg</span>
+        </div>
       </div>
 
-      <p className={overSend ? 'text-sm font-medium text-red-600 dark:text-red-400' : 'text-sm text-slate-600 dark:text-slate-300'}>
-        Qoladi: {qoladi.toLocaleString()} kg
-        {overSend && ' — mavjud qoldiqdan ko\'p'}
-      </p>
+      <div>
+        <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Sana</div>
+        <div className="mt-1 text-base text-slate-900 dark:text-slate-100">{todayLabel()}</div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor={`qty-${serial.serial}`}>
+          Og'irlik
+        </label>
+        <div className="mt-1">
+          <TextInput
+            id={`qty-${serial.serial}`}
+            type="number"
+            min="0"
+            step="0.1"
+            required
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            className="!text-2xl font-bold"
+          />
+        </div>
+        <p className={`mt-1 text-sm ${overSend ? 'font-medium text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>
+          Qoladi: {qoladi.toLocaleString()} kg
+          {overSend && ' — mavjud qoldiqdan ko\'p'}
+        </p>
+      </div>
 
       {error && (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+        <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
           {error}
         </p>
       )}
 
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-        >
+      <div className="space-y-2">
+        <Button type="submit" variant="primary" size="lg" fullWidth disabled={submitting}>
           {submitting ? 'Yuborilmoqda…' : 'Moykaga yuborish'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-3 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
-        >
+        </Button>
+        <Button type="button" variant="ghost" size="md" fullWidth onClick={onCancel}>
           Bekor qilish
-        </button>
+        </Button>
       </div>
+      <p className="text-center text-xs text-slate-400">Yuborilgach seriya "Moykada" ro'yxatiga o'tadi</p>
     </form>
   )
 }

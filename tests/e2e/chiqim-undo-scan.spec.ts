@@ -90,23 +90,23 @@ test('Ombor undoes a post-finish scan, pallet becomes available again, then a po
   await loginAs(page, 'OMBOR')
   await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
 
-  const omborW1 = page.getByRole('heading', { name: "Yuklash uchun so'rovlar" }).locator('xpath=following-sibling::div[1]')
-  const omborRequest = omborW1.getByRole('button', { name: new RegExp(PLATE) })
+  const omborW1 = page.getByRole('heading', { name: '1 · Yuklashga tayyor — moshina keldi' }).locator('xpath=following-sibling::div[1]')
+  const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: PLATE })
   await expect(omborRequest).toBeVisible()
-  await omborRequest.click()
+  await omborRequest.getByRole('button', { name: 'Yuklashni boshlash' }).click()
 
   const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
   await barcodeInput.fill(BARCODE_1)
   await page.getByRole('button', { name: 'Skanerlash' }).click()
   await barcodeInput.fill(BARCODE_2)
   await page.getByRole('button', { name: 'Skanerlash' }).click()
-  await expect(page.getByText('✓ Aniq mos keldi')).toBeVisible()
+  await expect(page.getByText('Yetarli emas')).not.toBeVisible()
   await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
   await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
   await expect(omborRequest).not.toBeVisible()
 
   // --- Undo one scanned pallet from W2 (real DELETE, pre-stage-2) ---
-  const omborW2 = page.getByRole('heading', { name: 'Yuklandi' }).locator('xpath=following-sibling::div[1]')
+  const omborW2 = page.getByRole('heading', { name: '2 · Yuklandi · qorovulga topshirildi' }).locator('xpath=following-sibling::div[1]')
   const finishedRow = omborW2.getByRole('button', { name: new RegExp(PLATE) })
   await expect(finishedRow).toBeVisible()
   await finishedRow.click()

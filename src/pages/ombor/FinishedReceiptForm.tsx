@@ -1,6 +1,9 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import type { Calibre } from '../../lib/useCalibres'
 import type { OutputSerial } from '../../lib/useMoykaOutput'
+import { Button } from '../../components/ui/Button'
+import { TextInput } from '../../components/ui/FormField'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 export interface ReceiptValues {
   calibreId: string
@@ -14,15 +17,22 @@ export interface ReceiptValues {
 // The Barcode #2 sticker ID is generated here: PLT-<serial>-<calibre code>-<seq>,
 // where seq disambiguates multiple pallets of the same serial+calibre (see
 // DECISIONS — the §2.2 format needed a per-pallet uniquifier).
+function todayLabel() {
+  const d = new Date()
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
+}
+
 export function FinishedReceiptForm({
   serial,
   typeName,
+  ownerName,
   calibres,
   onCancel,
   onSubmit,
 }: {
   serial: OutputSerial
   typeName: string
+  ownerName: string
   calibres: Calibre[]
   onCancel: () => void
   onSubmit: (values: ReceiptValues) => Promise<void>
@@ -79,76 +89,80 @@ export function FinishedReceiptForm({
       onSubmit={handleSubmit}
       className="mt-3 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900"
     >
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <div className="text-slate-500 dark:text-slate-400">Tur</div>
-          <div className="text-slate-900 dark:text-slate-100">{typeName}</div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500 dark:text-slate-400">Seriya</span>
+          <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{serial.serial}</span>
         </div>
-        <div>
-          <label className="block text-slate-500 dark:text-slate-400" htmlFor={`cal-${serial.serial}`}>
-            Kalibr
-          </label>
-          <select
-            id={`cal-${serial.serial}`}
-            required
-            value={calibreId}
-            onChange={(e) => setCalibreId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          >
-            <option value="" disabled>
-              Tanlang…
-            </option>
-            {categoryCalibres.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500 dark:text-slate-400">Egasi · tur</span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">
+            {ownerName} · {typeName}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500 dark:text-slate-400">Shu paytgacha qabul</span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">{serial.received.toLocaleString()} kg</span>
         </div>
       </div>
 
       <div>
-        <label className="block text-sm text-slate-500 dark:text-slate-400" htmlFor={`w-${serial.serial}`}>
-          Og'irlik (kg)
+        <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Sana</div>
+        <div className="mt-1 text-base text-slate-900 dark:text-slate-100">{todayLabel()}</div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor={`cal-${serial.serial}`}>
+          Kalibr
         </label>
-        <input
-          id={`w-${serial.serial}`}
-          type="number"
-          min="0"
-          step="0.1"
+        <select
+          id={`cal-${serial.serial}`}
           required
-          value={weight}
-          onChange={(e) => setWeight(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        />
+          value={calibreId}
+          onChange={(e) => setCalibreId(e.target.value)}
+          className="mt-1 min-h-12 w-full rounded-md border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        >
+          <option value="" disabled>
+            Tanlang…
+          </option>
+          {categoryCalibres.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor={`w-${serial.serial}`}>
+          Og'irlik
+        </label>
+        <div className="mt-1">
+          <TextInput
+            id={`w-${serial.serial}`}
+            type="number"
+            min="0"
+            step="0.1"
+            required
+            value={weight}
+            onChange={(e) => setWeight(e.target.value)}
+            className="!text-2xl font-bold"
+          />
+        </div>
       </div>
 
       {categoryCalibres.length === 0 && (
-        <p className="text-sm text-amber-600 dark:text-amber-400">
-          Kalibrlar sozlanmagan (calibres bo'sh). Administrator kalibrlarni kiritishi kerak.
-        </p>
+        <StatusNote tone="pending">Kalibrlar sozlanmagan (calibres bo'sh). Administrator kalibrlarni kiritishi kerak.</StatusNote>
       )}
-      {error && (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
 
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-        >
-          {submitting ? 'Saqlanmoqda…' : 'Qabul qilish'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-3 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
-        >
+      <div className="space-y-2">
+        <Button type="submit" variant="primary" size="lg" fullWidth disabled={submitting}>
+          {submitting ? 'Saqlanmoqda…' : 'Saqlash va shtrix-kod chiqarish'}
+        </Button>
+        <Button type="button" variant="ghost" size="md" fullWidth onClick={onCancel}>
           Yopish
-        </button>
+        </Button>
       </div>
     </form>
   )

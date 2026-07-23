@@ -8,6 +8,13 @@ import { useMoykaOutput, type OutputSerial } from '../../lib/useMoykaOutput'
 import { hasRawRemainder } from '../../lib/stageMembership'
 import { MoykaSendForm } from './MoykaSendForm'
 import { EntityNotes } from '../../components/EntityNotes'
+import { Card } from '../../components/ui/Card'
+import { Button } from '../../components/ui/Button'
+import { IconButton } from '../../components/ui/IconButton'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
+import { SerialChip } from '../../components/ui/SerialChip'
+import { Stat } from '../../components/ui/Stat'
 
 // §5.2 Moykaga Chiqarish. Two windows — section mirroring (SPEC.md §5 intro;
 // DECISIONS.md "Section mirroring / derived stage membership"), NOT two
@@ -103,59 +110,54 @@ export function OmborMoykaTab() {
   function row(s: MoykaSerial) {
     const isActive = activeSerial === s.serial
     return (
-      <div
-        key={s.serial}
-        className={
-          s.isRewash
-            ? 'rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30'
-            : 'rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700'
-        }
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="font-mono text-slate-900 dark:text-slate-100">{s.serial}</span>
-            <span className="ml-2 text-slate-500 dark:text-slate-400">
-              {typeName(s.type_id)} · {ownerName(s.owner_id)}
-            </span>
+      <Card key={s.serial} tone={s.isRewash ? 'pending' : 'neutral'}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-2">
+              <SerialChip>{s.serial}</SerialChip>
+              <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
+                {ownerName(s.owner_id)} · {typeName(s.type_id)}
+              </span>
+            </div>
             {/* §5.5.4/§5.5.5: this row is a re-wash cycle (2+), not the
                 original intake — flagged so Ombor can tell a second-cycle
                 send from a first-cycle one at a glance. */}
             {s.isRewash && (
-              <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">
+              <div className="text-sm font-medium text-amber-700 dark:text-amber-400">
                 Qayta yuvish · sikl {s.activeCycle}
-              </span>
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {!isActive && (
-              <button
-                onClick={() => setActiveSerial(s.serial)}
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                Moykaga yuborish
-              </button>
-            )}
-            <button
-              onClick={() => setExpanded(expanded === s.serial ? null : s.serial)}
-              className="rounded-md px-2 py-1 text-slate-500 hover:text-slate-700 dark:text-slate-400"
-              aria-label="Batafsil"
-            >
-              ⋯
-            </button>
+          <IconButton label="Batafsil" onClick={() => setExpanded(expanded === s.serial ? null : s.serial)}>
+            ⋯
+          </IconButton>
+        </div>
+
+        {s.isRewash && (
+          <div className="mt-2">
+            <StatusNote tone="pending">
+              ⟳ Laborator qaytardi — kalibr palletlari bekor qilindi, qayta yuvishga tayyor
+            </StatusNote>
           </div>
+        )}
+
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <Stat
+            value={!s.isRewash && s.provisional ? 'kutilmoqda' : s.cycleInputKg.toLocaleString()}
+            label={s.isRewash ? 'Qaytgan' : 'Jami xom'}
+          />
+          <Stat value={s.sent.toLocaleString()} label="Yuborilgan" tone="ok" />
+          <Stat value={s.available.toLocaleString()} label="Qoldiq" tone="pending" />
         </div>
-        <div className="mt-1 text-slate-500 dark:text-slate-400">
-          {s.isRewash ? 'Qayta yuvish miqdori' : 'Qabul qilingan'}:{' '}
-          {!s.isRewash && s.provisional ? 'tarozi kutilmoqda' : `${s.cycleInputKg.toLocaleString()} kg`} · Yuborilgan:{' '}
-          {s.sent.toLocaleString()} kg · Qoladi:{' '}
-          <span className="font-medium text-slate-900 dark:text-slate-100">{s.available.toLocaleString()} kg</span>
-        </div>
+
         {/* §5.1 amend: gate-vs-declared, cycle 1 only, once gate stage 2 is known. */}
         {!s.isRewash && s.truckVariance && Math.abs(s.truckVariance.diffKg) > 0 && (
-          <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-            Darvoza neta reys bo'yicha e'lon qilingandan {s.truckVariance.diffKg >= 0 ? '+' : ''}
-            {s.truckVariance.diffKg.toLocaleString()} kg ({s.truckVariance.diffPct >= 0 ? '+' : ''}
-            {s.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
+          <div className="mt-2">
+            <StatusNote tone="pending">
+              Darvoza neta reys bo'yicha e'lon qilingandan {s.truckVariance.diffKg >= 0 ? '+' : ''}
+              {s.truckVariance.diffKg.toLocaleString()} kg ({s.truckVariance.diffPct >= 0 ? '+' : ''}
+              {s.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
+            </StatusNote>
           </div>
         )}
         {/* §2.15.2 edge case: this cycle's material was already sent while the
@@ -163,14 +165,32 @@ export function OmborMoykaTab() {
             materially different — flag, don't block (never re-blocks the
             send that already happened). */}
         {!s.isRewash && s.provisionalVarianceFlag && (
-          <div className="mt-1 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-            Diqqat: tarozi kutilayotganda yuborilgan, keyin darvoza netasi sezilarli farq qildi.
+          <div className="mt-2">
+            <StatusNote tone="problem">
+              Diqqat: tarozi kutilayotganda yuborilgan, keyin darvoza netasi sezilarli farq qildi.
+            </StatusNote>
           </div>
         )}
 
-        {isActive && <MoykaSendForm serial={s} onCancel={() => setActiveSerial(null)} onSubmit={(q) => handleSend(s, q)} />}
+        {!isActive && (
+          <div className="mt-3">
+            <Button variant="primary" size="lg" fullWidth onClick={() => setActiveSerial(s.serial)}>
+              + Moykaga yuborish
+            </Button>
+          </div>
+        )}
+
+        {isActive && (
+          <MoykaSendForm
+            serial={s}
+            typeName={typeName(s.type_id)}
+            ownerName={ownerName(s.owner_id)}
+            onCancel={() => setActiveSerial(null)}
+            onSubmit={(q) => handleSend(s, q)}
+          />
+        )}
         {expanded === s.serial && serialDetail(s)}
-      </div>
+      </Card>
     )
   }
 
@@ -179,35 +199,32 @@ export function OmborMoykaTab() {
   // Tayyor Mahsulot's job (§5.3); this is just visibility that it's there.
   function processingRow(s: OutputSerial) {
     return (
-      <div key={s.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
-        <div>
-          <span className="font-mono text-slate-900 dark:text-slate-100">{s.serial}</span>
-          <span className="ml-2 text-slate-500 dark:text-slate-400">
-            {typeName(s.type_id)} · {ownerName(s.owner_id)}
+      <Card key={s.serial} padding="compact">
+        <div className="flex items-center gap-2">
+          <SerialChip>{s.serial}</SerialChip>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+            {ownerName(s.owner_id)} · {typeName(s.type_id)}
           </span>
           {s.isRewash && (
-            <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">
-              Qayta yuvish · sikl {s.activeCycle}
-            </span>
+            <span className="shrink-0 text-xs font-medium text-amber-700 dark:text-amber-400">sikl {s.activeCycle}</span>
           )}
         </div>
-        <div className="mt-1 text-slate-500 dark:text-slate-400">
-          Yuborilgan: {s.sent.toLocaleString()} kg · Jarayonda:{' '}
-          <span className="font-medium text-slate-900 dark:text-slate-100">{s.inProcess.toLocaleString()} kg</span>
+        <div className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
+          Yuborilgan {s.sent.toLocaleString()} kg · Jarayonda {s.inProcess.toLocaleString()} kg
           {s.excess > 0 && (
             <span className="ml-2 font-medium text-amber-600 dark:text-amber-400">
               Ortiqcha: +{s.excess.toLocaleString()} kg
             </span>
           )}
         </div>
-      </div>
+      </Card>
     )
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yuborish uchun</h2>
+        <SectionHeading>1 · Yuborishga tayyor</SectionHeading>
         <div className="mt-2 space-y-2">
           {toSend.length === 0 && <p className="text-sm text-slate-400">Yuboriladigan serial yo'q.</p>}
           {toSend.map((s) => row(s))}
@@ -215,7 +232,7 @@ export function OmborMoykaTab() {
       </div>
 
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Moykada — jarayonda</h2>
+        <SectionHeading>2 · Moykada</SectionHeading>
         <div className="mt-2 space-y-2">
           {processing.length === 0 && <p className="text-sm text-slate-400">Moykada jarayondagi serial yo'q.</p>}
           {processing.map((s) => processingRow(s))}

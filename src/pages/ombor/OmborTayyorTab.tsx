@@ -11,6 +11,12 @@ import { computeFinalLossPct, completionBadge, tugallashWarnings } from '../../l
 import { hasRawRemainder } from '../../lib/stageMembership'
 import { FinishedReceiptForm, type ReceiptValues } from './FinishedReceiptForm'
 import { Barcode2Display } from './Barcode2Display'
+import { Card } from '../../components/ui/Card'
+import { Button } from '../../components/ui/Button'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
+import { SerialChip } from '../../components/ui/SerialChip'
+import { Stat } from '../../components/ui/Stat'
 
 // §5.3 Tayyor Mahsulot: serials in Moyka awaiting output. Daily receipt form
 // (one pallet per save → Barcode #2, form closes on every submit — no
@@ -52,7 +58,6 @@ export function OmborTayyorTab() {
   const [confirmingRewash, setConfirmingRewash] = useState<string | null>(null)
   const [rewashError, setRewashError] = useState<string | null>(null)
   const [rewashSaving, setRewashSaving] = useState<string | null>(null)
-  const [expandedActive, setExpandedActive] = useState<string | null>(null)
   const [expandedCompleted, setExpandedCompleted] = useState<string | null>(null)
 
   function typeName(id: string) {
@@ -229,138 +234,129 @@ export function OmborTayyorTab() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Moykada — chiqishi kutilmoqda</h2>
+      <SectionHeading>1 · Moykada — chiqishi kutilmoqda</SectionHeading>
       {serials.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan serial yo'q.</p>}
 
       {serials.map((s) => {
         const lossPct = computeFinalLossPct(s.sent, s.received)
         const lastB = lastBarcode[s.serial]
         const warnings = tugallashWarningText(s)
-        const isExpanded = expandedActive === s.serial
+        const isConfirming = confirming === s.serial
         return (
-          <div key={s.serial} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
-            {/* Collapsed by default (density fix) — reuses the same
-                toggle-button + minimal-identifying-info pattern already
-                used by Window 2 (Tugallangan) below: serial · type · owner
-                plus the totals line stay visible collapsed; pallets, the
-                receipt form, and Tugallash move behind the expand. */}
-            <button
-              type="button"
-              onClick={() => setExpandedActive(isExpanded ? null : s.serial)}
-              className="flex w-full items-center justify-between text-left"
-            >
-              <div>
-                <span className="font-mono text-slate-900 dark:text-slate-100">{s.serial}</span>
-                <span className="ml-2 text-slate-500 dark:text-slate-400">
-                  {typeName(s.type_id)} · {ownerName(s.owner_id)}
-                </span>
-                {s.isRewash && (
-                  <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">
-                    Qayta yuvish · sikl {s.activeCycle}
-                  </span>
-                )}
-              </div>
-              <span className="text-slate-500 dark:text-slate-400">⋯</span>
-            </button>
-
-            <div className="mt-1 text-slate-500 dark:text-slate-400">
-              Yuborilgan: {s.sent.toLocaleString()} kg · Qabul qilingan: {s.received.toLocaleString()} kg · Jarayonda:{' '}
-              <span className="font-medium text-slate-900 dark:text-slate-100">{s.inProcess.toLocaleString()} kg</span>
-              {s.excess > 0 && (
-                <span className="ml-2 font-medium text-amber-600 dark:text-amber-400">
-                  Ortiqcha: +{s.excess.toLocaleString()} kg
-                </span>
-              )}
+          <Card key={s.serial}>
+            <div className="flex items-center gap-2">
+              <SerialChip>{s.serial}</SerialChip>
+              <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
+                {ownerName(s.owner_id)} · {typeName(s.type_id)}
+              </span>
             </div>
-
-            {isExpanded && (
-              <>
-                {activeForm !== s.serial && (
-                  <button
-                    onClick={() => setActiveForm(s.serial)}
-                    className="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    {s.pallets.length === 0 ? '+ Qabul qilish' : "+ Yana qo'shish"}
-                  </button>
-                )}
-
-                {/* pallets received so far, each with its Barcode #2 */}
-                {palletList(s.serial, s.type_id, s.owner_id, s.pallets)}
-
-                {/* §5.3 fix: form always closes on submit (no auto-reopen) — a new
-                    entry needs the "+ Yana qo'shish" click above. The last
-                    sticker stays visible/printable after close, independent of
-                    activeForm (see DECISIONS "Tayyor Mahsulot completion"). */}
-                {activeForm === s.serial && (
-                  <FinishedReceiptForm
-                    serial={s}
-                    typeName={typeName(s.type_id)}
-                    calibres={activeCalibres}
-                    onCancel={() => setActiveForm(null)}
-                    onSubmit={(values) => handleReceipt(s, values)}
-                  />
-                )}
-                {lastB && (
-                  <div className="mt-2">
-                    <div className="text-xs text-slate-500 dark:text-slate-400">Oxirgi Barcode #2:</div>
-                    <Barcode2Display
-                      defaultOpen
-                      data={{
-                        barcode2: lastB,
-                        serial: s.serial,
-                        type: typeName(s.type_id),
-                        calibre: calibreLabel(s.pallets.find((p) => p.barcode2 === lastB)?.calibre_id ?? ''),
-                        weightKg: s.pallets.find((p) => p.barcode2 === lastB)?.weight_kg ?? 0,
-                        owner: ownerName(s.owner_id),
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* Tugallash: always clickable (DECISIONS "Manual-only finishing")
-                    — enablement never depends on Jarayonda/remaining. Soft
-                    warning (never blocks) when raw remainder remains and/or
-                    loss exceeds 10%. */}
-                <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">
-                  {confirming === s.serial ? (
-                    <div className="space-y-2">
-                      <p className="text-sm text-slate-700 dark:text-slate-300">
-                        Yakuniy hisobot — {s.pallets.length} ta pallet, jami {s.received.toLocaleString()} kg qabul qilindi.
-                        Yo'qotish <span className="font-medium">{lossPct.toFixed(1)}%</span> deb qulflanadi.
-                      </p>
-                      {warnings.length > 0 && (
-                        <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
-                          {warnings.join(' · ')}. Baribir davom etilsinmi?
-                        </p>
-                      )}
-                      {warnings.length === 0 && <p className="text-sm text-slate-700 dark:text-slate-300">Davom etilsinmi?</p>}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleTugallash(s)}
-                          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"
-                        >
-                          Ha, tugallash
-                        </button>
-                        <button
-                          onClick={() => setConfirming(null)}
-                          className="rounded-md px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
-                        >
-                          Bekor qilish
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirming(s.serial)}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                    >
-                      Tugallash
-                    </button>
-                  )}
-                </div>
-              </>
+            {s.isRewash && (
+              <div className="mt-1 text-sm font-medium text-amber-700 dark:text-amber-400">
+                Qayta yuvish · sikl {s.activeCycle}
+              </div>
             )}
-          </div>
+
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <Stat value={s.sent.toLocaleString()} label="Yuborilgan" />
+              <Stat value={s.received.toLocaleString()} label="Qabul qilingan" tone="ok" />
+              <Stat value={s.inProcess.toLocaleString()} label="Jarayonda" tone="pending" />
+            </div>
+            {s.excess > 0 && (
+              <div className="mt-2">
+                <StatusNote tone="pending">Ortiqcha: +{s.excess.toLocaleString()} kg</StatusNote>
+              </div>
+            )}
+
+            {!isConfirming && (
+              <div className="mt-3 flex gap-2">
+                <Button variant="primary" size="lg" className="flex-1" onClick={() => setActiveForm(s.serial)}>
+                  {s.pallets.length === 0 ? '+ Qabul qilish' : "+ Yana qo'shish"}
+                </Button>
+                <Button variant="secondary" size="lg" className="flex-1" onClick={() => setConfirming(s.serial)}>
+                  Tugallash
+                </Button>
+              </div>
+            )}
+
+            {/* §5.3 fix: form always closes on submit (no auto-reopen) — a new
+                entry needs the "+ Yana qo'shish" click above. The last
+                sticker stays visible/printable after close, independent of
+                activeForm (see DECISIONS "Tayyor Mahsulot completion"). */}
+            {activeForm === s.serial && (
+              <FinishedReceiptForm
+                serial={s}
+                typeName={typeName(s.type_id)}
+                ownerName={ownerName(s.owner_id)}
+                calibres={activeCalibres}
+                onCancel={() => setActiveForm(null)}
+                onSubmit={(values) => handleReceipt(s, values)}
+              />
+            )}
+            {lastB && (
+              <div className="mt-2">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Oxirgi Barcode #2:</div>
+                <Barcode2Display
+                  defaultOpen
+                  data={{
+                    barcode2: lastB,
+                    serial: s.serial,
+                    type: typeName(s.type_id),
+                    calibre: calibreLabel(s.pallets.find((p) => p.barcode2 === lastB)?.calibre_id ?? ''),
+                    weightKg: s.pallets.find((p) => p.barcode2 === lastB)?.weight_kg ?? 0,
+                    owner: ownerName(s.owner_id),
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Tugallash: always clickable (DECISIONS "Manual-only finishing")
+                — enablement never depends on Jarayonda/remaining. Soft
+                warning (never blocks) when raw remainder remains and/or
+                loss exceeds 10%. Mockup ("Qabul tarixi + 'Tugallash'
+                tasdiqi"): the receipt history and the double-confirm are the
+                same view — folded together here rather than a separate
+                always-on expand. */}
+            {isConfirming && (
+              <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+                {palletList(s.serial, s.type_id, s.owner_id, s.pallets)}
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+                  <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Tugallashni tasdiqlang</p>
+                  <div className="mt-2 space-y-1 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 dark:text-slate-400">Yuborilgan (xom)</span>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">{s.sent.toLocaleString()} kg</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 dark:text-slate-400">Jami tayyor mahsulot</span>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">{s.received.toLocaleString()} kg</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 dark:text-slate-400">Yakuniy yo'qotish</span>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">
+                        {(s.sent - s.received).toLocaleString()} kg · {lossPct.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                  {warnings.length > 0 && (
+                    <p className="mt-2 text-sm font-medium text-red-600 dark:text-red-400" role="alert">
+                      {warnings.join(' · ')}. Baribir davom etilsinmi?
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
+                    Tugallangach seriya faol ro'yxatdan chiqadi va yo'qotish raqami qulflanadi.
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <Button variant="ghost" size="md" onClick={() => setConfirming(null)}>
+                      Bekor
+                    </Button>
+                    <Button variant="primary" size="md" onClick={() => handleTugallash(s)}>
+                      Ha, tugallash
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
         )
       })}
 
@@ -368,42 +364,33 @@ export function OmborTayyorTab() {
           Tugallash). ⋯ expand reuses the Window 1 pallet-list pattern; badge
           is Ortiqcha (non-blocking overage, wins) or the locked loss %. */}
       <div>
-        <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Tugallangan</h2>
+        <SectionHeading>2 · Tugallangan</SectionHeading>
         <div className="mt-2 space-y-2">
           {completed.length === 0 && <p className="text-sm text-slate-400">Tugallangan serial yo'q.</p>}
           {completed.map((c) => {
             const needsRewash = pendingRewash.has(c.serial)
             return (
-            <div
-              key={c.serial}
-              className={
-                needsRewash
-                  ? 'rounded-md border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/30'
-                  : 'rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700'
-              }
-            >
+            <Card key={c.serial} tone={needsRewash ? 'problem' : 'neutral'} padding="compact">
               <button
                 type="button"
                 onClick={() => setExpandedCompleted(expandedCompleted === c.serial ? null : c.serial)}
-                className="flex w-full items-center justify-between text-left"
+                className="flex w-full items-center gap-2 text-left"
               >
-                <div>
-                  <span className="font-mono text-slate-900 dark:text-slate-100">{c.serial}</span>
+                <SerialChip>{c.serial}</SerialChip>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {ownerName(c.owner_id)} · {typeName(c.type_id)}
                   {c.cycleNo > 1 && (
                     <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">sikl {c.cycleNo}</span>
                   )}
-                  <span className="ml-2 text-slate-500 dark:text-slate-400">
-                    {ownerName(c.owner_id)} · {typeName(c.type_id)}
-                  </span>
-                  {/* §5.5.4: the lab flags, Ombor executes — this text is the
-                      flag, the button below (behind expand) is the execution. */}
-                  {needsRewash && (
-                    <span className="ml-2 font-medium text-red-700 dark:text-red-400">Qayta yuvish kerak</span>
-                  )}
-                </div>
-                <span className="text-slate-500 dark:text-slate-400">⋯</span>
+                </span>
+                <span className="shrink-0 text-slate-500 dark:text-slate-400">⋯</span>
               </button>
-              <div className="mt-1 text-slate-500 dark:text-slate-400">
+              {/* §5.5.4: the lab flags, Ombor executes — this text is the
+                  flag, the button below (behind expand) is the execution. */}
+              {needsRewash && (
+                <div className="mt-1 text-sm font-medium text-red-700 dark:text-red-400">Qayta yuvish kerak</div>
+              )}
+              <div className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
                 Yuborilgan {c.sent.toLocaleString()} → tayyor {c.received.toLocaleString()} kg ·{' '}
                 {lossBadge(c.lossPct, c.excess)}
               </div>
@@ -418,40 +405,31 @@ export function OmborTayyorTab() {
                             Kalibrlangan palletlar (K4/K6/K8) bekor qilinadi. Konditirskiy palletlar omborda qoladi,
                             o'zgarmaydi. Serial §5.2'ga qayta yuvish uchun qaytadi.
                           </p>
-                          {rewashError && (
-                            <p className="text-sm font-medium text-red-600 dark:text-red-400" role="alert">
-                              {rewashError}
-                            </p>
-                          )}
+                          {rewashError && <StatusNote tone="problem">{rewashError}</StatusNote>}
                           <div className="flex gap-2">
-                            <button
+                            <Button
+                              variant="danger"
+                              size="md"
                               onClick={() => handleRewash(c)}
                               disabled={rewashSaving === c.serial}
-                              className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
                             >
                               {rewashSaving === c.serial ? 'Saqlanmoqda…' : 'Ha, qayta yuvishga yuborish'}
-                            </button>
-                            <button
-                              onClick={() => setConfirmingRewash(null)}
-                              className="rounded-md px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400"
-                            >
+                            </Button>
+                            <Button variant="ghost" size="md" onClick={() => setConfirmingRewash(null)}>
                               Bekor qilish
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => setConfirmingRewash(c.serial)}
-                          className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500"
-                        >
+                        <Button variant="danger" size="md" onClick={() => setConfirmingRewash(c.serial)}>
                           Qayta yuvishga yuborish
-                        </button>
+                        </Button>
                       )}
                     </div>
                   )}
                 </>
               )}
-            </div>
+            </Card>
             )
           })}
         </div>

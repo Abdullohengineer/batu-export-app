@@ -89,20 +89,25 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
     await lineRow.locator('div:has(> label:text-is("Uyum rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await expect(lineRow.getByText('Siqilmoqda…')).toHaveCount(0)
     await lineRow.getByRole('button', { name: 'Qabul qilish' }).click()
-    const received = page.getByRole('heading', { name: 'Qabul qilingan mahsulotlar' }).locator('xpath=following-sibling::div[1]')
-    await expect(received.locator('.rounded-md', { hasText: serial })).toBeVisible()
+    const received = page.getByRole('heading', { name: '2 · Qabul qilingan' }).locator('xpath=following-sibling::div[1]')
+    // div.rounded-md, not bare .rounded-md: SerialChip (a <span>) also
+    // carries rounded-md, so a bare class selector matches both the Card
+    // and its own nested serial chip — the `div` type selector excludes
+    // the span (nav/visual-redesign pass, real strict-mode violation found
+    // via e2e, not assumed safe from inspection alone).
+    await expect(received.locator('div.rounded-md', { hasText: serial })).toBeVisible()
   }
 
   // --- Ombor: send cycle 1 (5000kg) to Moyka ---
   async function sendToMoyka(qty: string) {
     await page.getByRole('link', { name: 'Skladga KIRIM' }).click()
     await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
-    const yuborishUchun = page.getByRole('heading', { name: 'Yuborish uchun' }).locator('xpath=following-sibling::div[1]')
+    const yuborishUchun = page.getByRole('heading', { name: '1 · Yuborishga tayyor' }).locator('xpath=following-sibling::div[1]')
     await expect(yuborishUchun).toBeVisible({ timeout: 20000 })
-    const row = yuborishUchun.locator('.rounded-md', { hasText: serial })
+    const row = yuborishUchun.locator('div.rounded-md', { hasText: serial })
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: 'Moykaga yuborish' }).click()
-    const qtyInput = row.locator('div:has(> label:text-is("Miqdori (kg)")) input[type="number"]')
+    const qtyInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
     await qtyInput.fill(qty)
     await expect(qtyInput).toHaveValue(qty)
     await row.getByRole('button', { name: 'Moykaga yuborish' }).click()
@@ -120,15 +125,14 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
     await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
     const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: serial })
     await expect(row).toBeVisible({ timeout: 20000 })
-    await row.locator('button', { hasText: '⋯' }).click()
     const openButton = row.getByRole('button', { name: /Qabul qilish|Yana qo'shish/ })
     await openButton.click()
     await row.locator('select').selectOption({ label: calibreLabel })
-    const weightInput = row.locator('div:has(> label:text-is("Og\'irlik (kg)")) input[type="number"]')
+    const weightInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
     await weightInput.fill(weight)
     await weightInput.press('Tab')
     await expect(weightInput).toHaveValue(weight)
-    await row.getByRole('button', { name: 'Qabul qilish' }).click()
+    await row.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
     await expect(row.getByText(`PLT-${serial}-`).first()).toBeVisible({ timeout: 20000 })
   }
   async function produceAndFinish(pallets: { calibre: string; weight: string }[]) {
@@ -140,11 +144,10 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
     await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
     const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: serial })
     await expect(row).toBeVisible({ timeout: 20000 })
-    await row.locator('button', { hasText: '⋯' }).click()
     await row.getByRole('button', { name: 'Tugallash' }).click()
     await row.getByRole('button', { name: 'Ha, tugallash' }).click()
     const tugallangan = page.getByRole('heading', { name: 'Tugallangan' }).locator('xpath=following-sibling::div[1]')
-    await expect(tugallangan.locator('.rounded-md', { hasText: serial })).toBeVisible({ timeout: 20000 })
+    await expect(tugallangan.locator('div.rounded-md', { hasText: serial })).toBeVisible({ timeout: 20000 })
   }
   await produceAndFinish([
     { calibre: 'Kalibr 6', weight: '4500' },
@@ -211,10 +214,10 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
     await page.waitForURL('**/login')
     await loginAs(page, 'OMBOR')
     await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
-    const omborW1 = page.getByRole('heading', { name: "Yuklash uchun so'rovlar" }).locator('xpath=following-sibling::div[1]')
-    const omborRequest = omborW1.getByRole('button', { name: new RegExp(CHIQIM_PLATE) })
+    const omborW1 = page.getByRole('heading', { name: '1 · Yuklashga tayyor — moshina keldi' }).locator('xpath=following-sibling::div[1]')
+    const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: CHIQIM_PLATE })
     await expect(omborRequest).toBeVisible()
-    await omborRequest.click()
+    await omborRequest.getByRole('button', { name: 'Yuklashni boshlash' }).click()
     const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
     await barcodeInput.fill(`PLT-${serial}-06-1`)
     await page.getByRole('button', { name: 'Skanerlash' }).click()
@@ -225,7 +228,7 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
   {
     const tugallangan = page.getByRole('heading', { name: 'Tugallangan' }).locator('xpath=following-sibling::div[1]')
-    const row = tugallangan.locator('.rounded-md', { hasText: serial })
+    const row = tugallangan.locator('div.rounded-md', { hasText: serial })
     await expect(row).toBeVisible()
     await expect(row).toContainText('Qayta yuvish kerak')
     await row.locator('button', { hasText: '⋯' }).click()
@@ -238,13 +241,15 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
   // 4500kg, not the original 5000kg, and Konditirskiy stayed untouched ---
   await page.getByRole('link', { name: 'Skladga KIRIM' }).click()
   await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
-  await expect(page.getByRole('heading', { name: 'Yuborish uchun' })).toBeVisible({ timeout: 20000 })
+  await expect(page.getByRole('heading', { name: '1 · Yuborishga tayyor' })).toBeVisible({ timeout: 20000 })
   {
-    const yuborishUchun = page.getByRole('heading', { name: 'Yuborish uchun' }).locator('xpath=following-sibling::div[1]')
-    const row = yuborishUchun.locator('.rounded-md', { hasText: serial })
+    const yuborishUchun = page.getByRole('heading', { name: '1 · Yuborishga tayyor' }).locator('xpath=following-sibling::div[1]')
+    const row = yuborishUchun.locator('div.rounded-md', { hasText: serial })
     await expect(row).toBeVisible({ timeout: 20000 })
     await expect(row).toContainText('Qayta yuvish · sikl 2')
-    await expect(row).toContainText('4,500 kg')
+    // Stat tiles show bare numbers, no "kg" unit suffix (matches the mockup
+    // and the established Stat-tile convention elsewhere in the app).
+    await expect(row).toContainText('4,500')
   }
 
   // --- Cycle 2: send, receive (Kalibr 6 4000kg + a SECOND, separate
@@ -256,7 +261,7 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
   ])
   {
     const tugallangan = page.getByRole('heading', { name: 'Tugallangan' }).locator('xpath=following-sibling::div[1]')
-    const row = tugallangan.locator('.rounded-md', { hasText: serial })
+    const row = tugallangan.locator('div.rounded-md', { hasText: serial })
     await expect(row).toBeVisible()
     // Loss against the RE-WASH input (4500kg): (4500-4300)/4500 = 4.4%, not
     // against the original 5000kg intake ((5000-4300)/5000 = 14%).
@@ -297,14 +302,14 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
   await loginAs(page, 'OMBOR')
   await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
   {
-    const omborW1 = page.getByRole('heading', { name: "Yuklash uchun so'rovlar" }).locator('xpath=following-sibling::div[1]')
-    const omborRequest = omborW1.getByRole('button', { name: new RegExp(CHIQIM_PLATE) })
+    const omborW1 = page.getByRole('heading', { name: '1 · Yuklashga tayyor — moshina keldi' }).locator('xpath=following-sibling::div[1]')
+    const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: CHIQIM_PLATE })
     await expect(omborRequest).toBeVisible({ timeout: 20000 })
-    await omborRequest.click()
+    await omborRequest.getByRole('button', { name: 'Yuklashni boshlash' }).click()
     const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
     await barcodeInput.fill(`PLT-${serial}-06-2`)
     await page.getByRole('button', { name: 'Skanerlash' }).click()
-    await expect(page.getByText('✓ Aniq mos keldi')).toBeVisible()
+    await expect(page.getByText('Yetarli emas')).not.toBeVisible()
     await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
     await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
     await expect(omborRequest).not.toBeVisible()

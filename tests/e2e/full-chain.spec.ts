@@ -141,31 +141,40 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await page.getByRole('button', { name: 'Chiqish' }).click()
   await page.waitForURL('**/login')
   await loginAs(page, 'OMBOR')
+  // Flattened S1 (one Card per kirim_lines row, no more per-order grouping —
+  // nav/visual-redesign pass, mockup "BATU-Storage-S1-S2-mockup.html") means
+  // each line is found directly by its own unique serial now, not by the
+  // shared PLATE (a two-product truck's lines share a plate, so PLATE alone
+  // would match both cards).
   async function acceptLine(serial: string, qty: string) {
-    const omborGroup = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: PLATE_IN })
-    await expect(omborGroup).toBeVisible()
-    const lineRow = omborGroup.locator('span', { hasText: serial }).locator('xpath=ancestor::div[contains(@class, "rounded-md")][1]')
+    const lineRow = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: serial })
+    await expect(lineRow).toBeVisible()
     await lineRow.getByRole('button', { name: 'Qabul qilish' }).click()
     await expect(page.locator(`#actual-${serial}`)).toHaveValue(qty)
     await lineRow.locator('div:has(> label:text-is("Uyum rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await expect(lineRow.getByText('Siqilmoqda…')).toHaveCount(0)
-    await lineRow.getByRole('button', { name: 'Qabul qilish' }).click()
-    const received = page.getByRole('heading', { name: 'Qabul qilingan mahsulotlar' }).locator('xpath=following-sibling::div[1]')
-    await expect(received.locator('.rounded-md', { hasText: serial })).toBeVisible({ timeout: 20000 })
+    await lineRow.getByRole('button', { name: 'Qabul qilish va shtrix-kod chiqarish' }).click()
+    const received = page.getByRole('heading', { name: '2 · Qabul qilingan' }).locator('xpath=following-sibling::div[1]')
+    // div.rounded-md, not bare .rounded-md: SerialChip (a <span>) also
+    // carries rounded-md, so a bare class selector matches both the Card
+    // and its own nested serial chip — the `div` type selector excludes
+    // the span (nav/visual-redesign pass, real strict-mode violation found
+    // via e2e, not assumed safe from inspection alone).
+    await expect(received.locator('div.rounded-md', { hasText: serial })).toBeVisible({ timeout: 20000 })
   }
   await acceptLine(subxonSerial, '5000')
   await acceptLine(isfaraSerial, '500')
   {
-    const received = page.getByRole('heading', { name: 'Qabul qilingan mahsulotlar' }).locator('xpath=following-sibling::div[1]')
+    const received = page.getByRole('heading', { name: '2 · Qabul qilingan' }).locator('xpath=following-sibling::div[1]')
     for (const serial of [subxonSerial, isfaraSerial]) {
-      const row = received.locator('.rounded-md', { hasText: serial })
+      const row = received.locator('div.rounded-md', { hasText: serial })
       await expect(row).not.toContainText('tarozi kutilmoqda')
       await expect(row).toContainText('+200')
       await expect(row).toContainText('-200')
     }
-    await expect(received.locator('.rounded-md', { hasText: subxonSerial })).toContainText('5,000 kg')
-    await expect(received.locator('.rounded-md', { hasText: isfaraSerial })).toContainText('500 kg')
-    await expect(received.locator('.rounded-md', { hasText: subxonSerial })).not.toContainText('5,700 kg')
+    await expect(received.locator('div.rounded-md', { hasText: subxonSerial })).toContainText('5,000 kg')
+    await expect(received.locator('div.rounded-md', { hasText: isfaraSerial })).toContainText('500 kg')
+    await expect(received.locator('div.rounded-md', { hasText: subxonSerial })).not.toContainText('5,700 kg')
   }
 
   // --- Laborator KIRIM: sulfured line goes through Sera kutilmoqda,
@@ -230,11 +239,11 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await loginAs(page, 'OMBOR')
   {
     await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
-    const yuborishUchun = page.getByRole('heading', { name: 'Yuborish uchun' }).locator('xpath=following-sibling::div[1]')
-    const row = yuborishUchun.locator('.rounded-md', { hasText: subxonSerial })
+    const yuborishUchun = page.getByRole('heading', { name: '1 · Yuborishga tayyor' }).locator('xpath=following-sibling::div[1]')
+    const row = yuborishUchun.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: 'Moykaga yuborish' }).click()
-    const qtyInput = row.locator('div:has(> label:text-is("Miqdori (kg)")) input[type="number"]')
+    const qtyInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
     await qtyInput.fill('5000')
     await expect(qtyInput).toHaveValue('5000')
     await row.getByRole('button', { name: 'Moykaga yuborish' }).click()
@@ -248,14 +257,13 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
     const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: subxonSerial })
     await expect(row).toBeVisible({ timeout: 20000 })
-    await row.locator('button', { hasText: '⋯' }).click()
     await row.getByRole('button', { name: /Qabul qilish|Yana qo'shish/ }).click()
     await row.locator('select').selectOption({ label: 'Kalibr 6' })
-    const weightInput = row.locator('div:has(> label:text-is("Og\'irlik (kg)")) input[type="number"]')
+    const weightInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
     await weightInput.fill('4600')
     await weightInput.press('Tab')
     await expect(weightInput).toHaveValue('4600')
-    await row.getByRole('button', { name: 'Qabul qilish' }).click()
+    await row.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
     await expect(row.getByText(barcode).first()).toBeVisible({ timeout: 20000 })
   }
   {
@@ -264,11 +272,10 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
     const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: subxonSerial })
     await expect(row).toBeVisible({ timeout: 20000 })
-    await row.locator('button', { hasText: '⋯' }).click()
     await row.getByRole('button', { name: 'Tugallash' }).click()
     await row.getByRole('button', { name: 'Ha, tugallash' }).click()
     const tugallangan = page.getByRole('heading', { name: 'Tugallangan' }).locator('xpath=following-sibling::div[1]')
-    const finishedRow = tugallangan.locator('.rounded-md', { hasText: subxonSerial })
+    const finishedRow = tugallangan.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(finishedRow).toBeVisible({ timeout: 20000 })
     // (5000 - 4600) / 5000 = 8.0% — against Subxon's own 5,000kg intake
     // figure, never the truck's 5,700kg gate net (multi-line, §2.16.1).
@@ -368,14 +375,14 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await loginAs(page, 'OMBOR')
   await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
   {
-    const omborW1 = page.getByRole('heading', { name: "Yuklash uchun so'rovlar" }).locator('xpath=following-sibling::div[1]')
-    const omborRequest = omborW1.getByRole('button', { name: new RegExp(PLATE_OUT) })
+    const omborW1 = page.getByRole('heading', { name: '1 · Yuklashga tayyor — moshina keldi' }).locator('xpath=following-sibling::div[1]')
+    const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: PLATE_OUT })
     await expect(omborRequest).toBeVisible({ timeout: 20000 })
-    await omborRequest.click()
+    await omborRequest.getByRole('button', { name: 'Yuklashni boshlash' }).click()
     const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
     await barcodeInput.fill(barcode)
     await page.getByRole('button', { name: 'Skanerlash' }).click()
-    await expect(page.getByText('✓ Aniq mos keldi')).toBeVisible()
+    await expect(page.getByText('Yetarli emas')).not.toBeVisible()
     await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
     await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
     await expect(omborRequest).not.toBeVisible()

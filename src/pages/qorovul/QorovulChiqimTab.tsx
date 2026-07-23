@@ -157,13 +157,13 @@ export function QorovulChiqimTab() {
               <Card key={trip.request.id} tone={isRed ? 'problem' : 'neutral'}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2">
                       <SerialChip>So'rov</SerialChip>
-                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(trip.request.owner_id)} · {typeSummary(trip)}
                       </span>
                     </div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400">{meta}</div>
+                    <div className="truncate text-sm text-slate-500 dark:text-slate-400">{meta}</div>
                   </div>
                   {!isActive && (
                     <Button

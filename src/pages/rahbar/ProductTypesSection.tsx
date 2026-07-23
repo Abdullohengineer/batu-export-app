@@ -2,6 +2,10 @@ import { useState, type FormEvent } from 'react'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useProductCategories } from '../../lib/useProductCategories'
 import { renameRow, setActive, createProductType } from '../../lib/masterDataAdmin'
+import { Button } from '../../components/ui/Button'
+import { StatusPill } from '../../components/ui/StatusPill'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { FormField, TextInput } from '../../components/ui/FormField'
 
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top text-sm'
@@ -68,7 +72,7 @@ export function ProductTypesSection() {
 
   return (
     <div className="space-y-4 rounded-xl border border-slate-200 p-6 dark:border-slate-800">
-      <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Mahsulot turlari</h2>
+      <SectionHeading>Mahsulot turlari</SectionHeading>
 
       {loading ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
@@ -100,47 +104,34 @@ export function ProductTypesSection() {
                   </td>
                   <td className={`${td} text-slate-600 dark:text-slate-300`}>{categoryName(t.category_id)}</td>
                   <td className={td}>
-                    <span
-                      className={
-                        t.active
-                          ? 'rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
-                          : 'rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                      }
-                    >
-                      {t.active ? 'Faol' : 'Nofaol'}
-                    </span>
+                    <StatusPill tone={t.active ? 'ok' : 'neutral'}>{t.active ? 'Faol' : 'Nofaol'}</StatusPill>
                   </td>
                   <td className={`${td} whitespace-nowrap text-right`}>
                     {editingId === t.id ? (
-                      <>
-                        <button type="button" disabled={busy} onClick={() => handleRename(t.id)} className="mr-2 text-slate-700 underline decoration-dotted hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="secondary" size="md" disabled={busy} onClick={() => handleRename(t.id)}>
                           Saqlash
-                        </button>
-                        <button type="button" onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                        </Button>
+                        <Button variant="ghost" size="md" onClick={() => setEditingId(null)}>
                           Bekor qilish
-                        </button>
-                      </>
+                        </Button>
+                      </div>
                     ) : (
-                      <>
-                        <button
-                          type="button"
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          size="md"
                           onClick={() => {
                             setEditingId(t.id)
                             setEditingName(t.name)
                           }}
-                          className="mr-2 text-slate-600 underline decoration-dotted hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
                         >
                           Tahrirlash
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => handleToggleActive(t.id, !t.active)}
-                          className="text-slate-600 underline decoration-dotted hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
-                        >
+                        </Button>
+                        <Button variant="secondary" size="md" disabled={busy} onClick={() => handleToggleActive(t.id, !t.active)}>
                           {t.active ? 'Faolsizlantirish' : 'Faollashtirish'}
-                        </button>
-                      </>
+                        </Button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -150,25 +141,20 @@ export function ProductTypesSection() {
         </div>
       )}
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm font-medium text-red-600 dark:text-red-400">{error}</p>}
 
       <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-1 flex-col text-xs text-slate-500 dark:text-slate-400">
-          Yangi tur nomi
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            required
-            className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          />
-        </label>
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          Turkum
+        <div className="flex-1">
+          <FormField label="Yangi tur nomi">
+            <TextInput value={newName} onChange={(e) => setNewName(e.target.value)} required />
+          </FormField>
+        </div>
+        <FormField label="Turkum">
           <select
             value={newCategoryId}
             onChange={(e) => setNewCategoryId(e.target.value)}
             required
-            className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
             <option value="">—</option>
             {categories.map((c) => (
@@ -177,14 +163,10 @@ export function ProductTypesSection() {
               </option>
             ))}
           </select>
-        </label>
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-        >
+        </FormField>
+        <Button type="submit" variant="primary" size="md" disabled={busy}>
           Qo'shish
-        </button>
+        </Button>
       </form>
     </div>
   )

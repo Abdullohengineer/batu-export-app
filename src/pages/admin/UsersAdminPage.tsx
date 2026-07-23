@@ -1,6 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { UserRole } from '../../lib/useProfile'
+import { Button } from '../../components/ui/Button'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
+import { FormField, TextInput } from '../../components/ui/FormField'
 
 const ROLES: UserRole[] = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator']
 
@@ -46,18 +50,23 @@ function CreateUserForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 p-6 dark:border-slate-800">
-      <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Yangi foydalanuvchi</h2>
+      <SectionHeading>Yangi foydalanuvchi</SectionHeading>
 
-      <Field label="Telefon raqami" value={phone} onChange={setPhone} type="tel" placeholder="998901234567" />
-      <Field label="Ism familiya" value={fullName} onChange={setFullName} />
-      <Field label="Boshlang'ich parol" value={password} onChange={setPassword} type="password" />
+      <FormField label="Telefon raqami">
+        <TextInput value={phone} onChange={(e) => setPhone(e.target.value)} required type="tel" placeholder="998901234567" />
+      </FormField>
+      <FormField label="Ism familiya">
+        <TextInput value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+      </FormField>
+      <FormField label="Boshlang'ich parol">
+        <TextInput value={password} onChange={(e) => setPassword(e.target.value)} required type="password" />
+      </FormField>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Rol</label>
+      <FormField label="Rol">
         <select
           value={role}
           onChange={(e) => setRole(e.target.value as UserRole)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         >
           {ROLES.map((r) => (
             <option key={r} value={r}>
@@ -65,21 +74,13 @@ function CreateUserForm() {
             </option>
           ))}
         </select>
-      </div>
+      </FormField>
 
-      {status && (
-        <p className={status.kind === 'error' ? 'text-sm text-red-600 dark:text-red-400' : 'text-sm text-green-600 dark:text-green-400'}>
-          {status.message}
-        </p>
-      )}
+      {status && <StatusNote tone={status.kind === 'error' ? 'problem' : 'ok'}>{status.message}</StatusNote>}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-      >
+      <Button type="submit" variant="primary" size="lg" fullWidth disabled={loading}>
         {loading ? 'Yaratilmoqda…' : 'Yaratish'}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -119,57 +120,20 @@ function ResetPasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 p-6 dark:border-slate-800">
-      <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Parolni tiklash</h2>
+      <SectionHeading>Parolni tiklash</SectionHeading>
 
-      <Field
-        label="Telefon raqami yoki foydalanuvchi ID"
-        value={identifier}
-        onChange={setIdentifier}
-        placeholder="998901234567"
-      />
-      <Field label="Yangi parol" value={newPassword} onChange={setNewPassword} type="password" />
+      <FormField label="Telefon raqami yoki foydalanuvchi ID">
+        <TextInput value={identifier} onChange={(e) => setIdentifier(e.target.value)} required placeholder="998901234567" />
+      </FormField>
+      <FormField label="Yangi parol">
+        <TextInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required type="password" />
+      </FormField>
 
-      {status && (
-        <p className={status.kind === 'error' ? 'text-sm text-red-600 dark:text-red-400' : 'text-sm text-green-600 dark:text-green-400'}>
-          {status.message}
-        </p>
-      )}
+      {status && <StatusNote tone={status.kind === 'error' ? 'problem' : 'ok'}>{status.message}</StatusNote>}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-      >
+      <Button type="submit" variant="primary" size="lg" fullWidth disabled={loading}>
         {loading ? 'Yangilanmoqda…' : 'Tiklash'}
-      </button>
+      </Button>
     </form>
-  )
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  type = 'text',
-  placeholder,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  type?: string
-  placeholder?: string
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
-      <input
-        type={type}
-        required
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-      />
-    </div>
   )
 }

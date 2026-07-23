@@ -11,7 +11,9 @@ import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { TextInput } from '../../components/ui/FormField'
-import { toneStyles } from '../../components/ui/tokens'
+import { SerialChip } from '../../components/ui/SerialChip'
+import { Stat } from '../../components/ui/Stat'
+import { StatusPill } from '../../components/ui/StatusPill'
 
 const VERDICT_LABEL: Record<string, string> = { o_tdi: "O'tdi", qayta_yuvish: 'Qayta yuvish' }
 
@@ -19,6 +21,16 @@ const VERDICT_LABEL: Record<string, string> = { o_tdi: "O'tdi", qayta_yuvish: 'Q
 // useAvailableFinishedStock/chiqimScan.ts, wired separately). Three
 // windows: Tahlil kutilmoqda (FIFO), Sera kutilmoqda (sulfured only,
 // amber), Yakunlangan (values + verdict + cycle number).
+//
+// 🔒 nav/visual-redesign pass (mockup "BATU-Laborator-Screens-v2.pdf" —
+// visual language only, see docs/DECISIONS.md): the mockup's own CHIQIM
+// pages were drawn against the superseded v1.5 model (dispatch-request-
+// tied, no verdict) and are NOT what's built below. Every card here already
+// read from `AwaitingCycle`/`wash_cycles` (never `chiqim_requests`) before
+// this pass touched anything — this restyle keeps that wash-cycle subject
+// exactly as-is, matching SPEC.md §5.5.3's row definition (parent seriya ·
+// buyurtmachi · tur · pallet soni · jami kg · ishlab chiqarilgan sana ·
+// yuvish sikli), not the mockup's So'rov/moshina/tarkib fields.
 export function LaboratorChiqimTab() {
   const { profile } = useAuth()
   // §3.3: includeInactive=true -- resolves names on historical/in-flight cycles.
@@ -104,8 +116,14 @@ export function LaboratorChiqimTab() {
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-3">
+        <Stat value={awaiting.length} label="Tahlil kutilmoqda" />
+        <Stat value={sulfurPending.length} label="Sera kutilmoqda" tone={sulfurPending.length > 0 ? 'pending' : 'neutral'} />
+        <Stat value={finished.length} label="Yakunlandi" tone="ok" />
+      </div>
+
       <div>
-        <SectionHeading>Tahlil kutilmoqda</SectionHeading>
+        <SectionHeading>1 · Tahlil kutilmoqda — namuna oling</SectionHeading>
         <div className="mt-2 space-y-2">
           {awaiting.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan partiya yo'q.</p>}
           {awaiting.map((cycle) => {
@@ -113,26 +131,30 @@ export function LaboratorChiqimTab() {
             const jamiKg = cycle.pallets.reduce((sum, p) => sum + p.weight_kg, 0)
             return (
               <Card key={cycle.washCycleId}>
-                <div className="flex items-center justify-between text-base">
-                  <div>
-                    <span className="font-mono text-slate-900 dark:text-slate-100">{cycle.serial}</span>
-                    <span className="ml-2 text-slate-500 dark:text-slate-400">
-                      {typeName(cycle.type_id)} · {ownerName(cycle.owner_id)} · yuvish sikli {cycle.cycleNo}
-                    </span>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {cycle.pallets.length} ta pallet · {jamiKg.toLocaleString()} kg · {cycle.producedDate ?? '—'}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <SerialChip>{cycle.serial}</SerialChip>
+                      <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
+                        {ownerName(cycle.owner_id)} · {typeName(cycle.type_id)}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
+                      {cycle.pallets.length} ta pallet · {jamiKg.toLocaleString()} kg · {cycle.producedDate ?? '—'} · sikl{' '}
+                      {cycle.cycleNo}
                     </div>
                   </div>
                   {!isActive && (
-                    <Button variant="secondary" size="md" onClick={() => setActiveTahlil(cycle.washCycleId)}>
+                    <Button variant="primary" size="lg" onClick={() => setActiveTahlil(cycle.washCycleId)}>
                       Tahlil
                     </Button>
                   )}
                 </div>
                 {isActive && (
                   <ChiqimTahlilForm
-                    targetMoisturePct={cycle.target_moisture_pct}
-                    pallets={cycle.pallets}
+                    cycle={cycle}
+                    ownerName={ownerName(cycle.owner_id)}
+                    typeName={typeName(cycle.type_id)}
                     requireVerdict={cycle.target_so2_mg_kg === null}
                     onCancel={() => setActiveTahlil(null)}
                     onSubmit={(v) => handleTahlil(cycle, v)}
@@ -145,36 +167,46 @@ export function LaboratorChiqimTab() {
       </div>
 
       <div>
-        <SectionHeading tone="pending">Sera kutilmoqda</SectionHeading>
+        <SectionHeading tone="pending">2 · Sera natijasi kutilmoqda (1 kun)</SectionHeading>
         <div className="mt-2 space-y-2">
           {sulfurPending.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan sera yo'q.</p>}
           {sulfurPending.map((row) => (
             <Card key={row.id} tone="pending">
-              <div>
-                <span className="font-mono text-slate-900 dark:text-slate-100">{row.serial}</span>
-                <span className="ml-2 text-slate-500 dark:text-slate-400">
-                  {typeName(row.type_id)} · {ownerName(row.owner_id)} · yuvish sikli {row.cycleNo}
+              <div className="flex items-center gap-2">
+                <SerialChip>{row.serial}</SerialChip>
+                <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
+                  {ownerName(row.owner_id)} · {typeName(row.type_id)} · sikl {row.cycleNo}
                 </span>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Namligi {row.moisture_pct}% · {row.sample_date} · Talab: {row.target_so2_mg_kg} mg/kg
-                </div>
               </div>
-              <div className="mt-2 flex items-center gap-2">
-                <TextInput
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  placeholder="SO₂ mg/kg"
-                  value={seraValue[row.id] ?? ''}
-                  onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
-                  className="w-32"
-                />
-                <Button variant="success" size="md" disabled={seraSaving === row.id} onClick={() => handleSera(row, 'o_tdi')}>
-                  {seraSaving === row.id ? '…' : "O'tdi"}
-                </Button>
-                <Button variant="danger" size="md" disabled={seraSaving === row.id} onClick={() => handleSera(row, 'qayta_yuvish')}>
-                  {seraSaving === row.id ? '…' : 'Qayta yuvish'}
-                </Button>
+              <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
+                Namligi {row.moisture_pct}% kiritildi · sera hali yo'q
+              </div>
+              <div className="mt-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Oltingugurt (SO₂){' '}
+                  <span className="font-normal text-slate-400 dark:text-slate-500">
+                    (Talab: {row.target_so2_mg_kg} mg/kg)
+                  </span>
+                </label>
+                <div className="mt-1 flex items-center gap-2">
+                  <TextInput
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="SO₂ mg/kg"
+                    value={seraValue[row.id] ?? ''}
+                    onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
+                    className="flex-1"
+                  />
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <Button variant="success" size="md" className="flex-1" disabled={seraSaving === row.id} onClick={() => handleSera(row, 'o_tdi')}>
+                    {seraSaving === row.id ? '…' : "O'tdi"}
+                  </Button>
+                  <Button variant="danger" size="md" className="flex-1" disabled={seraSaving === row.id} onClick={() => handleSera(row, 'qayta_yuvish')}>
+                    {seraSaving === row.id ? '…' : 'Qayta yuvish'}
+                  </Button>
+                </div>
               </div>
               {seraError && (
                 <div className="mt-1">
@@ -187,25 +219,25 @@ export function LaboratorChiqimTab() {
       </div>
 
       <div>
-        <SectionHeading>Yakunlangan</SectionHeading>
+        <SectionHeading>3 · Yakunlangan</SectionHeading>
         <div className="mt-2 space-y-2">
           {finished.length === 0 && <p className="text-sm text-slate-400">Yakunlangan tahlil yo'q.</p>}
           {finished.map((row) => (
-            <Card key={row.id}>
+            <Card key={row.id} padding="compact">
               <button
                 type="button"
                 onClick={() => setExpandedFinished(expandedFinished === row.id ? null : row.id)}
-                className="flex min-h-12 w-full items-center justify-between text-left text-base"
+                className="flex w-full items-center gap-2 text-left"
               >
-                <div>
-                  <span className="font-mono text-slate-900 dark:text-slate-100">{row.serial}</span>
-                  <span className="ml-2 text-slate-500 dark:text-slate-400">
-                    {typeName(row.type_id)} · {ownerName(row.owner_id)} · sikl {row.cycleNo}
-                  </span>
-                </div>
-                <span className={`text-sm font-medium ${row.verdict === 'qayta_yuvish' ? toneStyles.problem.text : toneStyles.ok.text}`}>
-                  {row.verdict ? VERDICT_LABEL[row.verdict] : '—'}
+                <SerialChip>{row.serial}</SerialChip>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {ownerName(row.owner_id)} · {typeName(row.type_id)} · sikl {row.cycleNo}
                 </span>
+                {row.verdict && (
+                  <StatusPill tone={row.verdict === 'qayta_yuvish' ? 'problem' : 'ok'}>
+                    {VERDICT_LABEL[row.verdict]}
+                  </StatusPill>
+                )}
               </button>
               {expandedFinished === row.id && (
                 <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -220,7 +252,9 @@ export function LaboratorChiqimTab() {
                       <span className="text-slate-400 dark:text-slate-500">(Talab: {row.target_so2_mg_kg} mg/kg)</span>
                     )}
                   </div>
-                  <div>{row.sample_date} · namuna: {row.sampled_pallet}</div>
+                  <div>
+                    {row.sample_date} · namuna: {row.sampled_pallet}
+                  </div>
                   {row.note && <div>Qayd: {row.note}</div>}
                   <GatePhoto path={row.sample_photo} label="Namuna rasmi" bucket="lab-photos" />
                 </div>

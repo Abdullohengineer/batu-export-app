@@ -11,6 +11,13 @@ import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { TextInput } from '../../components/ui/FormField'
+import { SerialChip } from '../../components/ui/SerialChip'
+import { Stat } from '../../components/ui/Stat'
+
+function shortDate(iso: string) {
+  const d = new Date(iso)
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 // §5.5.2 Laborator KIRIM — descriptive check, no verdict. Three windows:
 // W1 Tahlil kutilmoqda (FIFO), W2 Sera kutilmoqda (sulfured products only,
@@ -102,33 +109,46 @@ export function LaboratorKirimTab() {
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-3">
+        <Stat value={awaiting.length} label="Tahlil kutilmoqda" />
+        <Stat value={sulfurPending.length} label="Sera kutilmoqda" tone={sulfurPending.length > 0 ? 'pending' : 'neutral'} />
+        <Stat value={finished.length} label="Yakunlandi" tone="ok" />
+      </div>
+
       <div>
-        <SectionHeading>Tahlil kutilmoqda</SectionHeading>
+        <SectionHeading>1 · Tahlil kutilmoqda — namuna oling</SectionHeading>
         <div className="mt-2 space-y-2">
           {awaiting.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan serial yo'q.</p>}
           {awaiting.map((line) => {
             const isActive = activeTahlil === line.serial
             return (
               <Card key={line.serial}>
-                <div className="flex items-center justify-between text-base">
-                  <div>
-                    <span className="font-mono text-slate-900 dark:text-slate-100">{line.serial}</span>
-                    <span className="ml-2 text-slate-500 dark:text-slate-400">
-                      {typeName(line.type_id)} · {ownerName(line.owner_id)}
-                    </span>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      E'lon qilingan {line.declared_qty.toLocaleString()} kg · Haqiqiy {line.actual_qty.toLocaleString()} kg ·{' '}
-                      {line.order_date}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <SerialChip>{line.serial}</SerialChip>
+                      <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
+                        {ownerName(line.owner_id)} · {typeName(line.type_id)}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
+                      {line.actual_qty.toLocaleString()} kg · skladga kirdi {shortDate(line.confirmed_at)}
                     </div>
                   </div>
                   {!isActive && (
-                    <Button variant="secondary" size="md" onClick={() => setActiveTahlil(line.serial)}>
+                    <Button variant="primary" size="lg" onClick={() => setActiveTahlil(line.serial)}>
                       Tahlil
                     </Button>
                   )}
                 </div>
                 {isActive && (
-                  <KirimTahlilForm onCancel={() => setActiveTahlil(null)} onSubmit={(v) => handleTahlil(line, v)} />
+                  <KirimTahlilForm
+                    line={line}
+                    ownerName={ownerName(line.owner_id)}
+                    typeName={typeName(line.type_id)}
+                    onCancel={() => setActiveTahlil(null)}
+                    onSubmit={(v) => handleTahlil(line, v)}
+                  />
                 )}
                 {tahlilError && isActive && (
                   <div className="mt-2">
@@ -142,35 +162,41 @@ export function LaboratorKirimTab() {
       </div>
 
       <div>
-        <SectionHeading tone="pending">Sera kutilmoqda</SectionHeading>
+        <SectionHeading tone="pending">2 · Sera natijasi kutilmoqda (1 kun)</SectionHeading>
         <div className="mt-2 space-y-2">
           {sulfurPending.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan sera yo'q.</p>}
           {sulfurPending.map((row) => (
             <Card key={row.id} tone="pending">
-              <div className="flex items-center justify-between text-base">
-                <div>
-                  <span className="font-mono text-slate-900 dark:text-slate-100">{row.parent_serial}</span>
-                  <span className="ml-2 text-slate-500 dark:text-slate-400">
-                    {typeName(row.type_id)} · {ownerName(row.owner_id)}
-                  </span>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    Namligi {row.moisture_pct}% · {row.sample_date} · Talab: {row.target_so2_mg_kg} mg/kg
-                  </div>
-                </div>
+              <div className="flex items-center gap-2">
+                <SerialChip>{row.parent_serial}</SerialChip>
+                <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
+                  {ownerName(row.owner_id)} · {typeName(row.type_id)}
+                </span>
               </div>
-              <div className="mt-2 flex items-center gap-2">
-                <TextInput
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  placeholder="SO₂ mg/kg"
-                  value={seraValue[row.id] ?? ''}
-                  onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
-                  className="w-32"
-                />
-                <Button variant="primary" size="md" disabled={seraSaving === row.id} onClick={() => handleSera(row)}>
-                  {seraSaving === row.id ? 'Saqlanmoqda…' : 'Sera kiritish'}
-                </Button>
+              <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
+                Namligi {row.moisture_pct}% kiritildi · sera hali yo'q
+              </div>
+              <div className="mt-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Oltingugurt (SO₂){' '}
+                  <span className="font-normal text-slate-400 dark:text-slate-500">
+                    (Talab: {row.target_so2_mg_kg} mg/kg)
+                  </span>
+                </label>
+                <div className="mt-1 flex items-center gap-2">
+                  <TextInput
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="SO₂ mg/kg"
+                    value={seraValue[row.id] ?? ''}
+                    onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
+                    className="flex-1"
+                  />
+                  <Button variant="primary" size="md" disabled={seraSaving === row.id} onClick={() => handleSera(row)}>
+                    {seraSaving === row.id ? 'Saqlanmoqda…' : 'Sera kiritish'}
+                  </Button>
+                </div>
               </div>
               {seraError && (
                 <div className="mt-1">
@@ -183,25 +209,26 @@ export function LaboratorKirimTab() {
       </div>
 
       <div>
-        <SectionHeading>Yakunlangan</SectionHeading>
+        <SectionHeading>3 · Yakunlangan</SectionHeading>
         <div className="mt-2 space-y-2">
           {finished.length === 0 && <p className="text-sm text-slate-400">Yakunlangan tahlil yo'q.</p>}
           {finished.map((row) => (
-            <Card key={row.id}>
+            <Card key={row.id} padding="compact">
               <button
                 type="button"
                 onClick={() => setExpandedFinished(expandedFinished === row.id ? null : row.id)}
-                className="flex min-h-12 w-full items-center justify-between text-left text-base"
+                className="flex w-full items-center gap-2 text-left"
               >
-                <div>
-                  <span className="font-mono text-slate-900 dark:text-slate-100">{row.parent_serial}</span>
-                  <span className="ml-2 text-slate-500 dark:text-slate-400">
-                    {typeName(row.type_id)} · {ownerName(row.owner_id)}
-                  </span>
-                </div>
-                <span className="text-sm text-slate-500 dark:text-slate-400">
-                  Namligi {row.moisture_pct}% · SO₂ {row.so2_mg_kg !== null ? `${row.so2_mg_kg} mg/kg` : "Yo'q · naturel"}
+                <SerialChip>{row.parent_serial}</SerialChip>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {ownerName(row.owner_id)} · {typeName(row.type_id)}
                 </span>
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                    {row.moisture_pct}% · {row.so2_mg_kg !== null ? row.so2_mg_kg.toLocaleString() : "Yo'q · naturel"}
+                  </div>
+                  <div className="text-xs text-slate-400">namligi · SO₂ mg/kg</div>
+                </div>
               </button>
               {expandedFinished === row.id && (
                 <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -215,7 +242,7 @@ export function LaboratorKirimTab() {
                       {row.target_so2_mg_kg !== null ? `${row.target_so2_mg_kg} mg/kg` : "Talab yo'q"}
                     </span>
                   </div>
-                  <div>{row.sample_date}</div>
+                  <div>{row.sample_date} · tahlil to'liq</div>
                   {row.note && <div>Qayd: {row.note}</div>}
                   <GatePhoto path={row.sample_photo} label="Namuna rasmi" bucket="lab-photos" />
                 </div>

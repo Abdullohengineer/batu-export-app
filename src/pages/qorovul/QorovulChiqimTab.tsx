@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
+import { useOwners } from '../../lib/useOwners'
 import { useChiqimTrips, type ChiqimTrip } from '../../lib/useChiqimTrips'
 import { GateStageForm, type GateStageValues } from './GateStageForm'
 import { Card } from '../../components/ui/Card'
@@ -45,12 +46,17 @@ export function QorovulChiqimTab() {
   const { profile } = useAuth()
   // §3.3: includeInactive=true -- resolves names on historical trip lines.
   const { productTypes } = useProductTypes(true)
+  const { owners } = useOwners(true)
   const { trips, loading, refresh } = useChiqimTrips()
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [activeStage, setActiveStage] = useState<1 | 2 | null>(null)
 
   function typeName(typeId: string) {
     return productTypes.find((t) => t.id === typeId)?.name ?? typeId
+  }
+
+  function ownerName(ownerId: string) {
+    return owners.find((o) => o.id === ownerId)?.name ?? ownerId
   }
 
   function typeSummary(trip: ChiqimTrip) {
@@ -132,7 +138,7 @@ export function QorovulChiqimTab() {
       </div>
 
       <div>
-        <SectionHeading>Faol</SectionHeading>
+        <SectionHeading>1 · Faol yuklar</SectionHeading>
         <div className="mt-2 space-y-2">
           {activeWindow.length === 0 && <p className="text-sm text-slate-400">Faol reys yo'q.</p>}
           {activeWindow.map((trip) => {
@@ -153,7 +159,9 @@ export function QorovulChiqimTab() {
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <SerialChip>So'rov</SerialChip>
-                      <span className="font-semibold text-slate-900 dark:text-slate-100">{typeSummary(trip)}</span>
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {ownerName(trip.request.owner_id)} · {typeSummary(trip)}
+                      </span>
                     </div>
                     <div className="text-sm text-slate-500 dark:text-slate-400">{meta}</div>
                   </div>
@@ -179,6 +187,7 @@ export function QorovulChiqimTab() {
                     tripInfo={
                       activeStage === 1
                         ? [
+                            { label: 'Buyurtmachi', value: ownerName(trip.request.owner_id) },
                             { label: "So'ralgan", value: requestedSummary(trip) },
                             { label: 'Moshina · haydovchi', value: `${trip.request.plate} · ${trip.request.driver}` },
                           ]
@@ -196,7 +205,7 @@ export function QorovulChiqimTab() {
       </div>
 
       <div>
-        <SectionHeading>Yakunlangan</SectionHeading>
+        <SectionHeading>2 · Yakunlangan</SectionHeading>
         <div className="mt-2 space-y-2">
           {completed.length === 0 && <p className="text-sm text-slate-400">Hali yakunlangan reys yo'q.</p>}
           {completed.map((trip) => (
@@ -205,7 +214,9 @@ export function QorovulChiqimTab() {
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-center gap-2">
                     <SerialChip>So'rov</SerialChip>
-                    <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{typeSummary(trip)}</span>
+                    <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                      {ownerName(trip.request.owner_id)} · {typeSummary(trip)}
+                    </span>
                   </div>
                   <div className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {trip.request.driver} · {trip.request.plate}

@@ -74,14 +74,14 @@ test('Ombor undoes a post-finish scan, pallet becomes available again, then a po
   await loginAs(page, 'QOROVUL')
   await page.getByRole('link', { name: 'CHIQIM' }).click()
 
-  const faol = page.getByRole('heading', { name: 'Faol' }).locator('xpath=following-sibling::div[1]')
+  const faol = page.getByRole('heading', { name: '1 · Faol yuklar' }).locator('xpath=following-sibling::div[1]')
   const qorovulRow = faol.locator('.rounded-md', { hasText: PLATE })
   await expect(qorovulRow).toBeVisible()
   await qorovulRow.getByRole('button', { name: 'Qabul qilish' }).click()
-  await qorovulRow.locator('div:has(> label:text-is("Moshina raqami rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+  await qorovulRow.locator('div:has(> label:text-is("Moshina rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
   await qorovulRow.locator('div:has(> label:text-is("Bo\'sh vazn (Пустой)")) input[type="number"]').fill('8000')
-  await qorovulRow.locator('div:has(> label:text-is("Tarozi rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
-  await qorovulRow.getByRole('button', { name: 'Qabul qilish' }).click()
+  await qorovulRow.locator('div:has(> label:text-is("Bo\'sh vazn rasmi (tarozi)")) input[type="file"]').setInputFiles(TEST_PHOTO)
+  await qorovulRow.getByRole('button', { name: 'Saqlash' }).click()
   await expect(faol.locator('.rounded-md.border-red-300', { hasText: PLATE })).toBeVisible()
 
   // --- Ombor: scan both pallets, finish loading ---
@@ -140,16 +140,16 @@ test('Ombor undoes a post-finish scan, pallet becomes available again, then a po
   await loginAs(page, 'QOROVUL')
   await page.getByRole('link', { name: 'CHIQIM' }).click()
 
-  const faol2 = page.getByRole('heading', { name: 'Faol' }).locator('xpath=following-sibling::div[1]')
+  const faol2 = page.getByRole('heading', { name: '1 · Faol yuklar' }).locator('xpath=following-sibling::div[1]')
   const qorovulRow2 = faol2.locator('.rounded-md', { hasText: PLATE })
   await expect(qorovulRow2).toBeVisible()
   await qorovulRow2.getByRole('button', { name: 'Yakunlash' }).click()
   await qorovulRow2.locator('div:has(> label:text-is("Yuk bilan vazn (Гружёный)")) input[type="number"]').fill('10000')
-  await qorovulRow2.locator('div:has(> label:text-is("Tarozi rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
+  await qorovulRow2.locator('div:has(> label:text-is("Yuk bilan vazn rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
   await qorovulRow2.locator('div:has(> label:text-is("Chiqish hujjati rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
   await qorovulRow2.getByRole('button', { name: 'Yakunlash' }).click()
 
-  const yakunlangan = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
+  const yakunlangan = page.getByRole('heading', { name: '2 · Yakunlangan' }).locator('xpath=following-sibling::div[1]')
   await expect(yakunlangan.locator('.rounded-md', { hasText: PLATE })).toBeVisible()
 
   // --- Post-stage-2: undo attempt must be refused at the RLS level, not

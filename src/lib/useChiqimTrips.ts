@@ -12,6 +12,7 @@ export interface ChiqimRequestRow {
   request_date: string
   plate: string
   driver: string
+  owner_id: string
   status: string
 }
 
@@ -45,7 +46,7 @@ export function useChiqimTrips() {
       const [{ data: requests }, { data: lines }, { data: weighings }] = await Promise.all([
         supabase
           .from('chiqim_requests')
-          .select('id, request_date, plate, driver, status')
+          .select('id, request_date, plate, driver, owner_id, status')
           .order('created_at', { ascending: false }),
         supabase.from('chiqim_lines').select('type_id, calibre_id, qty_kg, request_id'),
         supabase

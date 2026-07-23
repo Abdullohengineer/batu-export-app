@@ -8,12 +8,24 @@ import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
+import { SerialChip } from '../../components/ui/SerialChip'
 
 async function uploadGatePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
   const { error } = await supabase.storage.from('gate-photos').upload(path, file)
   if (error) throw error
   return path
+}
+
+// mockup "BATU-Qorovul-Screens-v1_1.pdf" p1: DD.MM · HH:MM, not the browser
+// locale default.
+function formatTripTime(iso: string) {
+  const d = new Date(iso)
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}.${mm} · ${hh}:${min}`
 }
 
 export function QorovulKirimTab() {
@@ -26,6 +38,18 @@ export function QorovulKirimTab() {
 
   function typeName(typeId: string) {
     return productTypes.find((t) => t.id === typeId)?.name ?? typeId
+  }
+
+  function typeSummary(trip: KirimTrip) {
+    return [...new Set(trip.lines.map((l) => typeName(l.type_id)))].join(' + ')
+  }
+
+  // order_id is the row's own uuid PK, not a human-readable serial -- a
+  // multi-line trip's real serials live per-line (§2.1). Same "first line's
+  // serial represents the trip" precedent already used by Menejer's own
+  // KirimOrdersList.tsx.
+  function primarySerial(trip: KirimTrip) {
+    return trip.lines[0]?.serial ?? trip.order.order_id
   }
 
   function closeForm() {
@@ -89,8 +113,8 @@ export function QorovulKirimTab() {
     <div className="space-y-6">
       <div className="grid grid-cols-3 gap-3">
         <Stat value={notStarted.length} label="Kutilmoqda" />
-        <Stat value={inProgress.length} label="Kirdi·bo'shatilmoqda" tone={inProgress.length > 0 ? 'problem' : 'neutral'} />
-        <Stat value={completed.length} label="Yakunlandi" />
+        <Stat value={inProgress.length} label="Bo'shatilmoqda" tone={inProgress.length > 0 ? 'problem' : 'neutral'} />
+        <Stat value={completed.length} label="Yakunlandi" tone="ok" />
       </div>
 
       <div>
@@ -100,22 +124,29 @@ export function QorovulKirimTab() {
           {activeWindow.map((trip) => {
             const isRed = Boolean(trip.weighing && !trip.weighing.completed_at)
             const isActive = activeOrderId === trip.order.order_id
+            // Plate/driver stay in the meta line in BOTH states -- not just
+            // the mockup's own "who is this truck" cue, but also how e2e
+            // finds this exact row once it's red (hasText: <plate>); the
+            // red-state text must not drop it in favour of the saved-weight
+            // phrase alone.
+            const meta = isRed
+              ? `Yuk bilan ${trip.weighing!.gruzheny_kg?.toLocaleString() ?? '—'} kg · bo'sh vazn kutilmoqda · ${trip.order.driver} · ${trip.order.plate}`
+              : `${trip.order.declared_total != null ? `So'ralgan ${trip.order.declared_total.toLocaleString()} kg · ` : ''}${trip.order.driver} · ${trip.order.plate}`
 
             return (
               <Card key={trip.order.order_id} tone={isRed ? 'problem' : 'neutral'}>
-                <div className="flex items-center justify-between text-base">
-                  <div>
-                    <span className="font-medium text-slate-900 dark:text-slate-100">
-                      {trip.order.plate} · {trip.order.driver}
-                    </span>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {trip.lines.map((l) => `${typeName(l.type_id)} (${l.serial})`).join(', ')}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SerialChip>{primarySerial(trip)}</SerialChip>
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">{typeSummary(trip)}</span>
                     </div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">{meta}</div>
                   </div>
                   {!isActive && (
                     <Button
-                      variant="secondary"
-                      size="md"
+                      variant={isRed ? 'danger' : 'primary'}
+                      size="lg"
                       onClick={() => {
                         setActiveOrderId(trip.order.order_id)
                         setActiveStage(isRed ? 2 : 1)
@@ -129,6 +160,20 @@ export function QorovulKirimTab() {
                 {isActive && activeStage && (
                   <GateStageForm
                     stage={activeStage}
+                    tripInfo={
+                      activeStage === 1
+                        ? [
+                            { label: 'Seriya', value: primarySerial(trip) },
+                            { label: 'Tur', value: typeSummary(trip) },
+                            {
+                              label: "So'ralgan",
+                              value: trip.order.declared_total != null ? `${trip.order.declared_total.toLocaleString()} kg` : '—',
+                            },
+                            { label: 'Moshina · haydovchi', value: `${trip.order.plate} · ${trip.order.driver}` },
+                          ]
+                        : undefined
+                    }
+                    savedWeightKg={activeStage === 2 ? (trip.weighing?.gruzheny_kg ?? undefined) : undefined}
                     onCancel={closeForm}
                     onSubmit={(values) => (activeStage === 1 ? handleStage1(trip, values) : handleStage2(trip, values))}
                   />
@@ -145,17 +190,26 @@ export function QorovulKirimTab() {
           {completed.length === 0 && <p className="text-sm text-slate-400">Hali yakunlangan reys yo'q.</p>}
           {completed.map((trip) => (
             <Card key={trip.order.order_id} padding="compact">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-900 dark:text-slate-100">
-                  {trip.order.plate} · {trip.order.driver}
-                </span>
-                <div className="text-right">
-                  <div className="text-base font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                    {trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <SerialChip>{primarySerial(trip)}</SerialChip>
+                    <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{typeSummary(trip)}</span>
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {trip.weighing?.completed_at ? new Date(trip.weighing.completed_at).toLocaleString() : ''}
+                  <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                    {trip.order.driver} · {trip.order.plate}
                   </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="text-right">
+                    <div className="text-base font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                      {trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {trip.weighing?.completed_at ? formatTripTime(trip.weighing.completed_at) : ''}
+                    </div>
+                  </div>
+                  <span className="text-lg text-emerald-600 dark:text-emerald-400">✓</span>
                 </div>
               </div>
             </Card>

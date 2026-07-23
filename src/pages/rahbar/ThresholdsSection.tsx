@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { setThreshold } from '../../lib/masterDataAdmin'
-
-const td = 'px-3 py-2 align-top text-sm'
+import { Button } from '../../components/ui/Button'
+import { Card } from '../../components/ui/Card'
+import { SectionHeading } from '../../components/ui/SectionHeading'
+import { TextInput } from '../../components/ui/FormField'
 
 interface ThresholdMeta {
   label: string
@@ -116,17 +118,17 @@ export function ThresholdsSection() {
 
   return (
     <div className="space-y-4 rounded-xl border border-slate-200 p-6 dark:border-slate-800">
-      <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">Limitlar</h2>
+      <SectionHeading>Limitlar</SectionHeading>
 
       {loading ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {THRESHOLD_ORDER.map((key) => {
             const meta = THRESHOLD_META[key]
             const isUnset = meta.nullable && (limits[key] === null || limits[key] === undefined)
             return (
-              <div key={key} className={`${td} rounded-md border border-slate-200 p-3 dark:border-slate-700`}>
+              <Card key={key}>
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <div className="font-medium text-slate-900 dark:text-slate-100">{meta.label}</div>
@@ -136,41 +138,32 @@ export function ThresholdsSection() {
                   <div className="flex items-end gap-2">
                     <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
                       Qiymat ({meta.unit})
-                      <input
-                        type="number"
-                        value={draftFor(key)}
-                        onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
-                        placeholder={meta.nullable ? "bo'sh — sozlanmagan" : undefined}
-                        className="mt-1 w-32 rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                      />
+                      <div className="mt-1 w-32">
+                        <TextInput
+                          type="number"
+                          value={draftFor(key)}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
+                          placeholder={meta.nullable ? "bo'sh — sozlanmagan" : undefined}
+                        />
+                      </div>
                     </label>
-                    <button
-                      type="button"
-                      disabled={busy === key}
-                      onClick={() => handleSave(key)}
-                      className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
-                    >
+                    <Button variant="primary" size="md" disabled={busy === key} onClick={() => handleSave(key)}>
                       Saqlash
-                    </button>
+                    </Button>
                     {meta.nullable && (
-                      <button
-                        type="button"
-                        disabled={busy === key}
-                        onClick={() => handleClear(key)}
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                      >
+                      <Button variant="secondary" size="md" disabled={busy === key} onClick={() => handleClear(key)}>
                         Tozalash
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
-              </div>
+              </Card>
             )
           })}
         </div>
       )}
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm font-medium text-red-600 dark:text-red-400">{error}</p>}
     </div>
   )
 }

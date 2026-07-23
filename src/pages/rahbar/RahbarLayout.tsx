@@ -1,49 +1,27 @@
-import { NavLink, Outlet } from 'react-router-dom'
-import { RoleShell } from '../../components/RoleShell'
+import { Outlet } from 'react-router-dom'
+import { AppNavShell, type NavItem } from '../../components/AppNavShell'
 
-function navClass({ isActive }: { isActive: boolean }) {
-  return isActive
-    ? 'font-medium text-slate-900 dark:text-slate-100'
-    : 'text-slate-500 dark:text-slate-400'
-}
+// Nav/visual-redesign migration (Rahbar prompt): same shared shell Menejer
+// adopted first -- reused as-is, not forked. Same 9 destinations as the
+// previous RoleShell top-nav, same `to`/label text throughout (no e2e
+// coverage on any Rahbar route, confirmed by grep across all 4 specs before
+// this change, but the labels/paths are kept byte-identical regardless).
+const NAV_ITEMS: NavItem[] = [
+  { to: '/rahbar', label: 'Bosh sahifa', end: true },
+  { to: '/rahbar/hisobotlar', label: 'Hisobotlar' },
+  { to: '/rahbar/qoldiq', label: "Ombor qoldig'i" },
+  { to: '/rahbar/kutilmoqda', label: 'Kutilayotgan ishlar' },
+  { to: '/rahbar/mijoz-hisoboti', label: 'Mijoz hisoboti' },
+  { to: '/rahbar/hosildorlik', label: 'Hosildorlik' },
+  { to: '/rahbar/diqqat-talab', label: 'Diqqat talab' },
+  { to: '/rahbar/sozlamalar', label: 'Sozlamalar' },
+  { to: '/rahbar/foydalanuvchilar', label: 'Foydalanuvchilar' },
+]
 
 export function RahbarLayout() {
   return (
-    <RoleShell
-      title="Rahbar"
-      nav={
-        <nav className="flex gap-4 text-sm">
-          <NavLink to="/rahbar" end className={navClass}>
-            Bosh sahifa
-          </NavLink>
-          <NavLink to="/rahbar/hisobotlar" className={navClass}>
-            Hisobotlar
-          </NavLink>
-          <NavLink to="/rahbar/qoldiq" className={navClass}>
-            Ombor qoldig'i
-          </NavLink>
-          <NavLink to="/rahbar/kutilmoqda" className={navClass}>
-            Kutilayotgan ishlar
-          </NavLink>
-          <NavLink to="/rahbar/mijoz-hisoboti" className={navClass}>
-            Mijoz hisoboti
-          </NavLink>
-          <NavLink to="/rahbar/hosildorlik" className={navClass}>
-            Hosildorlik
-          </NavLink>
-          <NavLink to="/rahbar/diqqat-talab" className={navClass}>
-            Diqqat talab
-          </NavLink>
-          <NavLink to="/rahbar/sozlamalar" className={navClass}>
-            Sozlamalar
-          </NavLink>
-          <NavLink to="/rahbar/foydalanuvchilar" className={navClass}>
-            Foydalanuvchilar
-          </NavLink>
-        </nav>
-      }
-    >
+    <AppNavShell title="Rahbar" navItems={NAV_ITEMS}>
       <Outlet />
-    </RoleShell>
+    </AppNavShell>
   )
 }

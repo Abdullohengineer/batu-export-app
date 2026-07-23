@@ -46,7 +46,29 @@ export function BarcodeCameraScanner({ onDecode }: { onDecode: (code: string) =>
     instance
       .start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 280, height: 120 } },
+        {
+          fps: 10,
+          qrbox: { width: 280, height: 120 },
+          // 🔒 Real cause of "opens but never decodes" on a real phone: when
+          // `videoConstraints` is unset, html5-qrcode derives the actual
+          // getUserMedia request purely from the first argument above
+          // (`{facingMode: 'environment'}`, traced in its own
+          // createVideoConstraints()) — no resolution hint at all, so the
+          // browser/OS picks its own default stream resolution. That's fine
+          // for a large, blocky, error-corrected QR code, but not enough to
+          // resolve fine CODE_128 bar-width transitions on a real printed
+          // label at a natural scanning distance. Providing `videoConstraints`
+          // here REPLACES the first argument's constraints entirely (same
+          // source), so `facingMode` must be repeated inside it — omitting it
+          // would silently drop rear-camera selection instead of fixing the
+          // decode. `ideal` (not `min`/`exact`) so this still degrades
+          // gracefully on a camera that can't do 720p.
+          videoConstraints: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        },
         (decodedText) => {
           const now = Date.now()
           const last = lastCodeRef.current

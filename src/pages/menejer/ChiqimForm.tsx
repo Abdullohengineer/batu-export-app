@@ -6,6 +6,8 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useAuth } from '../../lib/AuthProvider'
 import { useAvailableFinishedStock } from '../../lib/useAvailableFinishedStock'
 import { checkFeasibility } from '../../lib/chiqimFeasibility'
+import { useStockOnHand } from '../../lib/useStockOnHand'
+import type { StockOnHandRow } from '../../lib/stockOnHand'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { FormField, TextInput } from '../../components/ui/FormField'
@@ -19,10 +21,18 @@ interface LineRow {
   typeId: string
   calibreId: string
   qty: string
+  // §3.1 inline pallet picker — which of this line's matching available
+  // pallets are currently toggled on, purely to build up `qty` by clicking
+  // real pallets instead of typing a number blind. NEVER persisted:
+  // chiqim_lines still holds only a quantity (§5.4 — pallet selection is
+  // Ombor's job at scan time), so this is UI-only state, reset whenever it
+  // would otherwise go stale (type/calibre changed, or the qty field is
+  // edited by hand — see the picker's own comment for why).
+  selectedBarcodes: Set<string>
 }
 
 function newRow(): LineRow {
-  return { key: crypto.randomUUID(), typeId: '', calibreId: '', qty: '' }
+  return { key: crypto.randomUUID(), typeId: '', calibreId: '', qty: '', selectedBarcodes: new Set() }
 }
 
 interface SavedLine {
@@ -52,6 +62,14 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   const { productTypes } = useProductTypes()
   const { calibres } = useCalibres()
   const { pallets } = useAvailableFinishedStock()
+  // §3.1 inline picker — reuses stock_on_hand_rows (via the same hook
+  // §3.2.6 already built), not a parallel query. Deliberately a SEPARATE
+  // source from `pallets` above: that one feeds only the existing
+  // feasibility soft-warning and is not scoped to this request's own
+  // client (a pre-existing characteristic, left unchanged per the task);
+  // the picker needs real per-client pallets, which stock_on_hand_rows
+  // already carries via owner_id.
+  const { rows: stockRows } = useStockOnHand()
 
   const [sana, setSana] = useState(() => new Date().toISOString().slice(0, 10))
   const [plate, setPlate] = useState('')
@@ -74,6 +92,29 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
 
   function updateRow(key: string, patch: Partial<LineRow>) {
     setRows((r) => r.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+  }
+
+  // Available, this client's own stock, matching this line's type+calibre —
+  // the exact set the picker shows and the only pallets a click can toggle.
+  function matchingPallets(row: LineRow): StockOnHandRow[] {
+    if (!ownerId || !row.typeId || !row.calibreId) return []
+    return stockRows.filter(
+      (r) => r.bucket === 'available' && r.ownerId === ownerId && r.typeId === row.typeId && r.calibreId === row.calibreId,
+    )
+  }
+
+  // Clicking a pallet toggles it and recomputes qty as the sum of whatever's
+  // now selected — a calculator action, not a reservation (nothing here
+  // writes to any table; chiqim_lines still gets only the resulting number).
+  function togglePallet(row: LineRow, pallet: StockOnHandRow) {
+    if (!pallet.barcode2) return
+    const next = new Set(row.selectedBarcodes)
+    if (next.has(pallet.barcode2)) next.delete(pallet.barcode2)
+    else next.add(pallet.barcode2)
+    const sumKg = matchingPallets(row)
+      .filter((p) => p.barcode2 && next.has(p.barcode2))
+      .reduce((sum, p) => sum + p.qtyKg, 0)
+    updateRow(row.key, { selectedBarcodes: next, qty: String(Math.round(sumKg * 100) / 100) })
   }
 
   function feasibilityHint(row: LineRow): string | null {
@@ -177,7 +218,12 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
           <select
             required
             value={ownerId}
-            onChange={(e) => setOwnerId(e.target.value)}
+            onChange={(e) => {
+              setOwnerId(e.target.value)
+              // A different client invalidates every row's own picker
+              // selection (it was scoped to the PREVIOUS client's stock).
+              setRows((r) => r.map((row) => ({ ...row, selectedBarcodes: new Set() })))
+            }}
             className="w-full rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
             <option value="" disabled>
@@ -199,13 +245,15 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
 
         {rows.map((row) => {
           const hint = feasibilityHint(row)
+          const matches = matchingPallets(row)
+          const pickerActive = !!ownerId && !!row.typeId && !!row.calibreId
           return (
             <Card key={row.key} padding="compact">
               <div className="flex items-center gap-2">
                 <select
                   required
                   value={row.typeId}
-                  onChange={(e) => updateRow(row.key, { typeId: e.target.value })}
+                  onChange={(e) => updateRow(row.key, { typeId: e.target.value, selectedBarcodes: new Set() })}
                   className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="" disabled>
@@ -220,7 +268,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                 <select
                   required
                   value={row.calibreId}
-                  onChange={(e) => updateRow(row.key, { calibreId: e.target.value })}
+                  onChange={(e) => updateRow(row.key, { calibreId: e.target.value, selectedBarcodes: new Set() })}
                   className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="" disabled>
@@ -239,7 +287,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   required
                   placeholder="Miqdori (kg)"
                   value={row.qty}
-                  onChange={(e) => updateRow(row.key, { qty: e.target.value })}
+                  onChange={(e) => updateRow(row.key, { qty: e.target.value, selectedBarcodes: new Set() })}
                   className="w-40"
                 />
                 {rows.length > 1 && (
@@ -248,6 +296,42 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   </IconButton>
                 )}
               </div>
+
+              {pickerActive && (
+                <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                  <p className="text-xs text-slate-400">
+                    Hisoblash uchun — pallet ushbu so'rov uchun band qilinmaydi. Ombor skanerlash vaqtida mos keladigan
+                    istalgan palletni tanlaydi.
+                  </p>
+                  {matches.length === 0 ? (
+                    <p className="mt-1 text-xs text-slate-400">Bu buyurtmachida ushbu tur/kalibrda mavjud pallet yo'q.</p>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {matches.map((p) => {
+                        const selected = !!p.barcode2 && row.selectedBarcodes.has(p.barcode2)
+                        return (
+                          <button
+                            key={p.rowKey}
+                            type="button"
+                            onClick={() => togglePallet(row, p)}
+                            className={`rounded-md border px-2 py-1 text-left text-xs ${
+                              selected
+                                ? 'border-blue-400 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <span className="font-mono">{selected ? '✓ ' : ''}{p.barcode2}</span>
+                            <span className="ml-1.5">{Math.round(p.qtyKg).toLocaleString()} kg</span>
+                            <span className="ml-1.5">{p.moisturePct === null ? '—' : `${p.moisturePct}%`}</span>
+                            <span className="ml-1.5 text-slate-500 dark:text-slate-400">{p.daysHeld} kun</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {hint && (
                 <div className="mt-1">
                   <StatusNote tone="pending">{hint}</StatusNote>

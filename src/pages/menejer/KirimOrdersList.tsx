@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
+import { useCalibres } from '../../lib/useCalibres'
 import { usePendingRewash } from '../../lib/usePendingRewash'
 import { useEffectiveQty } from '../../lib/effectiveQty'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
@@ -11,6 +12,7 @@ import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { toneStyles, type Tone } from '../../components/ui/tokens'
+import { SerialPassportModal } from '../reports/SerialPassportModal'
 
 // kirim_orders.status has exactly these two values (confirmed against the
 // live DB, not assumed) -- a plain display-label + tone map, no new status
@@ -38,11 +40,20 @@ interface KirimOrder {
 
 export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
   const { profile } = useAuth()
-  // §3.3: includeInactive=true -- resolves type names on historical orders.
+  // §3.3: includeInactive=true -- resolves type/calibre names on historical
+  // orders and lets the passport modal (below) resolve a deactivated
+  // calibre on an old line correctly, same reasoning as every other
+  // includeInactive=true call site that feeds a passport/history view.
   const { productTypes } = useProductTypes(true)
+  const { calibres } = useCalibres(true)
   const [orders, setOrders] = useState<KirimOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // §3.2.5 passport drill-down — one link per LINE, not per order, since
+  // the passport is per-serial and a multi-line order has one serial per
+  // line (same reasoning stock-on-hand/Hisobot's own drill-down already
+  // established, just reached from a different list here).
+  const [passportSerial, setPassportSerial] = useState<string | null>(null)
 
   useEffect(() => {
     if (!profile) return
@@ -94,6 +105,9 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
   function typeName(typeId: string) {
     return productTypes.find((t) => t.id === typeId)?.name ?? typeId
   }
+  function calibreLabel(calibreId: string) {
+    return calibres.find((c) => c.id === calibreId)?.label ?? calibreId
+  }
 
   if (loading) return null
 
@@ -127,7 +141,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                 const eq = effectiveQty.get(line.serial)
                 return (
                 <div key={line.serial} className="text-sm">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-slate-700 dark:text-slate-300">{line.serial}</span>
                     <span className="text-slate-600 dark:text-slate-400">{typeName(line.type_id)}</span>
                     <span className="text-slate-600 dark:text-slate-400">
@@ -142,6 +156,13 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                     {pendingRewash.has(line.serial) && (
                       <span className={`font-medium ${toneStyles.problem.text}`}>Qayta yuvish kerak</span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setPassportSerial(line.serial)}
+                      className="shrink-0 text-slate-500 underline decoration-dotted hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+                    >
+                      Pasport →
+                    </button>
                   </div>
                   {/* §5.1 amend: gate-vs-declared variance, once gate stage 2 is known. */}
                   {eq?.truckVariance && Math.abs(eq.truckVariance.diffKg) > 0 && (
@@ -163,6 +184,15 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
           )}
         </Card>
       ))}
+
+      {passportSerial && (
+        <SerialPassportModal
+          serial={passportSerial}
+          onClose={() => setPassportSerial(null)}
+          typeName={typeName}
+          calibreLabel={calibreLabel}
+        />
+      )}
     </div>
   )
 }

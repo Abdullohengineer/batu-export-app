@@ -66,8 +66,14 @@ declare
   v_type_subxon uuid := '48aebd73-1de9-4edb-802a-ad38e197fc7e';
   v_type_isfara uuid := 'b6295a21-df2f-4eef-9c79-de7bc701ee94';
   v_type_qandqizil uuid := '35c5c93a-d5be-410e-8694-fac3a7ab861b';
+  v_category_orik uuid := 'f595d88a-252c-4b97-af2f-c1ae0f13ca6d';
+  v_cal1 uuid := 'cc8afaef-a5da-4492-b275-d3d9be78f1b8';
+  v_cal2 uuid := 'ed43060e-4350-4cb8-9754-c639f00dfb7d';
+  v_cal3 uuid := 'c500bd58-c94b-49be-9113-38e3e28b48e0';
   v_cal4 uuid := '930b7b1b-4069-46ef-b9d6-dbe657c38aa0';
+  v_cal5 uuid := '4ab7dfde-c395-47e7-b8bf-c1b69cfadca8';
   v_cal6 uuid := '7fc8a3a9-a347-499b-8475-150060605bd6';
+  v_cal7 uuid := 'c155d544-c74d-4b42-a59d-d3a6e8639813';
   v_cal8 uuid := 'a8a7bdd0-5385-48fe-9fd6-89056bf42492';
   v_calkn uuid := '445fd28d-1f1a-4612-950b-3d5bc7b541ac';
   -- standing test-role profiles, the non-"TEST "-prefixed pair where one
@@ -88,6 +94,28 @@ declare
   v_cycle2 uuid;
   v_request_id uuid;
 begin
+  -- === Calibres (real master data, not demo-specific) -- ensures a fresh/
+  -- migrations-only database has the full standard Kalibr 1-8 + Konditirskiy
+  -- set before any story below references v_cal4/v_cal6/v_cal8/v_calkn.
+  -- Idempotent against a DB that already has some or all of these (i.e.
+  -- live) -- on conflict do nothing never touches an existing row, so
+  -- historical data on 4/6/8/KN is untouched either way. ids hardcoded to
+  -- match production exactly (confirmed live 2026-07-24), same convention
+  -- as v_type_subxon etc. above -- a reseed reproduces the real ids, not
+  -- fresh random ones. v_cal1/2/3/5/7 aren't referenced by any story below
+  -- (none exist yet for these calibres) but are declared for that id parity.
+  insert into calibres (id, category_id, code, label, is_numberless, sort_order, active) values
+    (v_cal1, v_category_orik, '01', 'Kalibr 1', false, 1, true),
+    (v_cal2, v_category_orik, '02', 'Kalibr 2', false, 2, true),
+    (v_cal3, v_category_orik, '03', 'Kalibr 3', false, 3, true),
+    (v_cal4, v_category_orik, '04', 'Kalibr 4', false, 4, true),
+    (v_cal5, v_category_orik, '05', 'Kalibr 5', false, 5, true),
+    (v_cal6, v_category_orik, '06', 'Kalibr 6', false, 6, true),
+    (v_cal7, v_category_orik, '07', 'Kalibr 7', false, 7, true),
+    (v_cal8, v_category_orik, '08', 'Kalibr 8', false, 8, true),
+    (v_calkn, v_category_orik, 'KN', 'Konditirskiy', true, 99, true)
+  on conflict (category_id, code) do nothing;
+
   -- === Demo clients (owners) -- brand new, exist only for this seed ===
   insert into owners (name, active) values ('Boysun Quritilgan Mevalar', true) returning id into v_owner_boysun;
   insert into owners (name, active) values ('Farg''ona Eksport Guruhi', true) returning id into v_owner_fargona;

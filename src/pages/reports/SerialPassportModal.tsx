@@ -309,6 +309,12 @@ function PassportBody({
         </div>
       </section>
 
+      {/* Rasmlar (Photos) — every image captured across this serial's life,
+          gathered into one section, lifecycle order. get_serial_passport
+          already returns every path used here (checked the SQL directly,
+          nothing added) — this section is purely presentational. */}
+      <PhotosSection passport={passport} />
+
       {/* Joriy holat (Current position), by calibre */}
       <section>
         <h3 className={sectionTitle}>Joriy holat</h3>
@@ -340,6 +346,118 @@ function PassportBody({
         )}
       </section>
     </div>
+  )
+}
+
+interface PhotoItem {
+  path: string | null
+  bucket: string
+  what: string
+  who: string | null
+  when: string | null
+}
+
+// GatePhoto's own `if (!path) return null` already hides a missing photo's
+// image — this also hides the who/when caption that would otherwise sit
+// above nothing, since captions only make sense attached to a real photo.
+function PhotoThumb({ item }: { item: PhotoItem }) {
+  if (!item.path) return null
+  return (
+    <div className="w-24 shrink-0">
+      <GatePhoto path={item.path} label={item.what} bucket={item.bucket} thumbnail />
+      <div
+        className="mt-0.5 truncate text-[10px] text-slate-400"
+        title={`${item.who ?? '—'}${item.when ? ' · ' + new Date(item.when).toLocaleString() : ''}`}
+      >
+        {item.who ?? '—'}
+        {item.when && ` · ${new Date(item.when).toLocaleDateString()}`}
+      </div>
+    </div>
+  )
+}
+
+function PhotoGroup({ title, items }: { title: string; items: PhotoItem[] }) {
+  if (items.every((i) => !i.path)) return null
+  return (
+    <div>
+      <div className={label}>{title}</div>
+      <div className="mt-1 flex flex-wrap gap-3">
+        {items.map((item, i) => (
+          <PhotoThumb key={i} item={item} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Every path here already comes back from get_serial_passport today (see
+// the comment at this section's call site) — this just assembles what's
+// already on `passport` into one lifecycle-ordered gallery, grouped by
+// stage so a serial with many dispatches or re-wash cycles doesn't turn
+// into one undifferentiated wall of thumbnails.
+function PhotosSection({ passport }: { passport: SerialPassport }) {
+  const { gate, intake, kirimLab, cycles, dispatches } = passport
+
+  const kirimGatePhotos: PhotoItem[] = gate
+    ? [
+        { path: gate.stage1PlatePhoto, bucket: 'gate-photos', what: 'Moshina raqami', who: gate.stage1CreatedByName, when: gate.stage1CompletedAt },
+        { path: gate.stage1ScalePhoto, bucket: 'gate-photos', what: 'Tarozi (1-bosqich)', who: gate.stage1CreatedByName, when: gate.stage1CompletedAt },
+        { path: gate.stage2ScalePhoto, bucket: 'gate-photos', what: 'Tarozi (2-bosqich)', who: gate.stage2CreatedByName, when: gate.stage2CompletedAt },
+      ]
+    : []
+
+  const intakePhotos: PhotoItem[] = intake
+    ? [{ path: intake.pilePhoto, bucket: 'intake-photos', what: 'Uyum rasmi', who: intake.confirmedByName, when: intake.confirmedAt }]
+    : []
+
+  const kirimLabPhotos: PhotoItem[] = kirimLab
+    ? [{ path: kirimLab.samplePhoto, bucket: 'lab-photos', what: 'Namuna (kirim)', who: kirimLab.testedByName, when: kirimLab.sampleDate }]
+    : []
+
+  // One per cycle — labelled with the cycle number so a re-washed serial's
+  // several sample photos aren't ambiguous about which wash they're from.
+  const chiqimLabPhotos: PhotoItem[] = cycles.map((c) => ({
+    path: c.lab?.samplePhoto ?? null,
+    bucket: 'lab-photos',
+    what: `Namuna (chiqim, sikl ${c.cycleNo})`,
+    who: c.lab?.testedByName ?? null,
+    when: c.lab?.sampleDate ?? null,
+  }))
+
+  // Oldest-first for this section specifically — a lifecycle narrative reads
+  // forward in time, even though the Jo'natishlar section above (its own
+  // established order) shows dispatches newest-first.
+  const dispatchPhotos: PhotoItem[] = [...dispatches]
+    .sort((a, b) => a.requestDate.localeCompare(b.requestDate))
+    .flatMap((d) => [
+      { path: d.gate.stage1PlatePhoto, bucket: 'gate-photos', what: `Moshina raqami (${d.plate})`, who: d.gate.stage1CreatedByName, when: d.gate.stage1CompletedAt },
+      { path: d.gate.stage1ScalePhoto, bucket: 'gate-photos', what: `Tarozi 1-bosqich (${d.plate})`, who: d.gate.stage1CreatedByName, when: d.gate.stage1CompletedAt },
+      { path: d.gate.stage2ScalePhoto, bucket: 'gate-photos', what: `Tarozi 2-bosqich (${d.plate})`, who: d.gate.stage2CreatedByName, when: d.gate.stage2CompletedAt },
+      { path: d.gate.departureDocPhoto, bucket: 'gate-photos', what: `Jo'natish hujjati (${d.plate})`, who: d.gate.stage2CreatedByName, when: d.gate.stage2CompletedAt },
+    ])
+
+  const groups = [
+    { title: 'Darvoza (KIRIM)', items: kirimGatePhotos },
+    { title: 'Qabul qilish', items: intakePhotos },
+    { title: 'Laboratoriya (kirim)', items: kirimLabPhotos },
+    { title: 'Laboratoriya (chiqim)', items: chiqimLabPhotos },
+    { title: "Jo'natishlar", items: dispatchPhotos },
+  ]
+  const hasAnyPhoto = groups.some((g) => g.items.some((i) => i.path))
+
+  return (
+    <section>
+      <h3 className={sectionTitle}>Rasmlar</h3>
+      {hasAnyPhoto ? (
+        <div className="mt-2 space-y-3">
+          {groups.map((g) => (
+            <PhotoGroup key={g.title} title={g.title} items={g.items} />
+          ))}
+        </div>
+      ) : (
+        <p className={`mt-2 ${label}`}>Hali rasm yo'q.</p>
+      )}
+    </section>
   )
 }
 

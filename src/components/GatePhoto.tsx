@@ -8,7 +8,24 @@ import { supabase } from '../lib/supabase'
 // instead of four copies of the same useEffect. `bucket` is additive —
 // defaults to `gate-photos` so every existing call site is unchanged;
 // Laborator's `lab-photos` bucket is the first other consumer.
-export function GatePhoto({ path, label, bucket = 'gate-photos' }: { path: string | null; label: string; bucket?: string }) {
+//
+// `thumbnail` (additive, default false — every existing call site keeps its
+// current full-size-inline look) renders a small clickable image instead:
+// no separate thumbnail asset exists anywhere in this app, so "opens
+// full-size" is simply an `<a target="_blank">` around the same signed URL
+// at native resolution — the browser's own image view, not a new lightbox
+// component for a first use case this small.
+export function GatePhoto({
+  path,
+  label,
+  bucket = 'gate-photos',
+  thumbnail = false,
+}: {
+  path: string | null
+  label: string
+  bucket?: string
+  thumbnail?: boolean
+}) {
   const [url, setUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -29,6 +46,21 @@ export function GatePhoto({ path, label, bucket = 'gate-photos' }: { path: strin
   }, [path, bucket])
 
   if (!path) return null
+
+  if (thumbnail) {
+    return (
+      <a href={url ?? undefined} target="_blank" rel="noopener noreferrer" className="block w-20 shrink-0">
+        <div className="truncate text-xs text-slate-500 dark:text-slate-400">{label}</div>
+        {url && (
+          <img
+            src={url}
+            alt={label}
+            className="mt-1 h-20 w-20 rounded-md border border-slate-200 object-cover dark:border-slate-700"
+          />
+        )}
+      </a>
+    )
+  }
 
   return (
     <div>

@@ -67,9 +67,30 @@ export function uniqueRealLookingPlate(): string {
 export const E2E_OWNER_NAME = 'Boysun Quritilgan Mevalar'
 
 async function switchRole(page: Page, role: TestRole): Promise<void> {
-  const logoutButton = page.getByRole('button', { name: 'Chiqish' })
-  if ((await logoutButton.count()) > 0) {
-    await logoutButton.click()
+  // 🔒 `.count()` is a synchronous DOM snapshot — it does not wait for
+  // rendering to catch up. Called right after a PRIOR switchRole's own
+  // `waitForURL` resolves, the URL has already changed but React hasn't
+  // necessarily finished painting the newly-routed page yet, so a bare
+  // `.count() > 0` check can genuinely see zero matches for a currently
+  // logged-in session's own Chiqish button — skipping the actual logout
+  // (and its signOut() call) entirely, leaving the OLD role's session
+  // fully, validly active. Every later `/login` visit then correctly
+  // bounces straight back to that role's dashboard (not a bug at that
+  // point — the session really is still valid), and the test hangs
+  // waiting for a login form that will never appear. Found live via trace
+  // inspection (report-effective-qty-parity.spec.ts, DECISIONS.md) — a
+  // bare .count() reliably raced when preceded by other specs' heavier
+  // rendering load, reliably won when run in true isolation with nothing
+  // else warmed up. `.waitFor()` (unlike `.count()`) actually waits for the
+  // element to appear, bounded so a genuinely-fresh/blank page still
+  // returns promptly instead of stalling on the full test timeout.
+  const isLoggedIn = await page
+    .getByRole('button', { name: 'Chiqish' })
+    .waitFor({ state: 'visible', timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (isLoggedIn) {
+    await page.getByRole('button', { name: 'Chiqish' }).click()
     await page.waitForURL('**/login')
   }
   await loginAs(page, role)

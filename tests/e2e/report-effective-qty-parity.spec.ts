@@ -27,9 +27,19 @@ import { deriveEffectiveQty } from '../../src/lib/weightAuthority'
 // exactly this case.
 
 async function switchRole(page: Page, role: TestRole): Promise<void> {
-  const logoutButton = page.getByRole('button', { name: 'Chiqish' })
-  if ((await logoutButton.count()) > 0) {
-    await logoutButton.click()
+  // 🔒 See the identical fix + full explanation in helpers/fixtures.ts's
+  // own switchRole — a bare `.count()` right after a prior switchRole's
+  // `waitForURL` resolves can race React's own post-navigation render,
+  // silently skipping the logout and leaving the OLD role's session fully
+  // valid. `.waitFor()` actually waits, bounded so a genuinely-fresh page
+  // still returns promptly. Root-caused via trace inspection, DECISIONS.md.
+  const isLoggedIn = await page
+    .getByRole('button', { name: 'Chiqish' })
+    .waitFor({ state: 'visible', timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (isLoggedIn) {
+    await page.getByRole('button', { name: 'Chiqish' }).click()
     await page.waitForURL('**/login')
   }
   await loginAs(page, role)

@@ -31,7 +31,12 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // wasm: the barcode-detector ponyfill's ZXing decoder — without
+        // it in the precache, the fallback scan path would silently
+        // require a network round-trip on first use, breaking "works
+        // offline once cached" (PHASE0.md Part E) for any browser that
+        // lacks a native BarcodeDetector (iOS Safari, Firefox, desktop).
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },
     }),

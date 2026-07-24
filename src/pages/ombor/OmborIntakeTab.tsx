@@ -36,6 +36,10 @@ export function OmborIntakeTab() {
   const { serials: moykaSerials, loading: moykaLoading } = useMoykaSerials()
   const [activeSerial, setActiveSerial] = useState<string | null>(null)
   const [expandedSerial, setExpandedSerial] = useState<string | null>(null)
+  // Mirrors OmborTayyorTab.tsx's lastBarcode: which serial's Barcode #1 just
+  // appeared, so Barcode1Display auto-prints once (native only) the same way
+  // a freshly-saved Barcode #2 does — see Barcode1Display.tsx's `autoprint`.
+  const [justAccepted, setJustAccepted] = useState<string | null>(null)
 
   const kamChiqdiPct = limits.kam_chiqdi_pct ?? 5
   // §2.15: the single derived source for the working quantity, used by both
@@ -85,6 +89,7 @@ export function OmborIntakeTab() {
     if (error) throw error
 
     setActiveSerial((current) => (current === line.serial ? null : current))
+    setJustAccepted(line.serial)
     refresh()
     // useEffectiveQty's own fetch is keyed by the SET of serials on the
     // page, not by their underlying intake/gate state — an accept within
@@ -222,6 +227,7 @@ export function OmborIntakeTab() {
                 <div className="flex shrink-0 items-center gap-2">
                   {line.intake.barcode1 && (
                     <Barcode1Display
+                      defaultOpen={justAccepted === line.serial}
                       data={{
                         serial: line.intake.barcode1,
                         type: typeName(line.type_id),

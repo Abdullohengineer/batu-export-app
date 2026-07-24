@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import JsBarcode from 'jsbarcode'
 import { renderBarcode2Label, type Barcode2LabelData } from '../../lib/barcodeLabel'
+import { P1Printer, isP1PrinterAvailable, printFailureMessage, pluginErrorMessage, type PrintLabelOptions } from '../../lib/p1Printer'
+import { PrinterStatus } from './PrinterStatus'
 
 // Barcode #2 (physical pallet, SPEC §2.2, §5.3): renders the sticker ID as a
-// real scannable Code128 barcode on screen, plus a print/share action that
-// generates the 50×30mm label PNG for the Detonger P1 via WePrint. Same
-// share/download pattern as Barcode1Display (CLAUDE.md "reuse, don't
-// rebuild"), but encodes the barcode2 (PLT-…) value and shows §2.2's #2
-// fields (parent serial · tur · kalibr · og'irlik · egasi).
+// real scannable Code128 barcode on screen. Two print paths, feature-detected
+// (requirement G — web stays exactly as it was): native Android prints
+// directly via P1PrinterPlugin.java (LPAPI, drawn at 40×30mm — the printer's
+// real stock); the web build keeps the original share/download PNG fallback
+// unchanged. `defaultOpen` (native only) also auto-fires one print the
+// moment this appears already-expanded — the "just saved" moment from
+// OmborTayyorTab.tsx — while the same button remains the reprint action
+// everywhere this renders collapsed (historical pallet rows).
 export function Barcode2Display({ data, defaultOpen = false }: { data: Barcode2LabelData; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
 
@@ -20,16 +25,30 @@ export function Barcode2Display({ data, defaultOpen = false }: { data: Barcode2L
       >
         Barcode #2
       </button>
-      {open && <Barcode2Label data={data} />}
+      {open && <Barcode2Label data={data} autoprint={defaultOpen} />}
     </div>
   )
 }
 
-function Barcode2Label({ data }: { data: Barcode2LabelData }) {
+function toPrintOptions(data: Barcode2LabelData): PrintLabelOptions {
+  return {
+    barcode: data.barcode2,
+    serial: data.serial,
+    typeName: data.type,
+    calibreLabel: data.calibre,
+    weightKg: data.weightKg,
+    clientName: data.owner,
+  }
+}
+
+function Barcode2Label({ data, autoprint }: { data: Barcode2LabelData; autoprint: boolean }) {
   const barcodeRef = useRef<SVGSVGElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [printed, setPrinted] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
+  const nativeAvailable = isP1PrinterAvailable()
+  const autoprintedFor = useRef<string | null>(null)
 
   useEffect(() => {
     if (!barcodeRef.current) return
@@ -47,6 +66,38 @@ function Barcode2Label({ data }: { data: Barcode2LabelData }) {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl)
     }
   }, [downloadUrl])
+
+  async function handlePrint() {
+    setError(null)
+    setPrinted(false)
+    setBusy(true)
+    try {
+      const result = await P1Printer.printLabel(toPrintOptions(data))
+      if (result.success) {
+        setPrinted(true)
+      } else {
+        setError(printFailureMessage(result.reason))
+      }
+    } catch (err) {
+      setError(pluginErrorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Fires once per distinct barcode2 (not once per component instance —
+  // OmborTayyorTab.tsx reuses this same mounted instance for every
+  // subsequent receipt in a session via its `lastBarcode` state, so a
+  // mount-only guard would silently stop auto-printing after the first).
+  useEffect(() => {
+    if (autoprint && nativeAvailable && autoprintedFor.current !== data.barcode2) {
+      autoprintedFor.current = data.barcode2
+      handlePrint()
+    }
+    // handlePrint always closes over the latest `data` via render; only
+    // barcode2 actually changing should retrigger this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoprint, nativeAvailable, data.barcode2])
 
   function triggerDownload(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob)
@@ -88,14 +139,20 @@ function Barcode2Label({ data }: { data: Barcode2LabelData }) {
         {data.serial} · {data.type} · {data.calibre} · {data.weightKg.toLocaleString()} kg · {data.owner}
       </div>
 
+      {nativeAvailable && (
+        <div className="mt-2 flex justify-center">
+          <PrinterStatus />
+        </div>
+      )}
+
       <div className="mt-3 flex justify-center gap-2">
         <button
           type="button"
-          onClick={handleShare}
+          onClick={nativeAvailable ? handlePrint : handleShare}
           disabled={busy}
           className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
         >
-          {busy ? '…' : 'Chop etish / Ulashish'}
+          {busy ? '…' : nativeAvailable ? 'Chop etish' : 'Chop etish / Ulashish'}
         </button>
         <button
           type="button"
@@ -117,6 +174,7 @@ function Barcode2Label({ data }: { data: Barcode2LabelData }) {
         </button>
       </div>
 
+      {printed && !error && <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">Chop etildi ✓</p>}
       {error && (
         <p className="mt-2 text-xs text-red-600" role="alert">
           {error}

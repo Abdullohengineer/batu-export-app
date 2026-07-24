@@ -1,14 +1,20 @@
 import JsBarcode from 'jsbarcode'
 
 // Renders Barcode #1/#2 (SPEC §2.2, §5.1, §5.3) as real, scannable Code128
-// label PNGs for the Detonger P1 thermal printer via WePrint (PHASE0.md
-// Part E). Generic composer + one thin wrapper per barcode kind.
+// label PNGs. Generic composer + one thin wrapper per barcode kind.
 //
-// LABEL SIZE IS HARDCODED to 50×30mm — the stock pre-loaded in the printer.
+// This is a PREVIEW only as of the P1 native plugin integration — the native
+// Android build prints via P1PrinterPlugin.java drawing directly with LPAPI
+// (startJob/draw1DBarcode/drawText/commitJob), not this rasterised PNG. The
+// two layouts are maintained separately and can drift (see DECISIONS.md);
+// this one is still what the web build's share/download fallback uses, and
+// what renders on screen everywhere.
+//
+// LABEL SIZE IS HARDCODED to 40×30mm, matching the printer's actual stock.
 // TODO(config): rolls range 20–55mm; label size should become a configurable
 // setting (Administration, §6.4) once a second stock size is actually used.
 // Do not hardcode new sizes elsewhere — read from here.
-const LABEL_MM = { w: 50, h: 30 }
+const LABEL_MM = { w: 40, h: 30 }
 
 // Detonger P1 is a 203dpi thermal printer. 203 dots / 25.4mm = 7.992 dots/mm,
 // so the native label grid is round(50 × 7.992) × round(30 × 7.992) =

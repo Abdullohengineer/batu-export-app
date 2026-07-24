@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -44,4 +45,24 @@
          entry is a fully supported fallback (see BarcodeCameraScanner.tsx),
          so a camera-less device must still be able to install the app. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- P1PrinterPlugin.java (LPAPI over classic Bluetooth SPP). Android 12+
+         (API 31+) uses BLUETOOTH_SCAN/BLUETOOTH_CONNECT; below that, the
+         legacy BLUETOOTH/BLUETOOTH_ADMIN pair plus location, since pre-12
+         Bluetooth device discovery is classified as a location-adjacent
+         permission by the platform itself, independent of LPAPI. maxSdkVersion
+         on the legacy set keeps them a no-op (but harmlessly declared) on
+         newer OS versions instead of branching the manifest itself. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
+    <!-- neverForLocation: the printer is classic Bluetooth (SPP), never used
+         to infer physical location, so Android 12+ doesn't also require
+         location permission alongside BLUETOOTH_SCAN. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 </manifest>

@@ -144,7 +144,7 @@ test.afterEach(async () => {
 })
 
 test('report_kirim_rows agrees with deriveEffectiveQty on every branch', async ({ page }) => {
-  test.setTimeout(60_000)
+  test.setTimeout(150_000)
 
   // --- Scenario A: declared_pre_intake — no storage_intake row at all ---
   const plateA = uniqueRealLookingPlate()

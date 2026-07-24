@@ -8,11 +8,22 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useReportQuery, ExportTooLargeError } from '../../lib/useReportQuery'
 import { downloadReportExcel } from '../../lib/reportExport'
-import { dateBasisLabel, defaultReportFilters } from '../../lib/reportQuery'
+import { dateBasisLabel, defaultReportFilters, type PalletStatusFilter } from '../../lib/reportQuery'
 import { ReportResultsTable } from './ReportResultsTable'
 import { SerialPassportModal } from './SerialPassportModal'
 import { Button } from '../../components/ui/Button'
 import { StatusNote } from '../../components/ui/StatusNote'
+
+// Status taxonomy for THIS screen's filter only (event-level pallet
+// status, §3.2.2) — a different concept from §3.2.6's on-hand StockBucket,
+// which has its own separate options list (StockOnHandTab.tsx). ReportFilterBar
+// is generic over whichever list a caller passes in.
+const STATUS_OPTIONS: { value: Exclude<PalletStatusFilter, ''>; label: string }[] = [
+  { value: 'omborda', label: 'Omborda' },
+  { value: 'band_qilingan', label: 'Band qilingan' },
+  { value: 'jonatilgan', label: "Jo'natilgan" },
+  { value: 'bekor_qilingan', label: 'Bekor qilingan' },
+]
 
 // §3.2 HISOBOT (Reporting) — the shared query engine + results table +
 // totals strip + filter bar (§3.2.1-3.2.4, applied to SPEC.md this step).
@@ -89,7 +100,38 @@ export function HisobotTab() {
         emptyText="Natija topilmadi."
         resultCount={totalCount}
         filters={
-          <ReportFilterBar filters={filters} onChange={setFilters} owners={owners} productTypes={productTypes} calibres={calibres} />
+          <ReportFilterBar
+            from={filters.from}
+            to={filters.to}
+            onDateRangeChange={(from, to) => setFilters({ ...filters, from, to })}
+            ownerId={filters.ownerId}
+            onOwnerIdChange={(id) => setFilters({ ...filters, ownerId: id })}
+            typeIds={filters.typeId ? [filters.typeId] : []}
+            onTypeIdsChange={(ids) => setFilters({ ...filters, typeId: ids[0] ?? '' })}
+            productTypes={productTypes}
+            calibreIds={filters.calibreId ? [filters.calibreId] : []}
+            onCalibreIdsChange={(ids) => setFilters({ ...filters, calibreId: ids[0] ?? '' })}
+            calibres={calibres}
+            statusOptions={STATUS_OPTIONS}
+            statusValues={filters.status ? [filters.status] : []}
+            onStatusValuesChange={(values) => setFilters({ ...filters, status: (values[0] ?? '') as PalletStatusFilter })}
+            owners={owners}
+            direction={filters.direction}
+            onDirectionChange={(d) => setFilters({ ...filters, direction: d })}
+            serial={filters.serial}
+            onSerialChange={(v) => setFilters({ ...filters, serial: v })}
+            barcode2={filters.barcode2}
+            onBarcode2Change={(v) => setFilters({ ...filters, barcode2: v })}
+            plate={filters.plate}
+            onPlateChange={(v) => setFilters({ ...filters, plate: v })}
+            driver={filters.driver}
+            onDriverChange={(v) => setFilters({ ...filters, driver: v })}
+            washCycle={filters.washCycle}
+            onWashCycleChange={(v) => setFilters({ ...filters, washCycle: v })}
+            labVerdict={filters.labVerdict}
+            onLabVerdictChange={(v) => setFilters({ ...filters, labVerdict: v })}
+            onReset={() => setFilters(defaultReportFilters(filters.from, filters.to))}
+          />
         }
       >
         <div className="flex items-center justify-between">

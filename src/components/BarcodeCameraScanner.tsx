@@ -25,11 +25,23 @@ import { StatusNote } from './ui/StatusNote'
 // `detect(video)` shape, so the scan loop below never needs to know
 // which one it's holding.
 //
-// The ponyfill's wasm defaults to fetching from a CDN at runtime, which
-// would break this app's "works offline once cached" requirement
-// (PHASE0.md Part E) — prepareZXingModule below points it at the copy
-// Vite bundles into this build instead (also added to vite.config.ts's
-// PWA `globPatterns` so the service worker actually precaches it).
+// The ponyfill's wasm defaults to fetching from a CDN at runtime (see
+// zxing-wasm's own built-in default locateFile, which points at
+// fastly.jsdelivr.net — dead in the water with no signal, and an
+// offline-first violation even with signal), which would break this app's
+// "works offline once cached" requirement (PHASE0.md Part E) —
+// prepareZXingModule below points it at the copy Vite bundles into this
+// build instead (also added to vite.config.ts's PWA `globPatterns` so the
+// service worker actually precaches it for the web build).
+//
+// Logged, not just set: this line is the #1 suspect for "camera opens but
+// never decodes" in the Capacitor Android WebView (DECISIONS.md "Camera
+// scanner in the Android WebView"). If this override silently failed to
+// apply for any reason, the library falls through to its CDN default
+// instead of throwing — with no signal that's a silent, permanent dead
+// end that looks identical to "no barcode in frame", which is exactly
+// this bug's symptom. This log confirms which URL is actually in effect.
+console.log('[BarcodeCameraScanner] zxing wasm locateFile ->', zxingReaderWasmUrl)
 prepareZXingModule({
   overrides: {
     locateFile: (path: string) => (path.endsWith('.wasm') ? zxingReaderWasmUrl : path),
@@ -40,8 +52,22 @@ interface Detector {
   detect(image: HTMLVideoElement): Promise<Array<{ rawValue: string }>>
 }
 
+// Logged, not silent: which path a given session took is the #1 thing
+// needed to diagnose "opens but never decodes" on a new environment (see
+// DECISIONS.md). BarcodeDetector's presence in Android System WebView is
+// unverified for THIS app's embedded context — MDN's compat data "mirrors"
+// Chrome for Android's, but that's inferred from the shared Chromium
+// version, not independently confirmed for a WebView embedded in a
+// third-party app, where the underlying Play Services ML Kit barcode
+// model has in the past been reported as inconsistently available.
+// Deliberately not auto-falling-back from native to the ponyfill at
+// runtime here (e.g. on a thrown/empty detect()) — that would hide the
+// real answer instead of surfacing it. If the device test shows native
+// chosen but still never decoding, forcing the ponyfill on native Android
+// specifically is the next, now well-targeted, fix.
 function createDetector(): Detector {
   const native = (window as unknown as { BarcodeDetector?: new (opts: { formats: string[] }) => Detector }).BarcodeDetector
+  console.log('[BarcodeCameraScanner] detector path ->', native ? 'native BarcodeDetector' : 'ponyfill (zxing-wasm)')
   const Ctor = native ?? PonyfillBarcodeDetector
   return new Ctor({ formats: ['code_128'] })
 }
@@ -62,6 +88,8 @@ export function BarcodeCameraScanner({ onDecode }: { onDecode: (code: string) =>
     let stream: MediaStream | null = null
     let videoEl: HTMLVideoElement | null = null
     let timeoutId: number | null = null
+    let loggedFirstReadyFrame = false
+    let lastLoggedError: string | null = null
     setCameraError(null)
 
     const detector = createDetector()
@@ -90,6 +118,19 @@ export function BarcodeCameraScanner({ onDecode }: { onDecode: (code: string) =>
           if (cancelled) return
           const currentVideo = videoRef.current
           if (currentVideo && currentVideo.readyState >= currentVideo.HAVE_CURRENT_DATA) {
+            // Requirement #3 (do frames reach the decoder at all): logged
+            // once, not every ~100ms — confirms the video element itself is
+            // producing decodable frames in this environment, same as it
+            // does in a browser tab, before ever blaming the detector.
+            if (!loggedFirstReadyFrame) {
+              loggedFirstReadyFrame = true
+              console.log(
+                '[BarcodeCameraScanner] first frame ready, readyState =',
+                currentVideo.readyState,
+                'size =',
+                `${currentVideo.videoWidth}x${currentVideo.videoHeight}`,
+              )
+            }
             try {
               const results = await detector.detect(currentVideo)
               const decodedText = results[0]?.rawValue
@@ -101,9 +142,20 @@ export function BarcodeCameraScanner({ onDecode }: { onDecode: (code: string) =>
                   onDecodeRef.current(decodedText)
                 }
               }
-            } catch {
-              // No code in this frame, or a transient decode error —
-              // expected noise, same as html5-qrcode's per-frame callback.
+            } catch (err) {
+              // Genuinely no code in this frame does NOT throw (an empty
+              // `results` array does) — this catch is only real failures:
+              // a wasm init error, a native-API throw, etc. Previously
+              // fully silent, which is exactly what made "opens but never
+              // decodes" indistinguishable from normal per-frame noise.
+              // Logged once per distinct message, not every ~100ms, so a
+              // persistent failure is still visible without flooding
+              // logcat.
+              const message = err instanceof Error ? err.message : String(err)
+              if (message !== lastLoggedError) {
+                lastLoggedError = message
+                console.error('[BarcodeCameraScanner] detect() failed:', err)
+              }
             }
           }
           if (!cancelled) timeoutId = window.setTimeout(scanLoop, SCAN_INTERVAL_MS)

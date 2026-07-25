@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
@@ -8,7 +8,7 @@ import { useOmborChiqimRequests, type ChiqimRequest } from '../../lib/useOmborCh
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { resolveScan, lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimScan'
 import { currentCycleLabStatus } from '../../lib/labVerdict'
-import { BarcodeCameraScanner } from '../../components/BarcodeCameraScanner'
+import { BarcodeCameraScanner, type ScanFeedback } from '../../components/BarcodeCameraScanner'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { IconButton } from '../../components/ui/IconButton'
@@ -64,12 +64,30 @@ export function OmborChiqimTab() {
   const [scannedByRequest, setScannedByRequest] = useState<Record<string, ScannedPallet[]>>({})
   const [barcodeInput, setBarcodeInput] = useState('')
   const [scanError, setScanError] = useState<string | null>(null)
+  // On-camera echo of the same outcome scanError already tracks (single
+  // flat state, not per-request, same reasoning as scanError above — only
+  // one row is expanded/scannable at a time). Auto-clears after a beat so
+  // it doesn't sit stale over the camera once the operator moves on.
+  const [scanFeedback, setScanFeedback] = useState<ScanFeedback | null>(null)
+  const scanFeedbackTimeoutRef = useRef<number | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
   const [finishError, setFinishError] = useState<string | null>(null)
   const [finishing, setFinishing] = useState(false)
   const [undoError, setUndoError] = useState<string | null>(null)
   const [undoingId, setUndoingId] = useState<string | null>(null)
   const { lines: manifestLines, loading: manifestLoading, refresh: refreshManifest } = useDispatchManifestLines(expandedFinished)
+
+  useEffect(() => {
+    return () => {
+      if (scanFeedbackTimeoutRef.current !== null) window.clearTimeout(scanFeedbackTimeoutRef.current)
+    }
+  }, [])
+
+  function showScanFeedback(fb: ScanFeedback) {
+    if (scanFeedbackTimeoutRef.current !== null) window.clearTimeout(scanFeedbackTimeoutRef.current)
+    setScanFeedback(fb)
+    scanFeedbackTimeoutRef.current = window.setTimeout(() => setScanFeedback(null), 2500)
+  }
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -147,6 +165,7 @@ export function OmborChiqimTab() {
         no_matching_line: 'Bu tur/kalibr ushbu so\'rovda yo\'q.',
       }
       setScanError(messages[result.reason])
+      showScanFeedback({ tone: 'problem', message: messages[result.reason] })
       return false
     }
 
@@ -154,6 +173,7 @@ export function OmborChiqimTab() {
       ...m,
       [request.id]: [...(m[request.id] ?? []), { barcode2: pallet!.barcode2, lineId: result.lineId, weight_kg: pallet!.weight_kg }],
     }))
+    showScanFeedback({ tone: 'ok', message: `✓ Qo'shildi — ${pallet!.weight_kg.toLocaleString()} kg` })
     return true
   }
 
@@ -399,7 +419,7 @@ export function OmborChiqimTab() {
                         entry kept directly beneath as a fallback — both
                         call the same processBarcode. */}
                     <div className="space-y-2">
-                      <BarcodeCameraScanner onDecode={(code) => processBarcode(request, code)} />
+                      <BarcodeCameraScanner onDecode={(code) => processBarcode(request, code)} feedback={scanFeedback} />
                       <form onSubmit={(e) => handleScan(request, e)} className="flex items-center gap-2">
                         <TextInput
                           placeholder="Barcode #2 ni kiriting yoki skanerlang"

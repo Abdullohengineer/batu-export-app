@@ -52,6 +52,26 @@ interface Detector {
   detect(image: HTMLVideoElement): Promise<Array<{ rawValue: string }>>
 }
 
+// Scan-outcome feedback, shown as a banner over the video itself (not just
+// below it) — the operator's eyes are on the camera while aiming, not the
+// page below. Caller (OmborChiqimTab.tsx's processBarcode) owns the
+// lifecycle: sets this from the exact same success/failure branches that
+// already drive scanError/scannedByRequest, so this is presentation on top
+// of unchanged decision logic, not a new outcome path.
+export interface ScanFeedback {
+  tone: 'ok' | 'problem'
+  message: string
+}
+
+// Solid, high-opacity colors — deliberately NOT toneStyles' own bg/text
+// pair (those are subtle/light, meant to sit on a white card background;
+// illegible overlaid on an arbitrary live camera feed, which can be any
+// color behind it).
+const FEEDBACK_STYLES: Record<ScanFeedback['tone'], string> = {
+  ok: 'bg-emerald-600/95 text-white',
+  problem: 'bg-red-600/95 text-white',
+}
+
 // Logged, not silent: which path a given session took is the #1 thing
 // needed to diagnose "opens but never decodes" on a new environment (see
 // DECISIONS.md). BarcodeDetector's presence in Android System WebView is
@@ -74,7 +94,13 @@ function createDetector(): Detector {
 
 const SCAN_INTERVAL_MS = 100 // ~10fps — matches the previous html5-qrcode `fps: 10`
 
-export function BarcodeCameraScanner({ onDecode }: { onDecode: (code: string) => void }) {
+export function BarcodeCameraScanner({
+  onDecode,
+  feedback,
+}: {
+  onDecode: (code: string) => void
+  feedback?: ScanFeedback | null
+}) {
   const [open, setOpen] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -187,7 +213,29 @@ export function BarcodeCameraScanner({ onDecode }: { onDecode: (code: string) =>
 
   return (
     <div className="space-y-2 rounded-md border border-slate-300 bg-slate-900 p-2 dark:border-slate-700">
-      <video ref={videoRef} className="mx-auto max-w-xs overflow-hidden rounded-md" autoPlay muted playsInline />
+      <div className="relative mx-auto max-w-xs overflow-hidden rounded-md">
+        <video ref={videoRef} className="block w-full" autoPlay muted playsInline />
+        {/* Aiming guide — html5-qrcode's own `qrbox` drew this; lost when it
+            was replaced by BarcodeDetector's plain <video> (see file header,
+            commit 755746c). Same 280:120 ratio as the old qrbox — wide for a
+            1D barcode, not square like a QR target. The huge spread
+            box-shadow dims everything outside the rectangle, the classic
+            scan-mask look, no clip-path/SVG needed. Decorative only: the
+            decoder below still reads the full frame — cropping to this
+            region would mean an extra canvas draw every ~100ms in the scan
+            loop (off limits, see file header) for a boundary the operator's
+            own aim already narrows in practice. */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="aspect-[280/120] w-[80%] max-w-[280px] rounded-md border-[3px] border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+        </div>
+        {feedback && (
+          <div
+            className={`absolute inset-x-0 bottom-0 px-2 py-1.5 text-center text-sm font-medium ${FEEDBACK_STYLES[feedback.tone]}`}
+          >
+            {feedback.message}
+          </div>
+        )}
+      </div>
       {cameraError && (
         <div className="rounded-md bg-white p-2 dark:bg-slate-800">
           <StatusNote tone="problem">{cameraError}</StatusNote>

@@ -10,26 +10,37 @@ import { Card } from '../../components/ui/Card'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { type Tone } from '../../components/ui/tokens'
 
 function fmt(ts: string | null) {
   return ts ? new Date(ts).toLocaleString() : '—'
 }
 
-// Menejer's finished-CHIQIM view (§3.1, Step 7 prompt 4) — same collapsed-
-// by-default / expand-to-reveal pattern already used for every other
-// second-window in this app (OmborChiqimTab W1/W2, QorovulChiqimTab
-// Faol/Yakunlangan), not a new UI shape. Single window, not a two-window
-// split: this list IS the "finished" window by construction
-// (useFinishedChiqimRequests only ever fetches status='olib_ketildi'), so
-// there's no counterpart "still open" state to show here — that's Ombor's
-// and Qorovul's own screens, not this one.
-export function FinishedChiqimList() {
+// chiqim_requests only ever carries two status values in practice (see
+// useFinishedChiqimRequests.ts) — same shape as KirimOrdersList's own
+// STATUS_LABEL map for the sibling KIRIM window, fallback tone covers the
+// two enum values that belong to KIRIM's lifecycle and are never actually
+// written here.
+const STATUS_LABEL: Record<string, { label: string; tone: Tone }> = {
+  kutilmoqda: { label: 'Kutilmoqda', tone: 'pending' },
+  olib_ketildi: { label: 'Olib ketildi', tone: 'ok' },
+}
+
+// Menejer's CHIQIM second window (§3.1) — same collapsed-by-default /
+// expand-to-reveal pattern used everywhere else (OmborChiqimTab W1/W2,
+// QorovulChiqimTab Faol/Yakunlangan), and the same "one list, all
+// statuses, newest-first, status pill per row" shape as this role's own
+// KirimOrdersList.tsx, not a new UI shape. Widened from a finished-only
+// view 2026-07-25 (see useFinishedChiqimRequests.ts for the history) — a
+// row with no gate_weighing yet (status='kutilmoqda') renders its weighing
+// fields as '—', already null-safe throughout below.
+export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   // §3.3: includeInactive=true -- resolves names on historical requests.
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
   const { names } = useProfileNames()
-  const { requests, loading } = useFinishedChiqimRequests()
+  const { requests, loading } = useFinishedChiqimRequests(refreshKey)
   const [expanded, setExpanded] = useState<string | null>(null)
   const { lines: manifestLines, loading: manifestLoading } = useDispatchManifestLines(expanded)
 
@@ -50,9 +61,9 @@ export function FinishedChiqimList() {
 
   return (
     <div>
-      <SectionHeading>Yakunlangan so'rovlar</SectionHeading>
+      <SectionHeading>Yuborilgan CHIQIM so'rovlari</SectionHeading>
       <div className="mt-2 space-y-2">
-        {requests.length === 0 && <p className="text-sm text-slate-400">Hali yakunlangan so'rov yo'q.</p>}
+        {requests.length === 0 && <p className="text-sm text-slate-400">Hali so'rov yo'q.</p>}
         {requests.map((request) => {
           const isExpanded = expanded === request.id
           const w = request.weighing
@@ -72,7 +83,9 @@ export function FinishedChiqimList() {
                     {request.request_date} · {request.driver} · {request.lines.length} qator
                   </span>
                 </span>
-                <StatusPill tone="ok">Olib ketildi</StatusPill>
+                <StatusPill tone={STATUS_LABEL[request.status]?.tone ?? 'neutral'}>
+                  {STATUS_LABEL[request.status]?.label ?? request.status}
+                </StatusPill>
               </button>
               <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 net {w?.net_kg?.toLocaleString() ?? '—'} kg · {fmt(w?.completed_at ?? null)}

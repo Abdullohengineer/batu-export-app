@@ -354,8 +354,13 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await page.getByRole('button', { name: 'Saqlash' }).click()
   await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
 
-  await expect(page.getByRole('heading', { name: "Yakunlangan so'rovlar" })).toBeVisible()
-  await expect(page.getByText(PLATE_OUT)).not.toBeVisible()
+  // Second window widened 2026-07-25: a freshly saved request now appears
+  // immediately (same page, no navigation), status 'kutilmoqda' — this IS
+  // the positive case the finished-only filter used to block.
+  await expect(page.getByRole('heading', { name: "Yuborilgan CHIQIM so'rovlari" })).toBeVisible()
+  const freshCard = page.locator('.rounded-md', { hasText: PLATE_OUT })
+  await expect(freshCard).toBeVisible()
+  await expect(freshCard).toContainText('Kutilmoqda')
 
   // --- Qorovul: CHIQIM gate stage 1 ---
   await page.getByRole('button', { name: 'Chiqish' }).click()
@@ -411,15 +416,16 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(yakunlangan.locator('.rounded-md', { hasText: PLATE_OUT })).toBeVisible({ timeout: 20000 })
   }
 
-  // --- Menejer: finished view shows the real request with full actor/
-  // timestamp/photo data; the TEST--prefixed one stays filtered out
-  // (menejer-chiqim-finished-view.spec.ts's own negative case) ---
+  // --- Menejer: second window shows the real request, now completed, with
+  // full actor/timestamp/photo data; the TEST--prefixed one stays filtered
+  // out regardless of status (menejer-chiqim-finished-view.spec.ts's own
+  // negative case, still proving the TEST- filter, not the status filter) ---
   await page.getByRole('button', { name: 'Chiqish' }).click()
   await page.waitForURL('**/login')
   await loginAs(page, 'MENEJER')
   await page.getByRole('link', { name: 'CHIQIM' }).click()
   {
-    const finishedList = page.getByRole('heading', { name: "Yakunlangan so'rovlar" }).locator('xpath=following-sibling::div[1]')
+    const finishedList = page.getByRole('heading', { name: "Yuborilgan CHIQIM so'rovlari" }).locator('xpath=following-sibling::div[1]')
     const card = finishedList.locator('.rounded-md', { hasText: PLATE_OUT })
     await expect(card).toBeVisible({ timeout: 20000 })
     await expect(card).toContainText('Olib ketildi')

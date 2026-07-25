@@ -59,6 +59,14 @@ export function OmborTayyorTab() {
   const [rewashError, setRewashError] = useState<string | null>(null)
   const [rewashSaving, setRewashSaving] = useState<string | null>(null)
   const [expandedCompleted, setExpandedCompleted] = useState<string | null>(null)
+  // §5.3 "Ombor printing gaps": Window 1's only reprint access used to be
+  // `lastBarcode` (this session's own just-saved pallet) or going through
+  // Tugallash-confirm — meaning leaving and returning to the screen (a
+  // fresh mount clears `lastBarcode`) left no way back to an
+  // already-received pallet's sticker short of finishing the serial. Mirrors
+  // `expandedCompleted` below — same toggle-one-at-a-time pattern Window 2
+  // already uses for the identical "show this serial's pallets" content.
+  const [expandedPallets, setExpandedPallets] = useState<string | null>(null)
 
   function typeName(id: string) {
     return productTypes.find((t) => t.id === id)?.name ?? id
@@ -182,6 +190,12 @@ export function OmborTayyorTab() {
         cycle_no: serial.activeCycle,
         status: 'final',
         final_loss_pct: computeFinalLossPct(serial.sent, serial.received),
+        // §5.3 "Ombor printing gaps": the real completion-time signal Window
+        // 2's newest-first sort needs (useMoykaOutput.ts) — this upsert only
+        // ever fires from this one Tugallash click, so it's always a genuine
+        // finalization moment, not a value that needs separate "don't
+        // overwrite on update" handling.
+        finalized_at: new Date().toISOString(),
       },
       { onConflict: 'serial,cycle_no' },
     )
@@ -264,6 +278,23 @@ export function OmborTayyorTab() {
             {s.excess > 0 && (
               <div className="mt-2">
                 <StatusNote tone="pending">Ortiqcha: +{s.excess.toLocaleString()} kg</StatusNote>
+              </div>
+            )}
+
+            {/* §5.3 "Ombor printing gaps": every already-received pallet for
+                this in-progress serial, reprintable, independent of the
+                Tugallash-confirm flow below — the same palletList() helper
+                that flow already used, just no longer gated behind it. */}
+            {s.pallets.length > 0 && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setExpandedPallets(expandedPallets === s.serial ? null : s.serial)}
+                  className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                >
+                  Qabul qilingan palletlar ({s.pallets.length}) {expandedPallets === s.serial ? '▲' : '▼'}
+                </button>
+                {expandedPallets === s.serial && palletList(s.serial, s.type_id, s.owner_id, s.pallets)}
               </div>
             )}
 

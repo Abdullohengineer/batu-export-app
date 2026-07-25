@@ -50,10 +50,13 @@ export interface CompletedCycle {
   lossPct: number // locked wash_cycles.final_loss_pct, floored at 0 (see tayyorCompletion.ts)
   excess: number // Ortiqcha — max(0, received − sent); picks the badge treatment
   pallets: FinishedPallet[]
-  lastReceivedDate: string | null // max finished_pallets.received_date — wash_cycles has no
-  // finalized_at timestamp (see DECISIONS "Tayyor Mahsulot completion"), so the last receipt
-  // date is the closest real signal for "when this cycle was completed"; used to sort
-  // Window 2 newest-first (DECISIONS "History list ordering", "Universal sort rule").
+  lastReceivedDate: string | null // max finished_pallets.received_date — used as a fallback sort
+  // key (below) for cycles finalized before wash_cycles.finalized_at existed.
+  finalizedAt: string | null // §5.3 "Ombor printing gaps": wash_cycles.finalized_at, set at the
+  // actual Tugallash moment (0032_wash_cycles_finalized_at.sql) — the real signal for "when this
+  // cycle was completed", used to sort Window 2 newest-first (DECISIONS "History list ordering",
+  // "Universal sort rule"). Null for any cycle finalized before that column existed; the sort
+  // below falls back to lastReceivedDate for those rather than treating them as infinitely old.
 }
 
 // §5.3 data: serials sent to Moyka (Step 5) split into two windows — active
@@ -82,7 +85,7 @@ export function useMoykaOutput() {
       const [{ data: sends }, { data: pallets }, { data: cycles }] = await Promise.all([
         supabase.from('moyka_sends').select('serial, qty_kg, sent_date, wash_cycle'),
         supabase.from('finished_pallets').select('barcode2, serial, wash_cycle, calibre_id, weight_kg, received_date, status'),
-        supabase.from('wash_cycles').select('serial, cycle_no, status, final_loss_pct'),
+        supabase.from('wash_cycles').select('serial, cycle_no, status, final_loss_pct, finalized_at'),
       ])
 
       const serialList = [...new Set((sends ?? []).map((s) => s.serial))]
@@ -146,11 +149,13 @@ export function useMoykaOutput() {
       // once the serial has moved on to a re-wash cycle.
       const finalCycleByKey = new Map((cycles ?? []).filter((c) => c.status === 'final').map((c) => [`${c.serial}:${c.cycle_no}`, c]))
       const lossPctBySerial = new Map<string, number>()
+      const finalizedAtBySerial = new Map<string, string | null>()
       const finalizedSerials = new Set<string>()
       for (const serial of serialList) {
         const cycle = finalCycleByKey.get(`${serial}:${cycleOf(serial)}`)
         if (cycle) {
           lossPctBySerial.set(serial, cycle.final_loss_pct ?? 0)
+          finalizedAtBySerial.set(serial, cycle.finalized_at)
           finalizedSerials.add(serial)
         }
       }
@@ -247,6 +252,7 @@ export function useMoykaOutput() {
             lossPct: lossPctBySerial.get(serial) ?? 0,
             excess: ortiqcha(base.sent, base.received),
             lastReceivedDate: base.lastReceivedDate,
+            finalizedAt: finalizedAtBySerial.get(serial) ?? null,
           }
         })
         .filter((c): c is CompletedCycle => c !== null)
@@ -256,7 +262,14 @@ export function useMoykaOutput() {
       // here, at the shared hook, so both consumers of `serials`
       // (§5.2 Window 2 and §5.3 Window 1 — section mirroring) inherit it.
       setSerials(sortByDateDesc(combined, (s) => s.lastActivityDate))
-      setCompleted(sortByDateDesc(completedRows, (c) => c.lastReceivedDate))
+      // §5.3 "Ombor printing gaps": finalizedAt (the real Tugallash moment,
+      // 0032_wash_cycles_finalized_at.sql) is the correct sort key — the old
+      // lastReceivedDate proxy could put a just-finished serial below one
+      // finalized earlier but with a more recently-received pallet. Falls
+      // back to lastReceivedDate only for cycles finalized before that
+      // column existed (null finalizedAt), so already-sorted older rows
+      // don't all collapse to "oldest possible" the day this ships.
+      setCompleted(sortByDateDesc(completedRows, (c) => c.finalizedAt ?? c.lastReceivedDate))
     } finally {
       setLoading(false)
     }

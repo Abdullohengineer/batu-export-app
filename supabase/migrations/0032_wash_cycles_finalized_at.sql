@@ -1,0 +1,16 @@
+-- §5.3 "Ombor printing gaps": Tayyor Mahsulot Window 2 (Tugallangan) sorts
+-- newest-first, but wash_cycles had no timestamp recording when a cycle
+-- actually became 'final' (Tugallash click) — only `voided_at`, for the
+-- unrelated re-wash-voiding event. The existing sort used the last
+-- finished_pallets.received_date as a proxy, which can be well before the
+-- actual Tugallash moment (pallets received over several days, finalized
+-- later) — a just-finished serial with an older last-pallet date would
+-- sort below one finalized earlier but with a more recent last pallet.
+--
+-- Nullable, no backfill: there is no historical record of when the 20
+-- currently-final rows actually finalized, so backfilling would only be
+-- able to fake the same lastReceivedDate proxy already in use — the
+-- application code instead falls back to that proxy for any row where
+-- this is null (see useMoykaOutput.ts), and every new Tugallash from here
+-- on gets the real signal.
+alter table wash_cycles add column finalized_at timestamptz;

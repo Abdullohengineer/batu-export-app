@@ -124,6 +124,16 @@ export function OmborChiqimTab() {
     setScanError(null)
     if (!barcode2) return false
 
+    // Print legibility fix (DECISIONS.md "Barcode print legibility"):
+    // printed labels now encode barcode2 with the constant "PLT-" prefix
+    // dropped, for bar density — every finished_pallets.barcode2 row
+    // still has the full prefix (FinishedReceiptForm.tsx's sole mint
+    // point), so a scan/manual-entry value missing it is normalized back
+    // before any lookup. Backward-compatible: an already-printed full-
+    // value label, or manual entry with the prefix typed in, still
+    // matches as-is.
+    if (!barcode2.startsWith('PLT-')) barcode2 = `PLT-${barcode2}`
+
     const { data: pallet } = await supabase
       .from('finished_pallets')
       .select('barcode2, type_id, calibre_id, weight_kg, status, serial')

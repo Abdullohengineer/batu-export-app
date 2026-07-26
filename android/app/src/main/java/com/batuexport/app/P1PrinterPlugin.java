@@ -381,12 +381,38 @@ public class P1PrinterPlugin extends Plugin {
         String clientLine = ellipsize(clientName, CLIENT_NAME_MAX_CHARS);
 
         // 40x30mm, no rotation — the stock is already landscape at these
-        // dimensions. Left-aligned, top to bottom: bars (with LPAPI's own
-        // built-in human-readable text under them) · serial · type+calibre ·
-        // weight · client. See DECISIONS.md for the full layout rationale
-        // and how this differs from the barcodeLabel.ts web preview.
+        // dimensions. Left-aligned, top to bottom: bars · full-value text
+        // (own drawText, not LPAPI's auto-text — see below) · serial ·
+        // type+calibre · weight · client. See DECISIONS.md for the full
+        // layout rationale and how this differs from the barcodeLabel.ts
+        // web preview.
+        //
+        // Print legibility fix (DECISIONS.md "Barcode print legibility"):
+        // the encoded value drops the constant "PLT-" prefix (4 of 19
+        // chars) — on a fixed 40mm label, growing the quiet zone AND
+        // thickening bars only both fit if content shrinks first; "PLT-"
+        // is a fixed literal on every barcode2 ever minted
+        // (FinishedReceiptForm.tsx's sole mint point), so
+        // OmborChiqimTab.processBarcode re-prepends it before any DB
+        // lookup — this is purely a print-side encoding change, it never
+        // touches what's actually stored or how a scan resolves.
+        String barcodeEncoded = barcode.startsWith("PLT-") ? barcode.substring(4) : barcode;
+
         api.startJob(LABEL_WIDTH_MM, LABEL_HEIGHT_MM, 0);
-        api.draw1DBarcode(barcode, LPAPI.BarcodeType.CODE128, 2, 1.5, 36, 10, 2.5);
+        // x=3/width=34 (was x=2/width=36): quiet zone grows 2mm -> 3mm on
+        // each side. textHeight=0 attempts to suppress LPAPI's own
+        // auto-rendered readable text, which would otherwise show the
+        // shortened barcodeEncoded value — UNVERIFIED, textHeight has no
+        // documented "hide" behavior (unlike drawText's width/height,
+        // where 0 means auto-size, not hide). First thing to check on the
+        // real print test: if a second, short text line still appears
+        // under the bars, this fell back to some auto-sized default
+        // instead of actually hiding it.
+        api.draw1DBarcode(barcodeEncoded, LPAPI.BarcodeType.CODE128, 3, 1.5, 34, 7.5, 0);
+        // Explicit full-value text where LPAPI's own auto-text used to be
+        // — the human-readable line stays the complete "PLT-..." ID
+        // regardless of what the bars themselves encode.
+        api.drawText(barcode, 3, 9, 34, 3, 2.3);
         api.drawText(serial, 2, 13, 36, 4, 3.2);
         api.drawText(typeLine, 2, 17.3, 36, 3.5, 2.6);
         api.drawText(weightLine, 2, 21, 36, 4.2, 3.4);

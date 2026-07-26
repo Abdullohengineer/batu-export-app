@@ -376,14 +376,25 @@ public class P1PrinterPlugin extends Plugin {
             return;
         }
 
-        String typeLine = isBlank(calibreLabel) ? typeName : typeName + " · " + calibreLabel;
-        String weightLine = formatWeight(weightKg) + " kg";
+        String weightStr = formatWeight(weightKg) + " kg";
+        // Barcode #2: type + abbreviated calibre + weight on one line (KN /
+        // K1-K8, not the full "Konditirskiy" / "Kalibr N" word -- see
+        // abbreviateCalibre). Barcode #1 has no calibre yet, so it's just
+        // type + weight. Type is kept (not dropped) per 2026-07-26 decision
+        // — see DECISIONS.md.
+        String infoLine = isBlank(calibreLabel)
+            ? typeName + " · " + weightStr
+            : typeName + " · " + abbreviateCalibre(calibreLabel) + " · " + weightStr;
         String clientLine = ellipsize(clientName, CLIENT_NAME_MAX_CHARS);
 
         // 40x30mm, no rotation — the stock is already landscape at these
-        // dimensions. Left-aligned, top to bottom: QR · full-value text ·
-        // serial · type+calibre · weight · client. See DECISIONS.md for the
-        // full layout rationale and how this differs from the
+        // dimensions. QR centered and dominant (16mm, the label's
+        // functional core), 3 left-aligned lines below it: the barcode
+        // value itself (fallback if scanning fails) · type+calibre+weight ·
+        // client. The parent serial is dropped from the printed text
+        // entirely (2026-07-26 redesign) -- it still lives inside the
+        // encoded QR value below for lookups, unchanged. See DECISIONS.md
+        // for the full layout rationale and how this differs from the
         // barcodeLabel.ts web preview.
         //
         // Barcode format: CODE_128 -> QR (DECISIONS.md same title). The
@@ -409,22 +420,24 @@ public class P1PrinterPlugin extends Plugin {
         // (MainActivity.java), which draws a SQUARE box: one call subtracts
         // the same `qrcodeWidth` from both the label's width and height when
         // computing x/y, which only makes sense if one size parameter drives
-        // both dimensions. 10mm square, left-aligned at the old bars'
-        // x-position — comfortably larger real module pitch than the 1D fix
-        // ever reached (short encoded value stays in QR Version 1 territory
-        // at this size), while leaving the same vertical budget the label
-        // already had room for. Error-correction level left at the library
+        // both dimensions. 16mm square (up from 10mm, 2026-07-26 redesign —
+        // "bigger QR" was the explicit ask, it's the functional core of the
+        // label), centered horizontally. Even larger real module pitch than
+        // before; vertical room for it came from dropping the serial line
+        // and merging weight into the type/calibre line, not from shrinking
+        // anything else. Error-correction level left at the library
         // default: setDrawParam's ErrorCorrectionLevel constants exist on
         // the jar but have no real usage example anywhere in the demo to
         // verify the calling convention against (unlike draw2DQRCode
         // itself) — not guessing at an unverified native call when a
-        // reasonable default already exists.
-        api.draw2DQRCode(barcodeEncoded, 3, 1.5, 10);
-        api.drawText(barcode, 2, 12, 36, 2.8, 2.2);
-        api.drawText(serial, 2, 15, 36, 3.4, 2.8);
-        api.drawText(typeLine, 2, 18.6, 36, 3.2, 2.5);
-        api.drawText(weightLine, 2, 22, 36, 3.6, 3.0);
-        api.drawText(clientLine, 2, 25.8, 36, 3, 2.3);
+        // reasonable default already exists. Same reasoning applies to
+        // MARGIN (no explicit quiet zone set here either) — generous
+        // surrounding blank space (1.5mm above, 1.5mm before the text below)
+        // substitutes for it, same tradeoff as before, just roomier.
+        api.draw2DQRCode(barcodeEncoded, (LABEL_WIDTH_MM - 16) / 2, 1.5, 16);
+        api.drawText(barcode, 2, 19.0, 36, 2.8, 2.2);
+        api.drawText(infoLine, 2, 22.3, 36, 3.2, 2.5);
+        api.drawText(clientLine, 2, 26.0, 36, 3.0, 2.3);
 
         pendingPrintCall = call;
         printSettled.set(false);
@@ -474,6 +487,18 @@ public class P1PrinterPlugin extends Plugin {
             return String.format(Locale.US, "%,.0f", kg);
         }
         return String.format(Locale.US, "%,.1f", kg);
+    }
+
+    // calibreLabel is "Kalibr N" or "Konditirskiy" (Sozlamalar-managed
+    // master data, calibres.label) -- abbreviate for print only, the full
+    // label is unchanged everywhere else in the app. Keep in sync with
+    // barcodeLabel.ts's abbreviateCalibre.
+    private String abbreviateCalibre(String label) {
+        if ("Konditirskiy".equals(label)) return "KN";
+        if (label != null && label.matches("^Kalibr \\d+$")) {
+            return "K" + label.substring("Kalibr ".length());
+        }
+        return label;
     }
 
     // Maps LPAPI's 25 PrintFailReason values down to the 4 the UI treats

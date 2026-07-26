@@ -25,33 +25,35 @@ import QRCode from 'qrcode'
 const LABEL_MM = { w: 40, h: 30 }
 
 // Detonger P1 is a 203dpi thermal printer. 203 dots / 25.4mm = 7.992 dots/mm,
-// so the native label grid is round(50 × 7.992) × round(30 × 7.992) =
-// 400 × 240 dots (1 device dot per pixel at scale 1).
+// so the native label grid is round(40 × 7.992) × round(30 × 7.992) =
+// 320 × 240 dots (1 device dot per pixel at scale 1).
 const DPI = 203
 const DOTS_PER_MM = DPI / 25.4
-const NATIVE_W = Math.round(LABEL_MM.w * DOTS_PER_MM) // 400
+const NATIVE_W = Math.round(LABEL_MM.w * DOTS_PER_MM) // 320
 const NATIVE_H = Math.round(LABEL_MM.h * DOTS_PER_MM) // 240
 
-// Supersample by an INTEGER factor so WePrint downsamples back to the 400×240
+// Supersample by an INTEGER factor so WePrint downsamples back to the 320×240
 // native grid cleanly (no fractional resampling that would misalign barcode
-// modules and hurt scannability). 2× → 800×480 export; better text/edge
-// quality than rendering at native 400×240 directly.
+// modules and hurt scannability). 2× → 640×480 export; better text/edge
+// quality than rendering at native 320×240 directly.
 const SCALE = 2
-const CANVAS_W = NATIVE_W * SCALE // 800
+const CANVAS_W = NATIVE_W * SCALE // 640
 const CANVAS_H = NATIVE_H * SCALE // 480
 
-// Renders a QR symbol to its own offscreen canvas, fixed square size (10mm —
-// QR_SIZE_PX below), matching the target the native plugin uses. Unlike the
-// old 1D `renderBars`, no shrink-to-fit loop or separate outer-quiet-zone
-// budget is needed: `qrcode` picks whatever version/module-count the content
-// needs automatically at a fixed pixel footprint (a longer value makes
-// modules smaller, never makes the whole symbol wider), and `margin` is the
-// QR's own standard 4-module quiet zone (ISO/IEC 18004) baked into that
-// fixed footprint — the "step module width down to preserve a reserved
-// margin" problem was 1D-specific. Centering a 160px QR in this file's
-// 640px-wide canvas (renderLabel below) already leaves generous margin from
-// the label's own cut edge with no extra bookkeeping required.
-const QR_SIZE_PX = 160 // 10mm at this file's SCALE/DPI — see renderLabel's own math
+// Renders a QR symbol to its own offscreen canvas, fixed square size (16mm —
+// QR_SIZE_PX below, up from 10mm in the 2026-07-26 layout redesign: "bigger
+// QR" was the explicit ask, matching P1PrinterPlugin.java's own 16mm),
+// matching the target the native plugin uses. Unlike the old 1D
+// `renderBars`, no shrink-to-fit loop or separate outer-quiet-zone budget is
+// needed: `qrcode` picks whatever version/module-count the content needs
+// automatically at a fixed pixel footprint (a longer value makes modules
+// smaller, never makes the whole symbol wider), and `margin` is the QR's own
+// standard 4-module quiet zone (ISO/IEC 18004) baked into that fixed
+// footprint — the "step module width down to preserve a reserved margin"
+// problem was 1D-specific. Centering a 256px QR in this file's 640px-wide
+// canvas (renderLabel below) already leaves generous margin from the
+// label's own cut edge with no extra bookkeeping required.
+const QR_SIZE_PX = 256 // 16mm at this file's SCALE/DPI — see renderLabel's own math
 async function renderQr(value: string): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas')
   await QRCode.toCanvas(canvas, value, {
@@ -94,14 +96,14 @@ async function renderLabel(encodedValue: string, displayValue: string, fields: s
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
   ctx.fillStyle = '#000000'
-  ctx.textAlign = 'center'
+  ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
 
   const pad = 8 * SCALE
   const maxTextW = CANVAS_W - 2 * pad
 
-  // 1) QR — fixed square size (QR_SIZE_PX), drawn 1:1 (no rescale, keeps
-  //    modules crisp), centered horizontally.
+  // 1) QR — dominant element (QR_SIZE_PX, the label's functional core),
+  //    drawn 1:1 (no rescale, keeps modules crisp), centered horizontally.
   const qr = await renderQr(encodedValue)
   const qrX = (CANVAS_W - qr.width) / 2
   const qrY = pad
@@ -109,19 +111,23 @@ async function renderLabel(encodedValue: string, displayValue: string, fields: s
   ctx.drawImage(qr, qrX, qrY)
   ctx.imageSmoothingEnabled = true
 
-  // 2) Human-readable text, large, under the QR (auto-shrunk to fit width).
-  let y = qrY + qr.height + 4 * SCALE
-  const codeFont = fitFont(ctx, displayValue, 30 * SCALE, 'bold', maxTextW)
+  // 2) Human-readable text, large, left-aligned under the QR (auto-shrunk
+  //    to fit width) — matches P1PrinterPlugin.java's left-aligned text
+  //    (2026-07-26 redesign switched this from centered to left, so native
+  //    print and web preview read the same way).
+  let y = qrY + qr.height + 6 * SCALE
+  const codeFont = fitFont(ctx, displayValue, 22 * SCALE, 'bold', maxTextW)
   ctx.font = `bold ${codeFont}px monospace`
-  ctx.fillText(displayValue, CANVAS_W / 2, y)
+  ctx.fillText(displayValue, pad, y)
   y += codeFont + 6 * SCALE
 
-  // 3) Small fields, one per line. Larger-over-more: ellipsize, don't shrink.
+  // 3) Small fields, one per line, left-aligned. Larger-over-more:
+  //    ellipsize, don't shrink.
   const smallFont = 16 * SCALE
   ctx.font = `${smallFont}px sans-serif`
   const lineH = smallFont + 3 * SCALE
   for (const field of fields) {
-    ctx.fillText(ellipsize(ctx, field, maxTextW), CANVAS_W / 2, y)
+    ctx.fillText(ellipsize(ctx, field, maxTextW), pad, y)
     y += lineH
   }
 
@@ -144,9 +150,8 @@ export interface Barcode1LabelData {
 
 export function renderBarcode1Label(data: Barcode1LabelData): Promise<Blob> {
   return renderLabel(data.serial, data.serial, [
-    data.type,
+    `${data.type} · ${data.weightKg.toLocaleString()} kg`,
     data.owner,
-    `${data.weightKg.toLocaleString()} kg`,
     data.date,
   ])
 }
@@ -176,13 +181,26 @@ export function stripBarcode2Prefix(barcode2: string): string {
   return barcode2.startsWith('PLT-') ? barcode2.slice(4) : barcode2
 }
 
+// calibre is "Kalibr N" or "Konditirskiy" (Sozlamalar-managed master data,
+// calibres.label — see useCalibres.ts) — abbreviate for the printed
+// label/preview only; the full label is unchanged everywhere else in the
+// app (reports, dropdowns, etc). Shared with Barcode2Display.tsx's own
+// on-screen summary row for the same reason stripBarcode2Prefix is: one
+// definition, so every place calibre appears on a label-adjacent surface
+// agrees. Keep in sync with P1PrinterPlugin.java's abbreviateCalibre.
+export function abbreviateCalibre(label: string): string {
+  if (label === 'Konditirskiy') return 'KN'
+  const match = label.match(/^Kalibr (\d+)$/)
+  return match ? `K${match[1]}` : label
+}
+
 // Displayed text is always the full barcode2, unchanged — only the encoded
-// QR value drops the prefix (stripBarcode2Prefix above).
+// QR value drops the prefix (stripBarcode2Prefix above). The parent serial
+// is dropped from the printed fields entirely (2026-07-26 redesign) — it
+// stays inside the encoded QR value above for lookups, unchanged.
 export function renderBarcode2Label(data: Barcode2LabelData): Promise<Blob> {
   return renderLabel(stripBarcode2Prefix(data.barcode2), data.barcode2, [
-    data.serial,
-    `${data.type} · ${data.calibre}`,
-    `${data.weightKg.toLocaleString()} kg`,
+    `${data.type} · ${abbreviateCalibre(data.calibre)} · ${data.weightKg.toLocaleString()} kg`,
     data.owner,
   ])
 }

@@ -1,11 +1,19 @@
-import JsBarcode from 'jsbarcode'
+import QRCode from 'qrcode'
 
-// Renders Barcode #1/#2 (SPEC §2.2, §5.1, §5.3) as real, scannable Code128
-// label PNGs. Generic composer + one thin wrapper per barcode kind.
+// Renders Barcode #1/#2 (SPEC §2.2, §5.1, §5.3) as real, scannable QR label
+// PNGs. Generic composer + one thin wrapper per barcode kind.
+//
+// 🔒 Switched from CODE_128 to QR (DECISIONS.md "Barcode format: CODE_128 ->
+// QR") — printed 1D bars at 40x30mm stayed too dense to resolve with a phone
+// camera even after a dedicated quiet-zone/module-width pass; QR fits the
+// same data in a small square with built-in error correction and reads at
+// any angle. `jsbarcode` is removed from package.json entirely — this was
+// its only remaining call site alongside Barcode1Display.tsx/
+// Barcode2Display.tsx's own on-screen renders (both switched too).
 //
 // This is a PREVIEW only as of the P1 native plugin integration — the native
 // Android build prints via P1PrinterPlugin.java drawing directly with LPAPI
-// (startJob/draw1DBarcode/drawText/commitJob), not this rasterised PNG. The
+// (startJob/draw2DQRCode/drawText/commitJob), not this rasterised PNG. The
 // two layouts are maintained separately and can drift (see DECISIONS.md);
 // this one is still what the web build's share/download fallback uses, and
 // what renders on screen everywhere.
@@ -32,29 +40,26 @@ const SCALE = 2
 const CANVAS_W = NATIVE_W * SCALE // 800
 const CANVAS_H = NATIVE_H * SCALE // 480
 
-// Renders Code128 bars to their own offscreen canvas (no built-in text — we
-// draw the human-readable line ourselves so we control layout). Picks the
-// LARGEST integer module width whose natural barcode fits within maxW, so the
-// composite never has to scale the bars down (nearest-neighbour downscaling
-// destroys thin Code128 bars and makes them unscannable — the reason a naive
-// fit-by-drawImage broke Barcode #2 decoding). Short codes (#1 serial) keep
-// the ideal 4px/2-native-dot module; longer codes (#2 PLT-…) step down to
-// whatever fits, still rendered crisply at native size.
-function renderBars(value: string, maxW: number): HTMLCanvasElement {
-  const ideal = 2 * SCALE // 4px = 2 native dots = 0.25mm
-  for (let mw = ideal; mw >= 1; mw--) {
-    const c = document.createElement('canvas')
-    JsBarcode(c, value, {
-      format: 'CODE128',
-      displayValue: false,
-      width: mw,
-      height: 62 * SCALE,
-      margin: 0, // our own quiet zones on the composite canvas
-    })
-    if (c.width <= maxW || mw === 1) return c
-  }
-  // unreachable, but satisfies the type checker
-  return document.createElement('canvas')
+// Renders a QR symbol to its own offscreen canvas, fixed square size (10mm —
+// QR_SIZE_PX below), matching the target the native plugin uses. Unlike the
+// old 1D `renderBars`, no shrink-to-fit loop or separate outer-quiet-zone
+// budget is needed: `qrcode` picks whatever version/module-count the content
+// needs automatically at a fixed pixel footprint (a longer value makes
+// modules smaller, never makes the whole symbol wider), and `margin` is the
+// QR's own standard 4-module quiet zone (ISO/IEC 18004) baked into that
+// fixed footprint — the "step module width down to preserve a reserved
+// margin" problem was 1D-specific. Centering a 160px QR in this file's
+// 640px-wide canvas (renderLabel below) already leaves generous margin from
+// the label's own cut edge with no extra bookkeeping required.
+const QR_SIZE_PX = 160 // 10mm at this file's SCALE/DPI — see renderLabel's own math
+async function renderQr(value: string): Promise<HTMLCanvasElement> {
+  const canvas = document.createElement('canvas')
+  await QRCode.toCanvas(canvas, value, {
+    width: QR_SIZE_PX,
+    margin: 4,
+    errorCorrectionLevel: 'Q', // warehouse label, not a phone screen — tolerate wear/dirt
+  })
+  return canvas
 }
 
 function fitFont(ctx: CanvasRenderingContext2D, text: string, basePx: number, weight: string, maxW: number) {
@@ -74,10 +79,12 @@ function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxW: number): s
   return `${t}…`
 }
 
-// Generic 50×30mm label: Code128 bars for `code`, the human-readable `code`
-// text large under the bars (auto-shrunk to fit), then small `fields` lines.
-// Reused by both Barcode #1 (Step 3) and #2 (this step).
-function renderLabel(code: string, fields: string[]): Promise<Blob> {
+// Generic 40×30mm label: a QR encoding `encodedValue`, the human-readable
+// `displayValue` text large under it (auto-shrunk to fit — usually the same
+// as encodedValue, but Barcode #2 encodes a shortened form while still
+// displaying the full PLT-... id, see renderBarcode2Label), then small
+// `fields` lines. Reused by both Barcode #1 (Step 3) and #2 (this step).
+async function renderLabel(encodedValue: string, displayValue: string, fields: string[]): Promise<Blob> {
   const canvas = document.createElement('canvas')
   canvas.width = CANVAS_W
   canvas.height = CANVAS_H
@@ -91,24 +98,22 @@ function renderLabel(code: string, fields: string[]): Promise<Blob> {
   ctx.textBaseline = 'top'
 
   const pad = 8 * SCALE
-  const quietZone = 10 * SCALE
   const maxTextW = CANVAS_W - 2 * pad
 
-  // 1) Bars — module width already chosen so the natural barcode fits the
-  //    quiet zones; drawn 1:1 (no rescale) to keep the bars crisp/scannable.
-  const maxBarsW = CANVAS_W - 2 * quietZone
-  const bars = renderBars(code, maxBarsW)
-  const barsX = (CANVAS_W - bars.width) / 2
-  const barsY = pad
+  // 1) QR — fixed square size (QR_SIZE_PX), drawn 1:1 (no rescale, keeps
+  //    modules crisp), centered horizontally.
+  const qr = await renderQr(encodedValue)
+  const qrX = (CANVAS_W - qr.width) / 2
+  const qrY = pad
   ctx.imageSmoothingEnabled = false
-  ctx.drawImage(bars, barsX, barsY)
+  ctx.drawImage(qr, qrX, qrY)
   ctx.imageSmoothingEnabled = true
 
-  // 2) Human-readable code, large, under the bars (auto-shrunk to fit width).
-  let y = barsY + bars.height + 4 * SCALE
-  const codeFont = fitFont(ctx, code, 30 * SCALE, 'bold', maxTextW)
+  // 2) Human-readable text, large, under the QR (auto-shrunk to fit width).
+  let y = qrY + qr.height + 4 * SCALE
+  const codeFont = fitFont(ctx, displayValue, 30 * SCALE, 'bold', maxTextW)
   ctx.font = `bold ${codeFont}px monospace`
-  ctx.fillText(code, CANVAS_W / 2, y)
+  ctx.fillText(displayValue, CANVAS_W / 2, y)
   y += codeFont + 6 * SCALE
 
   // 3) Small fields, one per line. Larger-over-more: ellipsize, don't shrink.
@@ -138,7 +143,7 @@ export interface Barcode1LabelData {
 }
 
 export function renderBarcode1Label(data: Barcode1LabelData): Promise<Blob> {
-  return renderLabel(data.serial, [
+  return renderLabel(data.serial, data.serial, [
     data.type,
     data.owner,
     `${data.weightKg.toLocaleString()} kg`,
@@ -148,10 +153,6 @@ export function renderBarcode1Label(data: Barcode1LabelData): Promise<Blob> {
 
 // --- Barcode #2 (physical pallet, §2.2/§5.3). Value == the sticker ID. ---
 // §2.2 encodes: sticker ID + parent seriya + turi + kalibr + og'irlik + egasi.
-// NOTE: the sticker ID (PLT-<serial>-<calibre>-<seq>) is longer than a serial,
-// so renderBars steps its module width down to fit 50×30mm natively (denser
-// but crisp/scannable — verified by decode). At very large per-serial+calibre
-// pallet counts the seq could grow the code further; flagged in DECISIONS.
 export interface Barcode2LabelData {
   barcode2: string // sticker ID, PLT-<serial>-<calibre>-<seq>
   serial: string // parent seriya
@@ -161,8 +162,24 @@ export interface Barcode2LabelData {
   owner: string // Egasi / Buyurtmachi
 }
 
+// Shared with Barcode2Display.tsx's own on-screen QR render (a second,
+// separate rendering path — see that file) so the "PLT-" strip has exactly
+// one definition. Matches P1PrinterPlugin.java's drawAndCommit exactly, and
+// OmborChiqimTab.processBarcode's re-prepend on scan — kept from the
+// CODE_128 density fix even though QR doesn't need it for legibility,
+// specifically so preview and print agree on ONE encoded value (this task's
+// own requirement) rather than reintroducing the drift that existed before
+// this pass. "PLT-" is a fixed literal on every barcode2 ever minted
+// (FinishedReceiptForm.tsx's sole mint point), so stripping it is
+// unambiguous and lossless.
+export function stripBarcode2Prefix(barcode2: string): string {
+  return barcode2.startsWith('PLT-') ? barcode2.slice(4) : barcode2
+}
+
+// Displayed text is always the full barcode2, unchanged — only the encoded
+// QR value drops the prefix (stripBarcode2Prefix above).
 export function renderBarcode2Label(data: Barcode2LabelData): Promise<Blob> {
-  return renderLabel(data.barcode2, [
+  return renderLabel(stripBarcode2Prefix(data.barcode2), data.barcode2, [
     data.serial,
     `${data.type} · ${data.calibre}`,
     `${data.weightKg.toLocaleString()} kg`,

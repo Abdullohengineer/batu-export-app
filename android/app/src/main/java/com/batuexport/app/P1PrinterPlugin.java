@@ -381,42 +381,50 @@ public class P1PrinterPlugin extends Plugin {
         String clientLine = ellipsize(clientName, CLIENT_NAME_MAX_CHARS);
 
         // 40x30mm, no rotation — the stock is already landscape at these
-        // dimensions. Left-aligned, top to bottom: bars · full-value text
-        // (own drawText, not LPAPI's auto-text — see below) · serial ·
-        // type+calibre · weight · client. See DECISIONS.md for the full
-        // layout rationale and how this differs from the barcodeLabel.ts
-        // web preview.
+        // dimensions. Left-aligned, top to bottom: QR · full-value text ·
+        // serial · type+calibre · weight · client. See DECISIONS.md for the
+        // full layout rationale and how this differs from the
+        // barcodeLabel.ts web preview.
         //
-        // Print legibility fix (DECISIONS.md "Barcode print legibility"):
-        // the encoded value drops the constant "PLT-" prefix (4 of 19
-        // chars) — on a fixed 40mm label, growing the quiet zone AND
-        // thickening bars only both fit if content shrinks first; "PLT-"
-        // is a fixed literal on every barcode2 ever minted
-        // (FinishedReceiptForm.tsx's sole mint point), so
-        // OmborChiqimTab.processBarcode re-prepends it before any DB
-        // lookup — this is purely a print-side encoding change, it never
-        // touches what's actually stored or how a scan resolves.
+        // Barcode format: CODE_128 -> QR (DECISIONS.md same title). The
+        // print-legibility fix (quiet zone + module width, prior entry)
+        // measurably improved density but real printed 1D bars still failed
+        // to scan reliably at 40x30mm — QR fits the same content in a small
+        // square with built-in error correction and reads at any angle,
+        // fixing the actual root cause instead of another density tweak.
+        // Encoded value still drops the constant "PLT-" prefix (kept from
+        // the prior fix, not reintroduced drift — see barcodeLabel.ts's
+        // stripBarcode2Prefix, the same transform, so preview and print
+        // agree on one encoded value) — OmborChiqimTab.processBarcode
+        // re-prepends it before any DB lookup; this is purely a print-side
+        // encoding change, it never touches what's actually stored or how
+        // a scan resolves.
         String barcodeEncoded = barcode.startsWith("PLT-") ? barcode.substring(4) : barcode;
 
         api.startJob(LABEL_WIDTH_MM, LABEL_HEIGHT_MM, 0);
-        // x=3/width=34 (was x=2/width=36): quiet zone grows 2mm -> 3mm on
-        // each side. textHeight=0 attempts to suppress LPAPI's own
-        // auto-rendered readable text, which would otherwise show the
-        // shortened barcodeEncoded value — UNVERIFIED, textHeight has no
-        // documented "hide" behavior (unlike drawText's width/height,
-        // where 0 means auto-size, not hide). First thing to check on the
-        // real print test: if a second, short text line still appears
-        // under the bars, this fell back to some auto-sized default
-        // instead of actually hiding it.
-        api.draw1DBarcode(barcodeEncoded, LPAPI.BarcodeType.CODE128, 3, 1.5, 34, 7.5, 0);
-        // Explicit full-value text where LPAPI's own auto-text used to be
-        // — the human-readable line stays the complete "PLT-..." ID
-        // regardless of what the bars themselves encode.
-        api.drawText(barcode, 3, 9, 34, 3, 2.3);
-        api.drawText(serial, 2, 13, 36, 4, 3.2);
-        api.drawText(typeLine, 2, 17.3, 36, 3.5, 2.6);
-        api.drawText(weightLine, 2, 21, 36, 4.2, 3.4);
-        api.drawText(clientLine, 2, 25.5, 36, 3, 2.3);
+        // draw2DQRCode(content, x, y, size) — confirmed against the real
+        // jar (javap on the concrete LPAPI class, not just the IAtBitmap
+        // interface, which only exposes an int-typed overload this plugin
+        // never calls) and against both real usages in the DothanTech demo
+        // (MainActivity.java), which draws a SQUARE box: one call subtracts
+        // the same `qrcodeWidth` from both the label's width and height when
+        // computing x/y, which only makes sense if one size parameter drives
+        // both dimensions. 10mm square, left-aligned at the old bars'
+        // x-position — comfortably larger real module pitch than the 1D fix
+        // ever reached (short encoded value stays in QR Version 1 territory
+        // at this size), while leaving the same vertical budget the label
+        // already had room for. Error-correction level left at the library
+        // default: setDrawParam's ErrorCorrectionLevel constants exist on
+        // the jar but have no real usage example anywhere in the demo to
+        // verify the calling convention against (unlike draw2DQRCode
+        // itself) — not guessing at an unverified native call when a
+        // reasonable default already exists.
+        api.draw2DQRCode(barcodeEncoded, 3, 1.5, 10);
+        api.drawText(barcode, 2, 12, 36, 2.8, 2.2);
+        api.drawText(serial, 2, 15, 36, 3.4, 2.8);
+        api.drawText(typeLine, 2, 18.6, 36, 3.2, 2.5);
+        api.drawText(weightLine, 2, 22, 36, 3.6, 3.0);
+        api.drawText(clientLine, 2, 25.8, 36, 3, 2.3);
 
         pendingPrintCall = call;
         printSettled.set(false);

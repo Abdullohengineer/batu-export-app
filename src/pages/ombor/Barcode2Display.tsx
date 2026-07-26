@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { renderBarcode2Label, stripBarcode2Prefix, type Barcode2LabelData } from '../../lib/barcodeLabel'
+import { renderBarcode2Label, stripBarcode2Prefix, abbreviateCalibre, type Barcode2LabelData } from '../../lib/barcodeLabel'
 import { P1Printer, isP1PrinterAvailable, printFailureMessage, pluginErrorMessage, type PrintLabelOptions } from '../../lib/p1Printer'
 import { PrinterStatus } from './PrinterStatus'
 
@@ -137,7 +137,7 @@ function Barcode2Label({ data, autoprint }: { data: Barcode2LabelData; autoprint
       <canvas ref={barcodeRef} className="mx-auto max-w-full" />
       <div className="font-mono text-lg font-bold tracking-wide text-slate-900">{data.barcode2}</div>
       <div className="mt-1 text-xs text-slate-600">
-        {data.serial} · {data.type} · {data.calibre} · {data.weightKg.toLocaleString()} kg · {data.owner}
+        {data.type} · {abbreviateCalibre(data.calibre)} · {data.weightKg.toLocaleString()} kg · {data.owner}
       </div>
 
       {nativeAvailable && (

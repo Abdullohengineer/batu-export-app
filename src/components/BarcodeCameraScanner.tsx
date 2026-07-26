@@ -85,11 +85,18 @@ const FEEDBACK_STYLES: Record<ScanFeedback['tone'], string> = {
 // real answer instead of surfacing it. If the device test shows native
 // chosen but still never decoding, forcing the ponyfill on native Android
 // specifically is the next, now well-targeted, fix.
+//
+// 🔒 qr_code added alongside code_128 (DECISIONS.md "Barcode format:
+// CODE_128 -> QR") — QR is the new target format (barcodeLabel.ts,
+// P1PrinterPlugin.java), but code_128 stays so any already-printed 1D
+// labels still on pallets keep scanning during the transition. Both native
+// BarcodeDetector and the zxing-wasm ponyfill support QR natively — no new
+// dependency, purely a formats-list addition.
 function createDetector(): Detector {
   const native = (window as unknown as { BarcodeDetector?: new (opts: { formats: string[] }) => Detector }).BarcodeDetector
   console.log('[BarcodeCameraScanner] detector path ->', native ? 'native BarcodeDetector' : 'ponyfill (zxing-wasm)')
   const Ctor = native ?? PonyfillBarcodeDetector
-  return new Ctor({ formats: ['code_128'] })
+  return new Ctor({ formats: ['code_128', 'qr_code'] })
 }
 
 const SCAN_INTERVAL_MS = 100 // ~10fps — matches the previous html5-qrcode `fps: 10`
@@ -217,16 +224,17 @@ export function BarcodeCameraScanner({
         <video ref={videoRef} className="block w-full" autoPlay muted playsInline />
         {/* Aiming guide — html5-qrcode's own `qrbox` drew this; lost when it
             was replaced by BarcodeDetector's plain <video> (see file header,
-            commit 755746c). Same 280:120 ratio as the old qrbox — wide for a
-            1D barcode, not square like a QR target. The huge spread
-            box-shadow dims everything outside the rectangle, the classic
-            scan-mask look, no clip-path/SVG needed. Decorative only: the
-            decoder below still reads the full frame — cropping to this
-            region would mean an extra canvas draw every ~100ms in the scan
-            loop (off limits, see file header) for a boundary the operator's
-            own aim already narrows in practice. */}
+            commit 755746c), restored square (DECISIONS.md "Barcode format:
+            CODE_128 -> QR") — the wide 280:120 rectangle was tuned for a 1D
+            barcode; QR is the new target format and needs a square target
+            instead. The huge spread box-shadow dims everything outside the
+            square, the classic scan-mask look, no clip-path/SVG needed.
+            Decorative only: the decoder below still reads the full frame —
+            cropping to this region would mean an extra canvas draw every
+            ~100ms in the scan loop (off limits, see file header) for a
+            boundary the operator's own aim already narrows in practice. */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="aspect-[280/120] w-[80%] max-w-[280px] rounded-md border-[3px] border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+          <div className="aspect-square w-[65%] max-w-[220px] rounded-md border-[3px] border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
         </div>
         {feedback && (
           <div

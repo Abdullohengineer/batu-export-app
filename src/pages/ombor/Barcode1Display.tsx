@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import JsBarcode from 'jsbarcode'
+import QRCode from 'qrcode'
 import { renderBarcode1Label, type Barcode1LabelData } from '../../lib/barcodeLabel'
 import { P1Printer, isP1PrinterAvailable, printFailureMessage, pluginErrorMessage, type PrintLabelOptions } from '../../lib/p1Printer'
 import { PrinterStatus } from './PrinterStatus'
 
 // Barcode #1 (SPEC §2.2, §5.1): renders the stored serial as a real,
-// scannable Code128 barcode on screen (readable directly off the display in
-// a pinch). Same native-vs-web print split as Barcode2Display (requirement
+// scannable QR code on screen (DECISIONS.md "Barcode format: CODE_128 ->
+// QR"). Same native-vs-web print split as Barcode2Display (requirement
 // F treats both the same way — Ombor prints and sticks both on the same
 // floor with the same printer, so they shouldn't behave differently): native
 // Android prints via P1PrinterPlugin.java at 40×30mm, web keeps the original
@@ -51,7 +51,7 @@ function toPrintOptions(data: Barcode1LabelData): PrintLabelOptions {
 }
 
 function Barcode1Label({ data, autoprint }: { data: Barcode1LabelData; autoprint: boolean }) {
-  const barcodeRef = useRef<SVGSVGElement>(null)
+  const barcodeRef = useRef<HTMLCanvasElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [printed, setPrinted] = useState(false)
@@ -59,16 +59,15 @@ function Barcode1Label({ data, autoprint }: { data: Barcode1LabelData; autoprint
   const nativeAvailable = isP1PrinterAvailable()
   const autoprintedFor = useRef<string | null>(null)
 
-  // On-screen scannable bars (SVG so it stays crisp at any display size).
+  // On-screen scannable QR — no "PLT-" prefix to strip here (that's only a
+  // Barcode #2 sticker-ID convention; the serial itself has none).
   useEffect(() => {
     if (!barcodeRef.current) return
-    JsBarcode(barcodeRef.current, data.serial, {
-      format: 'CODE128',
-      displayValue: false,
-      width: 2,
-      height: 60,
-      margin: 8,
-    })
+    QRCode.toCanvas(barcodeRef.current, data.serial, {
+      width: 180,
+      margin: 4,
+      errorCorrectionLevel: 'Q',
+    }).catch(() => {})
   }, [data.serial])
 
   // Revoke any object URL we created for the download fallback.
@@ -145,7 +144,7 @@ function Barcode1Label({ data, autoprint }: { data: Barcode1LabelData; autoprint
 
   return (
     <div className="mt-2 rounded-md border-2 border-slate-900 bg-white p-3 text-center dark:border-slate-100">
-      <svg ref={barcodeRef} className="mx-auto max-w-full" />
+      <canvas ref={barcodeRef} className="mx-auto max-w-full" />
       <div className="font-mono text-2xl font-bold tracking-widest text-slate-900">{data.serial}</div>
       <div className="mt-1 text-xs text-slate-600">
         {data.type} · {data.owner} · {data.weightKg.toLocaleString()} kg · {data.date}

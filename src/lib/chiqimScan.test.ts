@@ -10,15 +10,21 @@ function basePallet(overrides: Partial<{ type_id: string; calibre_id: string; st
   return { type_id: 'subxon', calibre_id: 'k6', status: 'in_stock', ...overrides }
 }
 
-// Happy path: valid, unclaimed, matching pallet is accepted and assigned to
-// the correct line.
-test('scan happy path: valid pallet accepted and assigned to its matching line', () => {
+// Every case below that doesn't test the fallback path itself uses a
+// request with SOME reservation already present (so the fallback filter
+// never accidentally activates) unless the test says otherwise.
+const reservedElsewhere = { 'PLT-SOMETHING-ELSE': 'line-a' }
+
+// Happy path: a reserved, unclaimed pallet is accepted and assigned to
+// exactly the line it was reserved for — no type/calibre guessing.
+test('scan happy path: reserved pallet accepted and assigned to its reserved line', () => {
   const result = resolveScan({
     barcode2: 'PLT-140726-001-06-1',
     alreadyScannedBarcodes: [],
     pallet: basePallet(),
     labPassed: true,
     alreadyClaimed: false,
+    reservedLineIdByBarcode: { 'PLT-140726-001-06-1': 'line-a' },
     lines: [lineA, lineB],
     scannedTotalsByLineId: {},
   })
@@ -35,8 +41,9 @@ test('scan happy path: reaching the target exactly is reported by lineStatus, no
     pallet: basePallet(),
     labPassed: true,
     alreadyClaimed: false,
+    reservedLineIdByBarcode: { 'PLT-140726-001-06-1': 'line-a', 'PLT-140726-001-06-2': 'line-a' },
     lines: [lineA],
-    scannedTotalsByLineId: { 'line-a': 1600 }, // one pallet already scanned
+    scannedTotalsByLineId: { 'line-a': 1600 },
   })
   assert.equal(result.ok, true)
   // 1600 (already scanned) + 2000 (this pallet) = 3600 = lineA's target
@@ -50,6 +57,7 @@ test('duplicate-barcode rejection: same barcode already in this scan session', (
     pallet: basePallet(),
     labPassed: true,
     alreadyClaimed: false,
+    reservedLineIdByBarcode: { 'PLT-140726-001-06-1': 'line-a' },
     lines: [lineA],
     scannedTotalsByLineId: {},
   })
@@ -66,6 +74,7 @@ test('claimed-elsewhere rejection: barcode already in dispatch_manifest', () => 
     pallet: basePallet(),
     labPassed: true,
     alreadyClaimed: true,
+    reservedLineIdByBarcode: { 'PLT-140726-001-06-1': 'line-a' },
     lines: [lineA],
     scannedTotalsByLineId: {},
   })
@@ -79,6 +88,7 @@ test('not-found rejection: barcode does not resolve to any pallet', () => {
     pallet: null,
     labPassed: true,
     alreadyClaimed: false,
+    reservedLineIdByBarcode: {},
     lines: [lineA],
     scannedTotalsByLineId: {},
   })
@@ -92,6 +102,7 @@ test('not-in-stock rejection: pallet exists but already dispatched/voided', () =
     pallet: basePallet({ status: 'dispatched' }),
     labPassed: true,
     alreadyClaimed: false,
+    reservedLineIdByBarcode: { 'PLT-140726-001-06-1': 'line-a' },
     lines: [lineA],
     scannedTotalsByLineId: {},
   })
@@ -108,6 +119,7 @@ test('not-lab-passed rejection: in-stock, unclaimed pallet whose serial has not 
     pallet: basePallet(),
     labPassed: false,
     alreadyClaimed: false,
+    reservedLineIdByBarcode: { 'PLT-140726-001-06-1': 'line-a' },
     lines: [lineA],
     scannedTotalsByLineId: {},
   })
@@ -124,28 +136,69 @@ test('not-lab-passed takes precedence over claimed-elsewhere', () => {
     pallet: basePallet(),
     labPassed: false,
     alreadyClaimed: true,
+    reservedLineIdByBarcode: { 'PLT-140726-001-06-1': 'line-a' },
     lines: [lineA],
     scannedTotalsByLineId: {},
   })
   assert.deepEqual(result, { ok: false, reason: 'not_lab_passed' })
 })
 
-test('no-matching-line rejection: pallet type/calibre not requested', () => {
+// §3.1/§5.4 Option B (2026-07-26): a valid, in-stock, lab-passed, unclaimed
+// pallet is rejected if it isn't reserved for THIS request AND its line
+// already has SOME OTHER reservation (reservation, once used, is
+// exclusive — a wrong-but-plausible pallet doesn't get to piggyback into a
+// line someone already curated).
+test('not-reserved rejection: valid, type/calibre-matching pallet, but its line already has a different reservation', () => {
   const result = resolveScan({
-    barcode2: 'PLT-140726-001-04-1',
+    barcode2: 'PLT-140726-001-06-1',
     alreadyScannedBarcodes: [],
-    pallet: basePallet({ calibre_id: 'k4' }),
+    pallet: basePallet(), // matches lineA's type_id/calibre_id
     labPassed: true,
     alreadyClaimed: false,
+    reservedLineIdByBarcode: { 'PLT-OTHER-PALLET': 'line-a' }, // lineA has ITS OWN reservation already
+    lines: [lineA],
+    scannedTotalsByLineId: {},
+  })
+  assert.deepEqual(result, { ok: false, reason: 'not_reserved' })
+})
+
+test('not-reserved rejection: valid pallet matching no line at all, reserved or not', () => {
+  const result = resolveScan({
+    barcode2: 'PLT-140726-001-06-1',
+    alreadyScannedBarcodes: [],
+    pallet: basePallet({ type_id: 'nothing-matches' }),
+    labPassed: true,
+    alreadyClaimed: false,
+    reservedLineIdByBarcode: reservedElsewhere,
     lines: [lineA, lineB],
     scannedTotalsByLineId: {},
   })
-  assert.deepEqual(result, { ok: false, reason: 'no_matching_line' })
+  assert.deepEqual(result, { ok: false, reason: 'not_reserved' })
 })
 
-// Two lines share the same type+calibre: the pallet fills whichever has the
-// larger remaining gap.
-test('duplicate type+calibre lines: pallet fills the line with the larger remaining gap', () => {
+// 🚩 The real gap this session found live, not hypothetical: a line with
+// ZERO reservations (stock ordered ahead of production, or a re-wash cycle
+// not yet finished at request-creation time) must still be fulfillable
+// once matching stock exists — falls back to Option A's original type/
+// calibre matching, exactly as if reservation didn't exist for this line.
+test('zero-reservation fallback: a line with no reservations at all still accepts a type/calibre match', () => {
+  const result = resolveScan({
+    barcode2: 'PLT-FRESH-STOCK',
+    alreadyScannedBarcodes: [],
+    pallet: basePallet(), // matches lineA's type_id/calibre_id
+    labPassed: true,
+    alreadyClaimed: false,
+    reservedLineIdByBarcode: {}, // no reservations anywhere on this request
+    lines: [lineA],
+    scannedTotalsByLineId: {},
+  })
+  assert.deepEqual(result, { ok: true, lineId: 'line-a' })
+})
+
+// Two lines share the same type+calibre, NEITHER has a reservation yet —
+// the fallback still needs to pick one, so it keeps Option A's original
+// "largest remaining gap" tie-break.
+test('zero-reservation fallback, duplicate type+calibre lines: largest remaining gap wins', () => {
   const lineC: ChiqimLineLike = { id: 'line-c', type_id: 'subxon', calibre_id: 'k6', qty_kg: 1000 }
   const lineD: ChiqimLineLike = { id: 'line-d', type_id: 'subxon', calibre_id: 'k6', qty_kg: 5000 }
   const result = resolveScan({
@@ -154,11 +207,35 @@ test('duplicate type+calibre lines: pallet fills the line with the larger remain
     pallet: basePallet(),
     labPassed: true,
     alreadyClaimed: false,
+    reservedLineIdByBarcode: {},
     lines: [lineC, lineD],
     scannedTotalsByLineId: { 'line-c': 900, 'line-d': 1000 }, // gaps: 100 vs 4000
-    })
+  })
   assert.equal(result.ok, true)
   if (result.ok) assert.equal(result.lineId, 'line-d')
+})
+
+// Two lines share the same type+calibre, but only ONE has a reservation
+// (for a DIFFERENT barcode) — that line is excluded from the fallback pool
+// even though it type/calibre-matches, so the zero-reservation sibling
+// wins outright, not by gap comparison.
+test('duplicate type+calibre lines, one already reserved elsewhere: only the zero-reservation sibling is eligible', () => {
+  const lineC: ChiqimLineLike = { id: 'line-c', type_id: 'subxon', calibre_id: 'k6', qty_kg: 1000 }
+  const lineD: ChiqimLineLike = { id: 'line-d', type_id: 'subxon', calibre_id: 'k6', qty_kg: 5000 }
+  const result = resolveScan({
+    barcode2: 'PLT-x',
+    alreadyScannedBarcodes: [],
+    pallet: basePallet(),
+    labPassed: true,
+    alreadyClaimed: false,
+    // line-d has its own curated reservation (a different barcode) —
+    // excluded from fallback even though this pallet's type/calibre
+    // matches and line-d's gap (4000) would otherwise win.
+    reservedLineIdByBarcode: { 'PLT-ALREADY-RESERVED': 'line-d' },
+    lines: [lineC, lineD],
+    scannedTotalsByLineId: {},
+  })
+  assert.deepEqual(result, { ok: true, lineId: 'line-c' })
 })
 
 test('lineStatus: shortfall, exact, overage', () => {

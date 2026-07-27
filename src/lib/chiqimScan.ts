@@ -22,24 +22,35 @@ export interface ChiqimLineLike {
 
 export type ScanResult =
   | { ok: true; lineId: string }
-  | { ok: false; reason: 'duplicate' | 'not_found' | 'not_in_stock' | 'not_lab_passed' | 'claimed' | 'no_matching_line' }
+  | { ok: false; reason: 'duplicate' | 'not_found' | 'not_in_stock' | 'not_lab_passed' | 'claimed' | 'not_reserved' }
 
 // Given a scanned pallet's already-known facts (looked up by the caller —
 // this function does no I/O), decides whether it can be added to this
 // request's scan list and which line it belongs to.
 //
-// 🔒 Totals are per line, not per whole request (§5.4: "target lines with
-// progress bars" — confirmed from SPEC.md, not assumed). When a request has
-// more than one line for the same type+calibre (the request form doesn't
-// forbid it), the pallet fills whichever matching line has the largest
-// remaining gap — falls back to the first match once every matching line is
-// already at/over its own target.
+// §3.1/§5.4 CHIQIM Option B (pallet-level reservation, 2026-07-26/27): a
+// scanned pallet's line comes from its OWN reservation when one exists —
+// reservation is authoritative for any line Menejer actually used the
+// picker on (rejects a valid-but-unlisted pallet outright, even if its
+// type/calibre would otherwise match — requirement 3).
+//
+// 🚩 Real gap found live, not hypothetical: a line can legitimately have
+// ZERO reservations — the picker offered nothing at request-creation time
+// (stock ordered ahead of production, or targeting a re-wash cycle not
+// yet finished). Making reservation unconditionally mandatory would leave
+// that line permanently unscannable — nothing could ever match a line with
+// no reservations, even once matching stock actually shows up later. So a
+// zero-reservation line falls back to Option A's original type/calibre
+// matching (largest remaining gap) — but ONLY a zero-reservation line; a
+// line that has reservations never falls back, even for pallets it didn't
+// reserve, since reservation, once used, is exclusive.
 export function resolveScan(input: {
   barcode2: string
   alreadyScannedBarcodes: string[]
   pallet: { type_id: string; calibre_id: string; status: string } | null
   labPassed: boolean
   alreadyClaimed: boolean
+  reservedLineIdByBarcode: Record<string, string>
   lines: ChiqimLineLike[]
   scannedTotalsByLineId: Record<string, number>
 }): ScanResult {
@@ -58,10 +69,17 @@ export function resolveScan(input: {
   // guarantee at finish time) rather than inventing a reservation system.
   if (input.alreadyClaimed) return { ok: false, reason: 'claimed' }
 
+  const reservedLineId = input.reservedLineIdByBarcode[input.barcode2]
+  if (reservedLineId) return { ok: true, lineId: reservedLineId }
+
+  const linesWithReservations = new Set(Object.values(input.reservedLineIdByBarcode))
   const candidates = input.lines.filter(
-    (l) => l.type_id === input.pallet!.type_id && l.calibre_id === input.pallet!.calibre_id,
+    (l) =>
+      l.type_id === input.pallet!.type_id &&
+      l.calibre_id === input.pallet!.calibre_id &&
+      !linesWithReservations.has(l.id),
   )
-  if (candidates.length === 0) return { ok: false, reason: 'no_matching_line' }
+  if (candidates.length === 0) return { ok: false, reason: 'not_reserved' }
 
   const best = candidates
     .map((l) => ({ line: l, gap: l.qty_kg - (input.scannedTotalsByLineId[l.id] ?? 0) }))

@@ -129,7 +129,14 @@ export async function seedDispatchablePallets(
   opts: { count: number; weightKgEach: number; typeLabel: string; calibreLabel: string },
 ): Promise<SeedDispatchableResult> {
   const { count, weightKgEach, typeLabel, calibreLabel } = opts
-  const seedPlate = uniqueTestId('SEED')
+  // §5.4 Option B (2026-07-27): NOT uniqueTestId — stock_on_hand_rows (the
+  // CHIQIM picker's own data source) excludes any pallet whose parent
+  // kirim_orders.plate starts with "TEST-", a THIRD filter in the same
+  // family as useFinishedChiqimRequests.ts/reportQuery.ts's isTestPlate()
+  // (see uniqueRealLookingPlate's own doc above). This helper's whole
+  // point is producing picker-selectable pallets, so a TEST- plate here
+  // would silently defeat every caller.
+  const seedPlate = uniqueRealLookingPlate()
 
   await switchRole(page, 'MENEJER')
   const serial = await page.evaluate(

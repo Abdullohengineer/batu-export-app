@@ -2,11 +2,22 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { sortFinishedByOmborFinish } from './chiqimScan'
 
+// §5.4 Option B (2026-07-26) — a line's own earmarked pallets, the prepare-
+// list's core data. weight_kg/serial come from the reserved pallet's own
+// finished_pallets row (via the barcode2 FK), not the line's aggregate
+// qty_kg — this is per-pallet, not a re-derivation of the line total.
+export interface ReservedPallet {
+  barcode2: string
+  serial: string
+  weight_kg: number
+}
+
 export interface ChiqimLine {
   id: string
   type_id: string
   calibre_id: string
   qty_kg: number
+  reservedPallets: ReservedPallet[]
 }
 
 export interface ChiqimRequest {
@@ -43,12 +54,45 @@ export function useOmborChiqimRequests() {
       const [{ data }, { data: weighings }] = await Promise.all([
         supabase
           .from('chiqim_requests')
-          .select('id, request_date, plate, driver, owner_id, ombor_finished_at, chiqim_lines(id, type_id, calibre_id, qty_kg)'),
+          // §5.4 Option B: voided requests never reach Ombor at all — a
+          // voided_at IS NULL filter here, not client-side, since Ombor
+          // has no business reason to ever see one (voiding is only
+          // allowed pre-scan, see 0033's menejer_voids policy). Nested
+          // three levels: each line's own reserved pallets, each pallet's
+          // own serial/weight from finished_pallets — the prepare-list's
+          // actual data, not a re-derivation of qty_kg.
+          .select(
+            'id, request_date, plate, driver, owner_id, ombor_finished_at, ' +
+              'chiqim_lines(id, type_id, calibre_id, qty_kg, ' +
+              'chiqim_line_pallets(barcode2, finished_pallets(serial, weight_kg)))',
+          )
+          .is('voided_at', null),
         supabase.from('gate_weighings').select('request_id, pustoy_kg, stage1_completed_at').eq('dir', 'chiqim'),
       ])
       const weighingByRequest = new Map((weighings ?? []).map((w) => [w.request_id, w]))
 
-      const requests: ChiqimRequest[] = (data ?? []).map((r) => {
+      // Cast explicitly, same reason as useGateHistory.ts/useFinishedChiqimRequests.ts:
+      // a `select()` built from a concatenated string (not a literal) widens
+      // to a union including PostgREST's generic error shape.
+      type RawLine = {
+        id: string
+        type_id: string
+        calibre_id: string
+        qty_kg: number
+        chiqim_line_pallets: { barcode2: string; finished_pallets: { serial: string; weight_kg: number } | null }[] | null
+      }
+      type RawRequest = {
+        id: string
+        request_date: string
+        plate: string
+        driver: string
+        owner_id: string
+        ombor_finished_at: string | null
+        chiqim_lines: RawLine[] | null
+      }
+      const rows = (data ?? []) as unknown as RawRequest[]
+
+      const requests: ChiqimRequest[] = rows.map((r) => {
         const weighing = weighingByRequest.get(r.id)
         return {
           id: r.id,
@@ -57,7 +101,19 @@ export function useOmborChiqimRequests() {
           driver: r.driver,
           owner_id: r.owner_id,
           ombor_finished_at: r.ombor_finished_at,
-          lines: r.chiqim_lines ?? [],
+          lines: (r.chiqim_lines ?? []).map((l) => ({
+            id: l.id,
+            type_id: l.type_id,
+            calibre_id: l.calibre_id,
+            qty_kg: l.qty_kg,
+            reservedPallets: (l.chiqim_line_pallets ?? [])
+              .filter((clp) => clp.finished_pallets !== null)
+              .map((clp) => ({
+                barcode2: clp.barcode2,
+                serial: clp.finished_pallets!.serial,
+                weight_kg: clp.finished_pallets!.weight_kg,
+              })),
+          })),
           gateStage1CompletedAt: weighing?.stage1_completed_at ?? null,
           gatePustoyKg: weighing?.pustoy_kg ?? null,
         }

@@ -34,6 +34,10 @@ export interface FinishedChiqimRequest {
   created_at: string
   ombor_finished_at: string | null
   ombor_finished_by: string | null
+  // §5.4 Option B (0033, 2026-07-26) — a voided request stays visible here
+  // (this app's void-don't-delete convention), unlike Ombor's own window,
+  // which excludes voided requests outright (they never reached Ombor).
+  voided_at: string | null
   lines: FinishedChiqimLine[]
   weighing: FinishedChiqimWeighing | null
 }
@@ -78,7 +82,10 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
       const [{ data: reqs }, { data: lines }, { data: weighings }] = await Promise.all([
         supabase
           .from('chiqim_requests')
-          .select('id, request_date, plate, driver, owner_id, status, created_by, created_at, ombor_finished_at, ombor_finished_by'),
+          .select(
+            'id, request_date, plate, driver, owner_id, status, created_by, created_at, ' +
+              'ombor_finished_at, ombor_finished_by, voided_at',
+          ),
         supabase.from('chiqim_lines').select('type_id, calibre_id, qty_kg, request_id'),
         supabase
           .from('gate_weighings')
@@ -92,10 +99,13 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
       // Cast explicitly, same reason as useGateHistory.ts: without generated
       // DB types, a `select()` built from a concatenated string (not a
       // literal) widens to a union that includes PostgREST's generic error
-      // shape, which breaks property access below.
+      // shape, which breaks property access below. Same fix now needed for
+      // `reqs` too — the voided_at addition made this select's own string a
+      // concatenation for the first time.
       const weighingRows = (weighings ?? []) as unknown as (FinishedChiqimWeighing & { request_id: string })[]
+      const reqRows = (reqs ?? []) as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing'>[]
 
-      const combined: FinishedChiqimRequest[] = (reqs ?? [])
+      const combined: FinishedChiqimRequest[] = reqRows
         .filter((r) => !r.plate.startsWith('TEST-'))
         .map((r) => ({
           ...r,

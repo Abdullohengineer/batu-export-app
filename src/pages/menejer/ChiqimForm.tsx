@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useAvailableFinishedStock } from '../../lib/useAvailableFinishedStock'
 import { checkFeasibility } from '../../lib/chiqimFeasibility'
 import { useStockOnHand } from '../../lib/useStockOnHand'
+import { useReservedPalletBarcodes } from '../../lib/useReservedPalletBarcodes'
 import type { StockOnHandRow } from '../../lib/stockOnHand'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -21,13 +22,11 @@ interface LineRow {
   typeId: string
   calibreId: string
   qty: string
-  // §3.1 inline pallet picker — which of this line's matching available
-  // pallets are currently toggled on, purely to build up `qty` by clicking
-  // real pallets instead of typing a number blind. NEVER persisted:
-  // chiqim_lines still holds only a quantity (§5.4 — pallet selection is
-  // Ombor's job at scan time), so this is UI-only state, reset whenever it
-  // would otherwise go stale (type/calibre changed, or the qty field is
-  // edited by hand — see the picker's own comment for why).
+  // §3.1/§5.4 Option B (2026-07-26) — the picker is no longer a calculator
+  // only: these barcodes ARE what gets persisted to chiqim_line_pallets on
+  // submit, reserving them for this request until it completes or is
+  // voided. Reset whenever it would otherwise go stale (type/calibre/owner
+  // changed) — see the picker's own comment for why.
   selectedBarcodes: Set<string>
 }
 
@@ -44,10 +43,15 @@ interface SavedLine {
 
 // §3.1 CHIQIM form: Sana · Moshina · Haydovchi · Buyurtmachi · repeatable
 // Tur + Kalibr + Miqdori rows (calibre set incl. Konditirskiy) · Jami avto.
-// 🔒 No serial, no doc photo (unlike KIRIM) — see §3.1. Requests target a
-// calibre + kg amount, never specific pallets/serials — pallet selection is
-// Ombor's job at §5.4 (a later prompt), so this form never writes to
-// finished_pallets or dispatch_manifest.
+// 🔒 No serial, no doc photo (unlike KIRIM) — see §3.1.
+//
+// §3.1/§5.4 Option B (2026-07-26): requests now target SPECIFIC pallets,
+// not just a calibre + kg amount — the picker's selections are persisted to
+// chiqim_line_pallets on submit (see handleSubmit), reserving them until
+// Ombor finishes loading or the request is voided. Manual qty-typing stays
+// available only when zero matching pallets exist at all (nothing to
+// reserve in that case, same as before this pass) — see the qty field's
+// own disabled condition below.
 //
 // 🔒 Whole-pallet soft warning (§3.1, already locked): checks each row's
 // target against available whole pallets for that type+calibre and
@@ -70,6 +74,10 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   // the picker needs real per-client pallets, which stock_on_hand_rows
   // already carries via owner_id.
   const { rows: stockRows } = useStockOnHand()
+  // Option B: excludes pallets another open request already reserved —
+  // same shared hook useAvailableFinishedStock.ts uses, so the picker and
+  // the feasibility hint can never disagree about what's really available.
+  const { reserved: reservedBarcodes } = useReservedPalletBarcodes()
 
   const [sana, setSana] = useState(() => new Date().toISOString().slice(0, 10))
   const [plate, setPlate] = useState('')
@@ -96,10 +104,17 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
 
   // Available, this client's own stock, matching this line's type+calibre —
   // the exact set the picker shows and the only pallets a click can toggle.
+  // Excludes anything another open request already reserved (Option B) —
+  // a reserved pallet must never be double-offered here.
   function matchingPallets(row: LineRow): StockOnHandRow[] {
     if (!ownerId || !row.typeId || !row.calibreId) return []
     return stockRows.filter(
-      (r) => r.bucket === 'available' && r.ownerId === ownerId && r.typeId === row.typeId && r.calibreId === row.calibreId,
+      (r) =>
+        r.bucket === 'available' &&
+        r.ownerId === ownerId &&
+        r.typeId === row.typeId &&
+        r.calibreId === row.calibreId &&
+        !(r.barcode2 && reservedBarcodes.has(r.barcode2)),
     )
   }
 
@@ -144,6 +159,18 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
       setError('Barcha maydonlarni to\'ldiring va kamida bitta tur/kalibr qatorini kiriting.')
       return
     }
+    // §5.4 Option B (requirement 5, "no special-casing"): a row with real
+    // matching stock MUST have picked pallets — the qty field is read-only
+    // in that case (see the TextInput above), so reaching this with zero
+    // selections only happens if stock existed when typed then vanished
+    // (another request claimed it) before submit. The zero-pallets
+    // fallback row (matches.length === 0 the whole time) is exempt, same
+    // as before this pass.
+    const missingPicks = validRows.filter((r) => matchingPallets(r).length > 0 && r.selectedBarcodes.size === 0)
+    if (missingPicks.length > 0) {
+      setError('Bir yoki bir nechta qatorda pallet tanlanmagan — palletlarni tanlang yoki qatorni yangilang.')
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -160,15 +187,42 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
         .single()
       if (reqErr) throw reqErr
 
-      const { error: linesErr } = await supabase.from('chiqim_lines').insert(
-        validRows.map((r) => ({
-          request_id: request.id,
-          type_id: r.typeId,
-          calibre_id: r.calibreId,
-          qty_kg: parseFloat(r.qty),
-        })),
-      )
-      if (linesErr) throw linesErr
+      // Sequential, not a single batch insert: each row's own returned id
+      // is what correctly ties its own selectedBarcodes to the right line
+      // in chiqim_line_pallets below — relying on batch-insert RETURNING
+      // order to match input order isn't a guarantee worth trusting for a
+      // mapping this load-bearing (a mismatch would silently reserve
+      // pallets under the wrong line).
+      const lineIdByRowKey = new Map<string, string>()
+      for (const r of validRows) {
+        const { data: line, error: lineErr } = await supabase
+          .from('chiqim_lines')
+          .insert({ request_id: request.id, type_id: r.typeId, calibre_id: r.calibreId, qty_kg: parseFloat(r.qty) })
+          .select('id')
+          .single()
+        if (lineErr) throw lineErr
+        lineIdByRowKey.set(r.key, line.id)
+      }
+
+      const reservations = validRows.flatMap((r) => {
+        const lineId = lineIdByRowKey.get(r.key)!
+        return [...r.selectedBarcodes].map((barcode2) => ({ line_id: lineId, barcode2 }))
+      })
+      if (reservations.length > 0) {
+        const { error: reserveErr } = await supabase.from('chiqim_line_pallets').insert(reservations)
+        if (reserveErr) {
+          // 23505 = the active-reservation unique index (0033) — another
+          // request reserved the same pallet in the moment between this
+          // form loading the picker and submit. Same race class and same
+          // friendly-message treatment as handleFinish's own
+          // dispatch_manifest 23505 handling (OmborChiqimTab.tsx).
+          throw new Error(
+            reserveErr.code === '23505'
+              ? 'Tanlangan palletlardan biri shu orada boshqa so\'rov uchun band qilindi — sahifani yangilab qayta urinib ko\'ring.'
+              : reserveErr.message,
+          )
+        }
+      }
 
       setSavedLines(
         validRows.map((r) => ({ key: r.key, typeId: r.typeId, calibreId: r.calibreId, qtyKg: parseFloat(r.qty) })),
@@ -287,6 +341,14 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   required
                   placeholder="Miqdori (kg)"
                   value={row.qty}
+                  // §5.4 Option B: once real pallets exist for this
+                  // type+calibre, qty is derived ONLY from togglePallet's
+                  // selection sum — typing directly would let a number
+                  // through with no pallets backing it, breaking "every
+                  // line has named pallets" (requirement 5). Manual typing
+                  // stays live only for the pre-existing zero-pallets
+                  // fallback (matchingPallets(row).length === 0).
+                  readOnly={matchingPallets(row).length > 0}
                   onChange={(e) => updateRow(row.key, { qty: e.target.value, selectedBarcodes: new Set() })}
                   className="w-40"
                 />
@@ -300,8 +362,8 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
               {pickerActive && (
                 <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
                   <p className="text-xs text-slate-400">
-                    Hisoblash uchun — pallet ushbu so'rov uchun band qilinmaydi. Ombor skanerlash vaqtida mos keladigan
-                    istalgan palletni tanlaydi.
+                    Palletlarni tanlang — ular ushbu so'rov uchun band qilinadi va Omborga qaysi palletlarni
+                    yig'ish kerakligi ko'rsatiladi.
                   </p>
                   {matches.length === 0 ? (
                     <p className="mt-1 text-xs text-slate-400">Bu buyurtmachida ushbu tur/kalibrda mavjud pallet yo'q.</p>

@@ -2,7 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
-import { uniqueTestId, uniqueRealLookingPlate, seedFilteredFinishedRequest, E2E_OWNER_NAME } from './helpers/fixtures'
+import { uniqueRealLookingPlate, seedFilteredFinishedRequest, E2E_OWNER_NAME } from './helpers/fixtures'
 import { teardownFixtures } from './helpers/teardown'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -45,7 +45,13 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
-  const PLATE_IN = uniqueTestId('FULLCHAIN')
+  // §5.4 Option B (2026-07-27): NOT uniqueTestId — stock_on_hand_rows (the
+  // CHIQIM picker's own data source) excludes any pallet whose parent
+  // kirim_orders.plate starts with "TEST-", a THIRD filter in the same
+  // family as useFinishedChiqimRequests.ts/reportQuery.ts's isTestPlate().
+  // Needed so this chain's own finished Subxon pallet is picker-selectable
+  // when the CHIQIM section below reserves it.
+  const PLATE_IN = uniqueRealLookingPlate()
   kirimPlates.push(PLATE_IN)
   // Deliberately NOT TEST-prefixed: useFinishedChiqimRequests.ts filters out
   // any TEST-prefixed plate by design — a TEST- plate here would correctly,
@@ -350,7 +356,14 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await chiqimSelects.nth(0).selectOption({ label: E2E_OWNER_NAME })
   await chiqimSelects.nth(1).selectOption({ label: 'Subxon' })
   await chiqimSelects.nth(2).selectOption({ label: 'Kalibr 6' })
-  await page.locator('input[placeholder="Miqdori (kg)"]').fill('4600')
+  // §5.4 Option B (2026-07-26/27): qty is derived from picker selection,
+  // not typed. Click the exact, already-known barcode (`barcode`, captured
+  // when this pallet was produced above) rather than a generic "any PLT-"
+  // match — this shared e2e database can carry OTHER, unrelated
+  // Subxon/Kalibr-6 stock for the same owner at any given moment (found
+  // live: a generic match clicked one of those instead, silently reaching
+  // the wrong target further down this test).
+  await page.getByRole('button', { name: new RegExp(barcode) }).click()
   await page.getByRole('button', { name: 'Saqlash' }).click()
   await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
 

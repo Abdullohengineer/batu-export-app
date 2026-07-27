@@ -61,7 +61,12 @@ test('Ombor undoes a post-finish scan, pallet becomes available again, then a po
   await menejerSelects.nth(0).selectOption({ label: E2E_OWNER_NAME })
   await menejerSelects.nth(1).selectOption({ label: 'Subxon' })
   await menejerSelects.nth(2).selectOption({ label: 'Kalibr 6' })
-  await page.locator('input[placeholder="Miqdori (kg)"]').fill('4000')
+  // §5.4 Option B (2026-07-26): qty is now derived from picker selection,
+  // not typed — picking both fixture pallets sums to the same 4000kg the
+  // exact-match assertion below already expected, so the total this test
+  // cares about is unchanged.
+  await page.getByRole('button', { name: new RegExp(BARCODE_1) }).click()
+  await page.getByRole('button', { name: new RegExp(BARCODE_2) }).click()
   // Exact match against the two 2000kg fixture pallets — no soft-warning
   // hint should render.
   await expect(page.getByRole('status')).toHaveCount(0)
@@ -129,9 +134,18 @@ test('Ombor undoes a post-finish scan, pallet becomes available again, then a po
   await expect(page.getByRole('heading', { name: 'Yangi CHIQIM' })).toBeVisible()
 
   const menejerSelects2 = page.locator('form:has-text("Yangi CHIQIM") select')
+  // §5.4 Option B: owner must be (re)selected here too, unlike before this
+  // pass — the picker only renders once ownerId is set (`pickerActive`),
+  // and this remount resets ChiqimForm's own state. The old manual-typing
+  // path never needed pickerActive to be true at all, which is why this
+  // selection was safely skippable before; it no longer is.
+  await menejerSelects2.nth(0).selectOption({ label: E2E_OWNER_NAME })
   await menejerSelects2.nth(1).selectOption({ label: 'Subxon' })
   await menejerSelects2.nth(2).selectOption({ label: 'Kalibr 6' })
-  await page.locator('input[placeholder="Miqdori (kg)"]').fill('2000')
+  // BARCODE_1 alone is back in the picker (freed by the undo above) —
+  // clicking it reaches the same 2000kg this test already expected from
+  // typing.
+  await page.getByRole('button', { name: new RegExp(BARCODE_1) }).click()
   await expect(page.getByRole('status')).toHaveCount(0)
 
   // --- Drive the trip to completion: Qorovul stage 2 ---

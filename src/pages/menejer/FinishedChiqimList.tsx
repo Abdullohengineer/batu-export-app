@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -6,8 +8,10 @@ import { useProfileNames } from '../../lib/useProfileNames'
 import { useFinishedChiqimRequests } from '../../lib/useFinishedChiqimRequests'
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { GatePhoto } from '../../components/GatePhoto'
+import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { SectionHeading } from '../../components/ui/SectionHeading'
+import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { type Tone } from '../../components/ui/tokens'
@@ -20,7 +24,8 @@ function fmt(ts: string | null) {
 // useFinishedChiqimRequests.ts) — same shape as KirimOrdersList's own
 // STATUS_LABEL map for the sibling KIRIM window, fallback tone covers the
 // two enum values that belong to KIRIM's lifecycle and are never actually
-// written here.
+// written here. Voided (0033) isn't a status value at all — it's a
+// separate voided_at column overlaid on top, checked first in the render.
 const STATUS_LABEL: Record<string, { label: string; tone: Tone }> = {
   kutilmoqda: { label: 'Kutilmoqda', tone: 'pending' },
   olib_ketildi: { label: 'Olib ketildi', tone: 'ok' },
@@ -35,14 +40,18 @@ const STATUS_LABEL: Record<string, { label: string; tone: Tone }> = {
 // row with no gate_weighing yet (status='kutilmoqda') renders its weighing
 // fields as '—', already null-safe throughout below.
 export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
+  const { profile } = useAuth()
   // §3.3: includeInactive=true -- resolves names on historical requests.
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
   const { names } = useProfileNames()
-  const { requests, loading } = useFinishedChiqimRequests(refreshKey)
+  const { requests, loading, refresh } = useFinishedChiqimRequests(refreshKey)
   const [expanded, setExpanded] = useState<string | null>(null)
   const { lines: manifestLines, loading: manifestLoading } = useDispatchManifestLines(expanded)
+  const [confirmingVoid, setConfirmingVoid] = useState<string | null>(null)
+  const [voiding, setVoiding] = useState(false)
+  const [voidError, setVoidError] = useState<string | null>(null)
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -55,6 +64,28 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   }
   function actorName(id: string | null) {
     return id ? (names[id] ?? id) : '—'
+  }
+
+  // §5.4 Option B (0033) — scoped to exactly what menejer_voids' RLS
+  // policy allows (ombor_finished_at IS NULL); the button itself is only
+  // ever rendered under that same condition, so a denial here would mean
+  // the RLS scope and this UI condition have drifted, not a normal path.
+  async function handleVoid(requestId: string) {
+    setVoiding(true)
+    setVoidError(null)
+    try {
+      const { error } = await supabase
+        .from('chiqim_requests')
+        .update({ voided_at: new Date().toISOString(), voided_by: profile?.id })
+        .eq('id', requestId)
+      if (error) throw error
+      setConfirmingVoid(null)
+      refresh()
+    } catch (err) {
+      setVoidError(err instanceof Error ? err.message : 'Bekor qilishda xatolik yuz berdi.')
+    } finally {
+      setVoiding(false)
+    }
   }
 
   if (loading) return null
@@ -83,9 +114,13 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
                     {request.request_date} · {request.driver} · {request.lines.length} qator
                   </span>
                 </span>
-                <StatusPill tone={STATUS_LABEL[request.status]?.tone ?? 'neutral'}>
-                  {STATUS_LABEL[request.status]?.label ?? request.status}
-                </StatusPill>
+                {request.voided_at ? (
+                  <StatusPill tone="neutral">Bekor qilindi</StatusPill>
+                ) : (
+                  <StatusPill tone={STATUS_LABEL[request.status]?.tone ?? 'neutral'}>
+                    {STATUS_LABEL[request.status]?.label ?? request.status}
+                  </StatusPill>
+                )}
               </button>
               <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 net {w?.net_kg?.toLocaleString() ?? '—'} kg · {fmt(w?.completed_at ?? null)}
@@ -155,6 +190,37 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
                       </ul>
                     )}
                   </div>
+
+                  {/* §5.4 Option B (0033) — void, scoped to exactly what
+                      menejer_voids' RLS policy allows: not yet started by
+                      Ombor. A request already loading/loaded needs a real
+                      dispatch_manifest unwind, out of scope here. Same
+                      two-step confirm shape as OmborChiqimTab's own
+                      Yuklashni yakunlash, not a browser confirm(). */}
+                  {!request.voided_at && !request.ombor_finished_at && (
+                    <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                      {confirmingVoid === request.id ? (
+                        <div className="space-y-2">
+                          <p className="text-sm text-slate-700 dark:text-slate-300">
+                            Bu so'rovni bekor qilasizmi? Band qilingan palletlar bo'shatiladi.
+                          </p>
+                          {voidError && <StatusNote tone="problem">{voidError}</StatusNote>}
+                          <div className="flex gap-2">
+                            <Button variant="danger" size="md" onClick={() => handleVoid(request.id)} disabled={voiding}>
+                              {voiding ? 'Bekor qilinmoqda…' : 'Ha, bekor qilish'}
+                            </Button>
+                            <Button variant="ghost" size="md" onClick={() => setConfirmingVoid(null)}>
+                              Yo'q
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button variant="ghost" size="md" onClick={() => setConfirmingVoid(request.id)} className="!text-red-600 dark:!text-red-400">
+                          Bekor qilish
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </Card>

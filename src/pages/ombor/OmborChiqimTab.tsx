@@ -155,12 +155,25 @@ export function OmborChiqimTab() {
     // must be refused here too, not just hidden from the request form.
     const labStatus = pallet ? (await currentCycleLabStatus([pallet.serial])).get(pallet.serial) : undefined
 
+    // §5.4 Option B (2026-07-26/27): which line (if any) this barcode is
+    // reserved to on THIS request — derived from data useOmborChiqimRequests
+    // already loaded, no extra query. Reservation is authoritative when it
+    // exists; type_id/calibre_id are still passed through for resolveScan's
+    // own fallback (a line with zero reservations — stock ordered ahead of
+    // production, or a not-yet-finished re-wash cycle — still needs to
+    // resolve by type/calibre once matching stock actually shows up).
+    const reservedLineIdByBarcode: Record<string, string> = {}
+    for (const line of request.lines) {
+      for (const p of line.reservedPallets) reservedLineIdByBarcode[p.barcode2] = line.id
+    }
+
     const result = resolveScan({
       barcode2,
       alreadyScannedBarcodes: (scannedByRequest[request.id] ?? []).map((s) => s.barcode2),
       pallet: pallet ? { type_id: pallet.type_id, calibre_id: pallet.calibre_id, status: pallet.status } : null,
       labPassed: labStatus === 'passed',
       alreadyClaimed: !!claimed,
+      reservedLineIdByBarcode,
       lines: request.lines,
       scannedTotalsByLineId: lineTotalsFor(request.id),
     })
@@ -172,7 +185,7 @@ export function OmborChiqimTab() {
         not_in_stock: 'Bu pallet omborda emas (allaqachon jo\'natilgan yoki bekor qilingan).',
         not_lab_passed: 'Bu pallet hali laboratoriya tekshiruvidan o\'tmagan yoki qayta yuvishga yuborilgan.',
         claimed: 'Bu pallet allaqachon boshqa yuklashda ishlatilgan.',
-        no_matching_line: 'Bu tur/kalibr ushbu so\'rovda yo\'q.',
+        not_reserved: 'Bu pallet bu so\'rovga tegishli emas.',
       }
       setScanError(messages[result.reason])
       showScanFeedback({ tone: 'problem', message: messages[result.reason] })
@@ -421,6 +434,56 @@ export function OmborChiqimTab() {
                             </div>
                           )
                         })}
+                      </div>
+                    </div>
+
+                    {/* §5.4 Option B (2026-07-26) — the prepare-list. The
+                        core of the request per the task's own framing, not
+                        a hidden detail: shown immediately on expand, right
+                        after the target progress and before the scan zone,
+                        not behind a second toggle. Already-scanned pallets
+                        get a checkmark/strikethrough so it reads as a live
+                        "what's left to collect" list, not a static one. */}
+                    <div>
+                      <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Yig'ish kerak — palletlar
+                      </div>
+                      <div className="space-y-3">
+                        {request.lines.map((line) => (
+                          <div key={line.id}>
+                            <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                              {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
+                            </div>
+                            {line.reservedPallets.length === 0 ? (
+                              <p className="text-xs text-slate-400">Bu qator uchun pallet belgilanmagan.</p>
+                            ) : (
+                              <ul className="space-y-0.5">
+                                {line.reservedPallets.map((p) => {
+                                  const isScanned = (scannedByRequest[request.id] ?? []).some(
+                                    (s) => s.barcode2 === p.barcode2,
+                                  )
+                                  return (
+                                    <li
+                                      key={p.barcode2}
+                                      className={`flex items-center justify-between gap-2 text-xs ${
+                                        isScanned
+                                          ? 'text-slate-400 line-through dark:text-slate-600'
+                                          : 'text-slate-700 dark:text-slate-300'
+                                      }`}
+                                    >
+                                      <span className="min-w-0 flex-1 truncate font-mono">
+                                        {isScanned ? '✓ ' : ''}
+                                        {p.barcode2}
+                                      </span>
+                                      <span className="shrink-0">{p.serial}</span>
+                                      <span className="shrink-0 font-medium">{p.weight_kg.toLocaleString()} kg</span>
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
 

@@ -2,7 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/login'
-import { uniqueTestId, E2E_OWNER_NAME } from './helpers/fixtures'
+import { uniqueTestId, uniqueRealLookingPlate, E2E_OWNER_NAME } from './helpers/fixtures'
 import { teardownFixtures } from './helpers/teardown'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -40,7 +40,14 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
   })
   page.on('pageerror', (err) => consoleErrors.push(err.message))
 
-  const PLATE = uniqueTestId('REWASH')
+  // §5.4 Option B (2026-07-27): NOT uniqueTestId — stock_on_hand_rows (the
+  // CHIQIM picker's own data source) excludes any pallet whose parent
+  // kirim_orders.plate starts with "TEST-", a THIRD filter in the same
+  // family as useFinishedChiqimRequests.ts/reportQuery.ts's isTestPlate()
+  // (see fixtures.ts's own uniqueRealLookingPlate doc). Needed so cycle 2's
+  // own pallet, produced under this same KIRIM order, is picker-selectable
+  // later in this test.
+  const PLATE = uniqueRealLookingPlate()
   kirimPlates.push(PLATE)
 
   // --- Menejer: KIRIM order, one line ---
@@ -202,12 +209,30 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
     await chiqimSelects.nth(0).selectOption({ label: E2E_OWNER_NAME })
     await chiqimSelects.nth(1).selectOption({ label: 'Subxon' })
     await chiqimSelects.nth(2).selectOption({ label: 'Kalibr 6' })
-    await page.locator('input[placeholder="Miqdori (kg)"]').fill('4000')
-    await expect(page.getByRole('status')).toContainText(/(eng ko'p|eng yaqin): 0 kg/)
+    // §5.4 Option B (2026-07-27): the OLD "eng yaqin: 0 kg" text assertion
+    // was fragile against this shared e2e database's own accumulated,
+    // unrelated Boysun/Subxon/Kalibr-6 stock (found live: a genuine 600kg
+    // pallet from an earlier session legitimately makes nearestBelow
+    // nonzero — not a bug in checkFeasibility, a wrong assumption in this
+    // assertion). Checking the picker directly is robust regardless: wait
+    // for it to actually render, then confirm THIS test's own gated
+    // pallet specifically is never offered, whatever else might be.
+    await expect(page.getByText('Palletlarni tanlang')).toBeVisible()
+    await expect(page.getByRole('button', { name: new RegExp(`PLT-${serial}-06-1`) })).toHaveCount(0)
+
+    // Whatever the picker DOES offer (unrelated accumulated stock, if any)
+    // is fine here — Direction 2 below is the real, decisive proof, and
+    // its rejection reason (not_lab_passed) is checked before reservation,
+    // so this request's own reservation state can't affect it either way.
+    const qtyField = page.locator('input[placeholder="Miqdori (kg)"]')
+    if (await qtyField.isEditable()) {
+      await qtyField.fill('4000')
+    } else {
+      await page.locator('form:has-text("Yangi CHIQIM") button', { hasText: /PLT-/ }).first().click()
+    }
 
     // Save anyway (the soft-warning never blocks save, §3.1) — this becomes
-    // the one open request direction 2 uses below, and again once cycle 2
-    // passes, rather than a second throwaway request.
+    // the one open request direction 2 uses below.
     await page.getByRole('button', { name: 'Saqlash' }).click()
     await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
 
@@ -296,18 +321,49 @@ test('Qayta_yuvish hard-gates availability (both directions), void preserves Kon
     await expect(finishedRow).toContainText("O'tdi")
   }
 
-  // --- Confirm dispatchable, for real: scan cycle 2's own new barcode
-  // into the SAME still-open request the gate check above created —
-  // succeeds now, closing the loop rewash-full-cycle.spec.ts never fully
-  // closed (it only ever checked lab_results/finished_pallets columns
-  // directly, never actually tried to dispatch the fixed pallet). ---
+  // --- Confirm dispatchable, for real: a FRESH request, cycle 2's own
+  // pallet selected directly via the picker (visible now — PLATE is real-
+  // looking specifically so this test's own legitimately-produced stock
+  // isn't ALSO hidden by stock_on_hand_rows's TEST-% exclusion). Closes
+  // the loop rewash-full-cycle.spec.ts never fully closed (it only ever
+  // checked lab_results/finished_pallets columns directly, never actually
+  // tried to dispatch the fixed pallet).
+  //
+  // §5.4 Option B (2026-07-27): a fresh request here, not a reuse of the
+  // gate-check request above — under Option B, "reserve via the picker,
+  // then scan" is the primary flow; reusing the earlier request would only
+  // work via its zero-reservation fallback path (a real, correct mechanism,
+  // but the edge case, not what this section is meant to prove). The
+  // earlier request already did its own job (Direction 1/2's hard-gate
+  // proof); this is a separate, independent dispatch, exactly like a real
+  // second truck would be. The direct DB check below reads the pallet's
+  // own state by serial, not by which request dispatched it, so this
+  // doesn't weaken that assertion. ---
+  await page.getByRole('button', { name: 'Chiqish' }).click()
+  await page.waitForURL('**/login')
+  await loginAs(page, 'MENEJER')
+  await page.getByRole('link', { name: 'CHIQIM' }).click()
+  const DISPATCH_PLATE = uniqueTestId('REWASH-DISPATCH')
+  chiqimPlates.push(DISPATCH_PLATE)
+  await page.locator('div:has(> label:text-is("Moshina raqami")) > input').fill(DISPATCH_PLATE)
+  await page.locator('div:has(> label:text-is("Haydovchi ismi")) > input').fill('TEST Driver')
+  {
+    const dispatchSelects = page.locator('form:has-text("Yangi CHIQIM") select')
+    await dispatchSelects.nth(0).selectOption({ label: E2E_OWNER_NAME })
+    await dispatchSelects.nth(1).selectOption({ label: 'Subxon' })
+    await dispatchSelects.nth(2).selectOption({ label: 'Kalibr 6' })
+    await page.getByRole('button', { name: new RegExp(`PLT-${serial}-06-2`) }).click()
+    await page.getByRole('button', { name: 'Saqlash' }).click()
+    await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
+  }
+
   await page.getByRole('button', { name: 'Chiqish' }).click()
   await page.waitForURL('**/login')
   await loginAs(page, 'OMBOR')
   await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
   {
     const omborW1 = page.getByRole('heading', { name: '1 · Yuklashga tayyor — moshina keldi' }).locator('xpath=following-sibling::div[1]')
-    const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: CHIQIM_PLATE })
+    const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: DISPATCH_PLATE })
     await expect(omborRequest).toBeVisible({ timeout: 20000 })
     await omborRequest.getByRole('button', { name: 'Yuklashni boshlash' }).click()
     const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")

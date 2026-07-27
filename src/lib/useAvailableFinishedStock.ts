@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { currentCycleLabStatus } from './labVerdict'
+import { useReservedPalletBarcodes } from './useReservedPalletBarcodes'
 
 export interface AvailablePallet {
   barcode2: string
@@ -19,13 +20,18 @@ export interface AvailablePallet {
 //   untested and re-wash-flagged stock must be invisible here, same rule
 //   Ombor's scan screen (OmborChiqimTab/chiqimScan.ts) enforces, via the
 //   same shared helper so the two can never disagree.
-// Read-only; feeds the feasibility checker only — pallet selection itself
-// is Ombor's job (§5.4), not built here.
+// - excludes any barcode2 actively reserved by another open CHIQIM request
+//   (Option B, `useReservedPalletBarcodes`, 2026-07-26) — otherwise this
+//   soft-warning hint could count stock that's already spoken for.
+// Read-only; feeds the feasibility checker only — the picker itself (Option
+// B) is ChiqimForm.tsx's own concern, using the same reserved-set hook.
 export function useAvailableFinishedStock() {
   const [pallets, setPallets] = useState<AvailablePallet[]>([])
   const [loading, setLoading] = useState(true)
+  const { reserved, loading: reservedLoading } = useReservedPalletBarcodes()
 
   useEffect(() => {
+    if (reservedLoading) return
     async function load() {
       setLoading(true)
       try {
@@ -34,7 +40,7 @@ export function useAvailableFinishedStock() {
           supabase.from('dispatch_manifest').select('barcode2'),
         ])
         const claimed = new Set((dm ?? []).map((d) => d.barcode2))
-        const candidates = (fp ?? []).filter((p) => !claimed.has(p.barcode2))
+        const candidates = (fp ?? []).filter((p) => !claimed.has(p.barcode2) && !reserved.has(p.barcode2))
         const labStatus = await currentCycleLabStatus(candidates.map((p) => p.serial))
         setPallets(candidates.filter((p) => labStatus.get(p.serial) === 'passed'))
       } finally {
@@ -42,7 +48,7 @@ export function useAvailableFinishedStock() {
       }
     }
     load()
-  }, [])
+  }, [reserved, reservedLoading])
 
-  return { pallets, loading }
+  return { pallets, loading: loading || reservedLoading }
 }

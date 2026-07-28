@@ -4,33 +4,119 @@ import assert from 'node:assert/strict'
 import { deriveEffectiveQty, computeVariance, isMaterialVariance } from './weightAuthority.ts'
 
 test('deriveEffectiveQty: before §5.1 intake -> declared, not provisional', () => {
-  const r = deriveEffectiveQty({ declaredQty: 5000, intakeActualQty: null, isMultiLine: false, gateNet: null, gateStage2Done: false })
-  assert.deepEqual(r, { value: 5000, provisional: false, basis: 'declared_pre_intake' })
+  const r = deriveEffectiveQty({
+    declaredQty: 5000,
+    intakeActualQty: null,
+    isMultiLine: false,
+    gateNet: null,
+    gateStage2Done: false,
+    totalBoxMassKg: null,
+  })
+  assert.deepEqual(r, { value: 5000, provisional: false, basis: 'declared_pre_intake', pendingOn: { gate: false, boxMass: false } })
 })
 
-test('deriveEffectiveQty: intake done, gate stage 2 not yet -> intake, provisional (single-line)', () => {
-  const r = deriveEffectiveQty({ declaredQty: 5000, intakeActualQty: 4900, isMultiLine: false, gateNet: null, gateStage2Done: false })
-  assert.deepEqual(r, { value: 4900, provisional: true, basis: 'intake_provisional' })
+test('deriveEffectiveQty: intake done, gate stage 2 not yet, box mass known -> intake, provisional, pending on gate only', () => {
+  const r = deriveEffectiveQty({
+    declaredQty: 5000,
+    intakeActualQty: 4900,
+    isMultiLine: false,
+    gateNet: null,
+    gateStage2Done: false,
+    totalBoxMassKg: 100,
+  })
+  assert.deepEqual(r, {
+    value: 4900,
+    provisional: true,
+    basis: 'intake_provisional',
+    pendingOn: { gate: true, boxMass: false },
+  })
+})
+
+test('deriveEffectiveQty: intake done, gate stage 2 done, box mass NOT yet known -> intake, provisional, pending on box mass only', () => {
+  const r = deriveEffectiveQty({
+    declaredQty: 5000,
+    intakeActualQty: 4900,
+    isMultiLine: false,
+    gateNet: 5100,
+    gateStage2Done: true,
+    totalBoxMassKg: null,
+  })
+  assert.deepEqual(r, {
+    value: 4900,
+    provisional: true,
+    basis: 'intake_provisional',
+    pendingOn: { gate: false, boxMass: true },
+  })
+})
+
+test('deriveEffectiveQty: intake done, neither gate stage 2 nor box mass known -> intake, provisional, pending on both', () => {
+  const r = deriveEffectiveQty({
+    declaredQty: 5000,
+    intakeActualQty: 4900,
+    isMultiLine: false,
+    gateNet: null,
+    gateStage2Done: false,
+    totalBoxMassKg: null,
+  })
+  assert.deepEqual(r, {
+    value: 4900,
+    provisional: true,
+    basis: 'intake_provisional',
+    pendingOn: { gate: true, boxMass: true },
+  })
 })
 
 test('deriveEffectiveQty: intake done, gate stage 2 not yet -> intake, provisional (multi-line too)', () => {
-  const r = deriveEffectiveQty({ declaredQty: 1000, intakeActualQty: 1000, isMultiLine: true, gateNet: null, gateStage2Done: false })
-  assert.deepEqual(r, { value: 1000, provisional: true, basis: 'intake_provisional' })
+  const r = deriveEffectiveQty({
+    declaredQty: 1000,
+    intakeActualQty: 1000,
+    isMultiLine: true,
+    gateNet: null,
+    gateStage2Done: false,
+    totalBoxMassKg: 20,
+  })
+  assert.deepEqual(r, {
+    value: 1000,
+    provisional: true,
+    basis: 'intake_provisional',
+    pendingOn: { gate: true, boxMass: false },
+  })
 })
 
-test('deriveEffectiveQty: single-line, gate stage 2 done -> gate net, final', () => {
-  const r = deriveEffectiveQty({ declaredQty: 5000, intakeActualQty: 4900, isMultiLine: false, gateNet: 5100, gateStage2Done: true })
-  assert.deepEqual(r, { value: 5100, provisional: false, basis: 'gate_net_final' })
+test('deriveEffectiveQty: single-line, both gate stage 2 and box mass known -> gate net minus box mass, final', () => {
+  const r = deriveEffectiveQty({
+    declaredQty: 5000,
+    intakeActualQty: 4900,
+    isMultiLine: false,
+    gateNet: 5100,
+    gateStage2Done: true,
+    totalBoxMassKg: 150,
+  })
+  assert.deepEqual(r, { value: 4950, provisional: false, basis: 'gate_net_final', pendingOn: { gate: false, boxMass: false } })
 })
 
-test('deriveEffectiveQty: multi-line, gate stage 2 done -> STILL intake, never gate net', () => {
-  const r = deriveEffectiveQty({ declaredQty: 1000, intakeActualQty: 1000, isMultiLine: true, gateNet: 8000, gateStage2Done: true })
-  assert.deepEqual(r, { value: 1000, provisional: false, basis: 'intake_multi_line_final' })
+test('deriveEffectiveQty: multi-line, both gate stage 2 and box mass known -> STILL intake, never true net', () => {
+  const r = deriveEffectiveQty({
+    declaredQty: 1000,
+    intakeActualQty: 1000,
+    isMultiLine: true,
+    gateNet: 8000,
+    gateStage2Done: true,
+    totalBoxMassKg: 300,
+  })
+  assert.deepEqual(r, { value: 1000, provisional: false, basis: 'intake_multi_line_final', pendingOn: { gate: false, boxMass: false } })
 })
 
-test('deriveEffectiveQty: single-line, gate stage 2 done but net somehow null -> defensive intake fallback', () => {
-  const r = deriveEffectiveQty({ declaredQty: 5000, intakeActualQty: 4900, isMultiLine: false, gateNet: null, gateStage2Done: true })
-  assert.deepEqual(r, { value: 4900, provisional: false, basis: 'gate_net_final' })
+test('deriveEffectiveQty: single-line, both known but net somehow null -> defensive intake fallback', () => {
+  const r = deriveEffectiveQty({
+    declaredQty: 5000,
+    intakeActualQty: 4900,
+    isMultiLine: false,
+    gateNet: null,
+    gateStage2Done: true,
+    totalBoxMassKg: 100,
+  })
+  assert.deepEqual(r, { value: 4900, provisional: false, basis: 'gate_net_final', pendingOn: { gate: false, boxMass: false } })
 })
 
 test('computeVariance: positive gap', () => {

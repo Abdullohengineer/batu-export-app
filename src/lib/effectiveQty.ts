@@ -6,6 +6,7 @@ import {
   isMaterialVariance,
   type WeightAuthorityBasis,
   type QtyVariance,
+  type PendingOn,
 } from './weightAuthority'
 
 export interface EffectiveQtyInfo {
@@ -17,18 +18,30 @@ export interface EffectiveQtyInfo {
   gateStage2Done: boolean
   declaredQty: number
   intakeActualQty: number | null
-  // §5.1 amend: gate net vs the order's declared total (Jami avto) — null
-  // until gate stage 2 exists, there is nothing to compare yet.
+  // §2.16 box mass (KIRIM only): Σ box_mass_kg across every line on this
+  // order — null until every line has been accepted (mandatory field, so
+  // "accepted" and "box mass known" are the same event per line). Whatever
+  // reads gateNet as the truck's product total must subtract this, never
+  // gateNet alone.
+  totalBoxMassKg: number | null
+  // Which of the two independent pending inputs (gate stage 2 / box mass)
+  // is still missing — only meaningful while provisional && basis ===
+  // 'intake_provisional'.
+  pendingOn: PendingOn
+  // §5.1 amend: true net (gate net − total box mass) vs the order's
+  // declared total (Jami avto) — null until BOTH gate stage 2 and box mass
+  // are known, there is nothing final to compare yet.
   truckVariance: QtyVariance | null
   // §2.15.1 multi-line-only: sum of this order's lines' own effective_qty
-  // vs the truck's gate net — null for single-line trucks (nothing to
-  // reconcile, the line already IS the gate net) or before gate stage 2.
+  // vs the truck's true net — null for single-line trucks (nothing to
+  // reconcile, the line already IS the true net) or before both gate stage
+  // 2 and box mass are known.
   lineReconciliation: QtyVariance | null
-  // §2.15.2 edge case: at least one moyka_sends row predates gate stage 2
-  // completing AND the final (gate-net) figure differs materially from
-  // what was provisional at send time. Single-line only — a multi-line
-  // truck's effective_qty never re-bases onto gate net, so it can never
-  // trigger this.
+  // §2.15.2 edge case: at least one moyka_sends row predates gate stage 2 +
+  // box mass both completing AND the final (true-net) figure differs
+  // materially from what was provisional at send time. Single-line only —
+  // a multi-line truck's effective_qty never re-bases onto true net, so it
+  // can never trigger this.
   provisionalVarianceFlag: boolean
 }
 
@@ -56,7 +69,7 @@ export async function fetchEffectiveQty(
   serials: string[],
   materialVariancePct: number,
   prefetched?: {
-    intakes?: { serial: string; actual_qty: number }[]
+    intakes?: { serial: string; actual_qty: number; box_mass_kg: number }[]
     sends?: { serial: string; sent_date: string }[]
   },
 ): Promise<Map<string, EffectiveQtyInfo>> {
@@ -69,7 +82,9 @@ export async function fetchEffectiveQty(
 
   const [{ data: allLines }, intakesResult, { data: weighings }, { data: orders }, sendsResult] = await Promise.all([
     supabase.from('kirim_lines').select('serial, order_id, declared_qty').in('order_id', orderIds),
-    prefetched?.intakes ? Promise.resolve({ data: prefetched.intakes }) : supabase.from('storage_intake').select('serial, actual_qty'),
+    prefetched?.intakes
+      ? Promise.resolve({ data: prefetched.intakes })
+      : supabase.from('storage_intake').select('serial, actual_qty, box_mass_kg'),
     supabase.from('gate_weighings').select('order_id, net_kg, completed_at').eq('dir', 'kirim').in('order_id', orderIds),
     supabase.from('kirim_orders').select('order_id, declared_total').in('order_id', orderIds),
     prefetched?.sends ? Promise.resolve({ data: prefetched.sends }) : supabase.from('moyka_sends').select('serial, sent_date'),
@@ -101,16 +116,45 @@ export async function fetchEffectiveQty(
     if (!prev || s.sent_date < prev) earliestSendBySerial.set(s.serial, s.sent_date)
   }
 
-  const reconciliationByOrder = new Map<string, QtyVariance | null>()
+  // §2.16 box mass: null until every line on the order has been accepted
+  // (box_mass_kg is mandatory at accept time, so "accepted" and "box mass
+  // recorded" are the same event per line) — mirrors report_kirim_rows'
+  // own box_mass CTE (bool_and gate before summing), see DECISIONS.md.
+  const totalBoxMassByOrder = new Map<string, number | null>()
+  for (const orderId of orderIds) {
+    const lines = linesByOrder.get(orderId) ?? []
+    const allAccepted = lines.length > 0 && lines.every((l) => intakeBySerial.has(l.serial))
+    totalBoxMassByOrder.set(
+      orderId,
+      allAccepted ? lines.reduce((sum, l) => sum + (intakeBySerial.get(l.serial)?.box_mass_kg ?? 0), 0) : null,
+    )
+  }
+
+  // trueNet = gate net minus the truck's total box mass — the figure every
+  // truck-level comparison below reads instead of raw net_kg. Null unless
+  // both independent inputs (gate stage 2, box mass) are known.
+  const trueNetByOrder = new Map<string, number | null>()
   for (const orderId of orderIds) {
     const weighing = weighingByOrder.get(orderId)
+    const totalBoxMass = totalBoxMassByOrder.get(orderId) ?? null
+    trueNetByOrder.set(
+      orderId,
+      weighing?.completed_at != null && weighing.net_kg !== null && totalBoxMass !== null
+        ? weighing.net_kg - totalBoxMass
+        : null,
+    )
+  }
+
+  const reconciliationByOrder = new Map<string, QtyVariance | null>()
+  for (const orderId of orderIds) {
+    const trueNet = trueNetByOrder.get(orderId) ?? null
     const lines = linesByOrder.get(orderId) ?? []
-    if (!weighing || weighing.completed_at === null || weighing.net_kg === null || lines.length <= 1) {
+    if (trueNet === null || lines.length <= 1) {
       reconciliationByOrder.set(orderId, null)
       continue
     }
     const sumOfLines = lines.reduce((sum, l) => sum + (intakeBySerial.get(l.serial)?.actual_qty ?? 0), 0)
-    reconciliationByOrder.set(orderId, computeVariance(weighing.net_kg, sumOfLines))
+    reconciliationByOrder.set(orderId, computeVariance(trueNet, sumOfLines))
   }
 
   for (const serial of serials) {
@@ -122,6 +166,8 @@ export async function fetchEffectiveQty(
     const isMultiLine = (linesByOrder.get(orderId) ?? []).length > 1
     const gateNet = weighing?.net_kg ?? null
     const gateStage2Done = weighing?.completed_at != null
+    const totalBoxMassKg = totalBoxMassByOrder.get(orderId) ?? null
+    const trueNet = trueNetByOrder.get(orderId) ?? null
 
     const derived = deriveEffectiveQty({
       declaredQty,
@@ -129,19 +175,19 @@ export async function fetchEffectiveQty(
       isMultiLine,
       gateNet,
       gateStage2Done,
+      totalBoxMassKg,
     })
 
     const declaredTotal = declaredTotalByOrder.get(orderId) ?? null
-    const truckVariance =
-      gateStage2Done && gateNet !== null && declaredTotal !== null ? computeVariance(declaredTotal, gateNet) : null
+    const truckVariance = trueNet !== null && declaredTotal !== null ? computeVariance(declaredTotal, trueNet) : null
 
     let provisionalVarianceFlag = false
-    if (!isMultiLine && gateStage2Done && gateNet !== null && intake) {
+    if (!isMultiLine && trueNet !== null && intake) {
       const firstSend = earliestSendBySerial.get(serial)
       const gateCompletedDate = weighing?.completed_at ? weighing.completed_at.slice(0, 10) : null
       const sentWhileProvisional = firstSend !== undefined && gateCompletedDate !== null && firstSend <= gateCompletedDate
       if (sentWhileProvisional) {
-        const variance = computeVariance(intake.actual_qty, gateNet)
+        const variance = computeVariance(intake.actual_qty, trueNet)
         provisionalVarianceFlag = isMaterialVariance(variance.diffPct, materialVariancePct)
       }
     }
@@ -155,6 +201,8 @@ export async function fetchEffectiveQty(
       gateStage2Done,
       declaredQty,
       intakeActualQty: intake?.actual_qty ?? null,
+      totalBoxMassKg,
+      pendingOn: derived.pendingOn,
       truckVariance,
       lineReconciliation: reconciliationByOrder.get(orderId) ?? null,
       provisionalVarianceFlag,

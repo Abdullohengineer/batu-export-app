@@ -49,7 +49,7 @@ export function IntakeDetailView({
       <div>
         <div className="font-medium text-slate-700 dark:text-slate-300">Ombor</div>
         <div className="text-slate-500 dark:text-slate-400">
-          Aniq: {line.intake.actual_qty.toLocaleString()} kg
+          Aniq: {line.intake.actual_qty.toLocaleString()} kg · Quti massasi: {line.intake.box_mass_kg.toLocaleString()} kg
           {line.intake.komment ? ` · ${line.intake.komment}` : ''}
         </div>
         {pileUrl && (

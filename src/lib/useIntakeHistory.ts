@@ -43,7 +43,7 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
 
         let q = supabase
           .from('storage_intake')
-          .select('serial, actual_qty, pile_photo, komment, barcode1, status, confirmed_at, moisture_pct, so2_mg_kg')
+          .select('serial, actual_qty, box_mass_kg, pile_photo, komment, barcode1, status, confirmed_at, moisture_pct, so2_mg_kg')
           .gte('confirmed_at', from)
           .lt('confirmed_at', toExclusiveStr)
           .order('confirmed_at', { ascending: false })

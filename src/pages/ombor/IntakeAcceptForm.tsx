@@ -8,6 +8,7 @@ import { toneStyles } from '../../components/ui/tokens'
 
 export interface IntakeAcceptValues {
   actualQty: number
+  boxMassKg: number
   pilePhoto: File
   komment: string
 }
@@ -37,12 +38,14 @@ export function IntakeAcceptForm({
   onSubmit: (values: IntakeAcceptValues) => Promise<void>
 }) {
   const [actualQty, setActualQty] = useState(String(line.declared_qty))
+  const [boxMassKg, setBoxMassKg] = useState('')
   const [pilePhoto, setPilePhoto] = useState<File | null>(null)
   const [komment, setKomment] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const actual = parseFloat(actualQty) || 0
+  const boxMass = parseFloat(boxMassKg) || 0
   const varianceKg = actual - line.declared_qty
   const variancePct = line.declared_qty > 0 ? (varianceKg / line.declared_qty) * 100 : 0
   const isKamChiqdi = variancePct < -kamChiqdiPct
@@ -55,6 +58,12 @@ export function IntakeAcceptForm({
       setError('Aniq miqdorni kiriting.')
       return
     }
+    // §2.16 box mass (KIRIM only): mandatory — net product can't be derived
+    // without it, so the form cannot be completed without an explicit value.
+    if (boxMassKg === '' || boxMass < 0) {
+      setError('Quti massasini kiriting.')
+      return
+    }
     if (!pilePhoto) {
       setError('Uyum rasmi majburiy.')
       return
@@ -62,7 +71,7 @@ export function IntakeAcceptForm({
 
     setSubmitting(true)
     try {
-      await onSubmit({ actualQty: actual, pilePhoto, komment })
+      await onSubmit({ actualQty: actual, boxMassKg: boxMass, pilePhoto, komment })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {
@@ -130,6 +139,21 @@ export function IntakeAcceptForm({
           {variancePct.toFixed(1)}%){isKamChiqdi && ' — Kam chiqdi'}
         </p>
       </div>
+
+      {/* §2.16 box mass (KIRIM only): net product = darvoza netto − quti
+          massasi. Mandatory — Ombor counts the boxes off this line's own
+          pile and enters their total mass; the form cannot be completed
+          without it (see handleSubmit's own check above). */}
+      <FormField label="Quti massasi (kg)">
+        <TextInput
+          type="number"
+          min="0"
+          step="0.1"
+          required
+          value={boxMassKg}
+          onChange={(e) => setBoxMassKg(e.target.value)}
+        />
+      </FormField>
 
       <PhotoField label="Uyum rasmi" required onChange={setPilePhoto} />
 

@@ -7,6 +7,7 @@ import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { useIntakeLines, type IntakeLine, type IntakeRecord } from '../../lib/useIntakeLines'
 import { useMoykaSerials } from '../../lib/useMoykaSerials'
 import { useEffectiveQty } from '../../lib/effectiveQty'
+import { pendingLabel } from '../../lib/weightAuthority'
 import { sortByDateDesc } from '../../lib/sortByDate'
 import { hasRawRemainder } from '../../lib/stageMembership'
 import { IntakeAcceptForm, type IntakeAcceptValues } from './IntakeAcceptForm'
@@ -81,6 +82,7 @@ export function OmborIntakeTab() {
     const { error } = await supabase.from('storage_intake').insert({
       serial: line.serial,
       actual_qty: values.actualQty,
+      box_mass_kg: values.boxMassKg,
       pile_photo: pilePath,
       komment: values.komment || null,
       barcode1: line.serial,
@@ -220,7 +222,7 @@ export function OmborIntakeTab() {
                     </span>
                   </div>
                   <div className="truncate text-sm text-slate-500 dark:text-slate-400">
-                    {eq?.provisional ? 'tarozi kutilmoqda' : `Netto ${eqValue.toLocaleString()} kg`} · Qoldiq{' '}
+                    {eq?.provisional ? pendingLabel(eq.pendingOn) : `Netto ${eqValue.toLocaleString()} kg`} · Qoldiq{' '}
                     {remaining.toLocaleString()} kg
                   </div>
                 </div>

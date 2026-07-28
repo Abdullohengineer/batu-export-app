@@ -53,7 +53,7 @@ export function useMoykaSerials() {
     setLoading(true)
     try {
       const [{ data: intakes }, { data: sends }] = await Promise.all([
-        supabase.from('storage_intake').select('serial, actual_qty'),
+        supabase.from('storage_intake').select('serial, actual_qty, box_mass_kg'),
         supabase.from('moyka_sends').select('id, serial, sent_date, qty_kg, wash_cycle'),
       ])
 

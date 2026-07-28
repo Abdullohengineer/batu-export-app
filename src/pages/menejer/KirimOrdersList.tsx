@@ -5,6 +5,7 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { usePendingRewash } from '../../lib/usePendingRewash'
 import { useEffectiveQty } from '../../lib/effectiveQty'
+import { pendingLabel } from '../../lib/weightAuthority'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { Card } from '../../components/ui/Card'
 import { SectionHeading } from '../../components/ui/SectionHeading'
@@ -149,7 +150,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                       {eq && (
                         <>
                           {' · '}
-                          {eq.provisional ? 'tarozi kutilmoqda' : `${eq.value.toLocaleString()} kg`}
+                          {eq.provisional ? pendingLabel(eq.pendingOn) : `${eq.value.toLocaleString()} kg`}
                         </>
                       )}
                     </span>

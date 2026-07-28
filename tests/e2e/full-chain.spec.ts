@@ -157,6 +157,13 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(lineRow).toBeVisible()
     await lineRow.getByRole('button', { name: 'Qabul qilish' }).click()
     await expect(page.locator(`#actual-${serial}`)).toHaveValue(qty)
+    // §2.16 box mass: now mandatory. 0 is a deliberate, real no-op value —
+    // this test's whole point is exercising effective_qty end-to-end with
+    // exact figures (5000/500 etc.), and a nonzero box mass would shift
+    // every downstream true-net/variance figure it doesn't itself assert
+    // on. Dedicated nonzero-box-mass coverage lives in
+    // report-effective-qty-parity.spec.ts instead.
+    await lineRow.locator('div:has(> label:text-is("Quti massasi (kg)")) input[type="number"]').fill('0')
     await lineRow.locator('div:has(> label:text-is("Uyum rasmi")) input[type="file"]').setInputFiles(TEST_PHOTO)
     await expect(lineRow.getByText('Siqilmoqda…')).toHaveCount(0)
     await lineRow.getByRole('button', { name: 'Qabul qilish va shtrix-kod chiqarish' }).click()

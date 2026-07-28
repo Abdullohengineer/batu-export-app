@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 
 export interface IntakeRecord {
   actual_qty: number
+  box_mass_kg: number
   pile_photo: string | null
   komment: string | null
   barcode1: string | null
@@ -70,7 +71,7 @@ export function useIntakeLines() {
           .eq('dir', 'kirim'),
         supabase
           .from('storage_intake')
-          .select('serial, actual_qty, pile_photo, komment, barcode1, status, confirmed_at, moisture_pct, so2_mg_kg'),
+          .select('serial, actual_qty, box_mass_kg, pile_photo, komment, barcode1, status, confirmed_at, moisture_pct, so2_mg_kg'),
       ])
 
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))

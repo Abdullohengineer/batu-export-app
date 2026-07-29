@@ -52,15 +52,6 @@ export async function buildClientReportWorkbook(
     }
   }
 
-  if (report.raw.crossPeriodRewash.length > 0) {
-    sheet.addRow([])
-    sheet.addRow([t.crossPeriodNote]).font = { italic: true }
-    sheet.addRow([t.seriya, t.cycle, 'Tugagan / Завершён', 'Xom ashyo / Сырьё', t.weight, t.calibreOutput, t.konditirskiy, t.processLoss])
-    for (const cp of report.raw.crossPeriodRewash) {
-      sheet.addRow([cp.serial, cp.cycleNo, cp.completedDate, cp.rawConsumedDate, cp.sentKg, cp.calibreKg, cp.konditirskiyKg, `${cp.lossKg} (${cp.lossPct}%)`])
-    }
-  }
-
   if (report.raw.byType.length > 0) {
     sheet.addRow([])
     sheet.addRow([t.byType]).font = { bold: true }
@@ -97,7 +88,6 @@ export async function buildClientReportWorkbook(
     `${t.delivered} ${t.moisture}`,
     `${t.delivered} ${t.so2}`,
     t.verdict,
-    t.cycle,
     t.target,
   ]).font = { bold: true }
   for (const qr of report.qualityRecord) {
@@ -111,7 +101,6 @@ export async function buildClientReportWorkbook(
       qr.deliveredLab?.moisturePct ?? '',
       qr.deliveredLab?.so2MgKg ?? (qr.deliveredLab && qr.targetSo2MgKg === null ? t.naturalNoTarget : ''),
       qr.deliveredLab ? (qr.deliveredLab.verdict === 'o_tdi' ? t.verdictPassed : t.verdictRewash) : t.untested,
-      qr.deliveredLab?.cycleNo ?? '',
       targetText,
     ])
   }

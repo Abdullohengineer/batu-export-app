@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { currentCycleLabStatus } from './labVerdict'
+import { currentLabStatus } from './labVerdict'
 import { useReservedPalletBarcodes } from './useReservedPalletBarcodes'
 
 export interface AvailablePallet {
@@ -41,7 +41,7 @@ export function useAvailableFinishedStock() {
         ])
         const claimed = new Set((dm ?? []).map((d) => d.barcode2))
         const candidates = (fp ?? []).filter((p) => !claimed.has(p.barcode2) && !reserved.has(p.barcode2))
-        const labStatus = await currentCycleLabStatus(candidates.map((p) => p.serial))
+        const labStatus = await currentLabStatus(candidates.map((p) => p.serial))
         setPallets(candidates.filter((p) => labStatus.get(p.serial) === 'passed'))
       } finally {
         setLoading(false)

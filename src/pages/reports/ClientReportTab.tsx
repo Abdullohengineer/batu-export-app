@@ -170,44 +170,6 @@ export function ClientReportTab() {
               </div>
             )}
 
-            {report.raw.crossPeriodRewash.length > 0 && (
-              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900/40">
-                <p className="font-medium text-slate-700 dark:text-slate-300">{t.crossPeriodNote}</p>
-                <table className="mt-2 w-full text-xs">
-                  <thead>
-                    <tr className="text-slate-500 dark:text-slate-400">
-                      <th className="px-2 py-1 text-left">{t.seriya}</th>
-                      <th className="px-2 py-1 text-left">{t.cycle}</th>
-                      <th className="px-2 py-1 text-right">{t.weight}</th>
-                      <th className="px-2 py-1 text-right">{t.calibreOutput}</th>
-                      <th className="px-2 py-1 text-right">{t.konditirskiy}</th>
-                      <th className="px-2 py-1 text-right">{t.processLoss}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.raw.crossPeriodRewash.map((cp) => (
-                      <tr key={`${cp.serial}-${cp.cycleNo}`} className="border-t border-slate-200 dark:border-slate-700">
-                        <td className="px-2 py-1">
-                          <button type="button" className="underline decoration-dotted" onClick={() => setPassportSerial(cp.serial)}>
-                            {cp.serial}
-                          </button>
-                        </td>
-                        <td className="px-2 py-1">
-                          {cp.cycleNo} <span className="text-slate-400">({cp.rawConsumedDate})</span>
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">{cp.sentKg.toLocaleString()}</td>
-                        <td className="px-2 py-1 text-right tabular-nums">{cp.calibreKg.toLocaleString()}</td>
-                        <td className="px-2 py-1 text-right tabular-nums">{cp.konditirskiyKg.toLocaleString()}</td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {cp.lossKg.toLocaleString()} ({cp.lossPct}%)
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
             {report.raw.byType.length > 1 && (
               <div className="mt-3">
                 <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">{t.byType}</p>
@@ -300,8 +262,7 @@ export function ClientReportTab() {
                     <td className={`${td} whitespace-nowrap`}>
                       {qr.deliveredLab ? (
                         <>
-                          {qr.deliveredLab.moisturePct}% / {qr.deliveredLab.so2MgKg ?? '—'}
-                          {qr.deliveredLab.cycleNo > 1 && <span className="text-slate-400"> ({t.cycle} {qr.deliveredLab.cycleNo})</span>}{' '}
+                          {qr.deliveredLab.moisturePct}% / {qr.deliveredLab.so2MgKg ?? '—'}{' '}
                           {qr.deliveredLab.verdict === 'o_tdi' ? (
                             <span className="font-medium text-emerald-600 dark:text-emerald-400">{t.verdictPassed}</span>
                           ) : (

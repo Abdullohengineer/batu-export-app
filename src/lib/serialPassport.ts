@@ -89,7 +89,6 @@ export interface PassportCycleLab {
 }
 
 export interface PassportCycle {
-  cycleNo: number
   status: string
   finalLossPct: number | null
   sentKg: number

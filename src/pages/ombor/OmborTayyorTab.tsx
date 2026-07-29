@@ -4,9 +4,8 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useCalibres } from '../../lib/useCalibres'
-import { useMoykaOutput, type OutputSerial, type FinishedPallet, type CompletedCycle } from '../../lib/useMoykaOutput'
+import { useMoykaOutput, type OutputSerial, type FinishedPallet, type CompletedSerial } from '../../lib/useMoykaOutput'
 import { useMoykaSerials } from '../../lib/useMoykaSerials'
-import { usePendingRewash } from '../../lib/usePendingRewash'
 import { computeFinalLossPct, completionBadge, tugallashWarnings } from '../../lib/tayyorCompletion'
 import { hasRawRemainder } from '../../lib/stageMembership'
 import { FinishedReceiptForm, type ReceiptValues } from './FinishedReceiptForm'
@@ -28,17 +27,26 @@ import { Stat } from '../../components/ui/Stat'
 // Tugallash shows a non-blocking soft warning (raw remainder still in
 // storage, and/or loss > 10%) but never disables the action itself.
 // Window 2 (Tugallangan, added — see DECISIONS "Tugallangan window"): finalized
-// cycle-1 serials via Tugallash, ⋯ expand reusing the same pallet-list
-// pattern as Window 1, with a loss/gain badge (Ortiqcha wins over a negative
-// loss reading, same as Window 1's non-blocking overage treatment).
+// serials via Tugallash, ⋯ expand reusing the same pallet-list pattern as
+// Window 1, with a loss/gain badge (Ortiqcha wins over a negative loss
+// reading, same as Window 1's non-blocking overage treatment).
+//
+// Laborator v2 (2026-07-28 — see DECISIONS.md "Lab moves inside Moyka,
+// wash-cycle concept removed"): the hard gate moved HERE, to packing —
+// Barcode #2 assignment (handleReceipt) is blocked until the serial's
+// CURRENT lab verdict is a pass (labStatus, from useMoykaOutput.ts via
+// labVerdict.ts's currentLabStatus). This is a UI convenience only; the
+// real enforcement is a Postgres RLS policy on finished_pallets' INSERT
+// (0035_lab_relocation_core.sql) that refuses the write outright — hiding
+// the button here just avoids Ombor hitting that rejection in the normal
+// case. Re-wash re-send/void UI removed entirely (not just hidden) — there
+// is nothing left for Ombor to action; a reject reappears in Laborator's
+// own CHIQIM window for immediate re-test with no Ombor step in between.
 export function OmborTayyorTab() {
   const { profile } = useAuth()
   // §3.3: includeInactive=true -- typeName/ownerName/calibreLabel resolve
-  // historical rows, and handleRewash's numberlessCalibres set (below) must
-  // recognise a deactivated Konditirskiy calibre correctly, not silently
-  // misclassify it as a normal calibre and void it. The NEW-pallet
-  // creation dropdown (FinishedReceiptForm, below) gets a derived
-  // active-only subset instead of this full list.
+  // historical rows. The NEW-pallet creation dropdown (FinishedReceiptForm,
+  // below) gets a derived active-only subset instead of this full list.
   const { productTypes } = useProductTypes(true)
   const { owners } = useOwners(true)
   const { calibres } = useCalibres(true)
@@ -48,16 +56,9 @@ export function OmborTayyorTab() {
   // evaluate the Tugallash soft-warning's "raw remainder in storage" leg
   // with the same hasRawRemainder predicate §5.1/§5.2 already use.
   const { serials: moykaSerials, loading: moykaLoading } = useMoykaSerials()
-  // §5.5.4: which of Window 2's serials have a qayta_yuvish verdict on
-  // their CURRENT cycle — self-clearing once voided (see usePendingRewash's
-  // own comment), so no separate "already actioned" state to track here.
-  const { pending: pendingRewash, refresh: refreshPendingRewash } = usePendingRewash(completed.map((c) => c.serial))
   const [activeForm, setActiveForm] = useState<string | null>(null)
   const [lastBarcode, setLastBarcode] = useState<Record<string, string>>({})
   const [confirming, setConfirming] = useState<string | null>(null)
-  const [confirmingRewash, setConfirmingRewash] = useState<string | null>(null)
-  const [rewashError, setRewashError] = useState<string | null>(null)
-  const [rewashSaving, setRewashSaving] = useState<string | null>(null)
   const [expandedCompleted, setExpandedCompleted] = useState<string | null>(null)
   // §5.3 "Ombor printing gaps": Window 1's only reprint access used to be
   // `lastBarcode` (this session's own just-saved pallet) or going through
@@ -129,12 +130,8 @@ export function OmborTayyorTab() {
   // as lossBadge/completionBadge above. Raw remainder uses the same
   // hasRawRemainder predicate §5.1/§5.2 use (section mirroring).
   function tugallashWarningText(s: OutputSerial): string[] {
-    // §5.5.4/§5.5.5: this cycle's own input (cycleInputKg — actual_qty for
-    // cycle 1, the previous cycle's voided kg for a re-wash), not the raw
-    // intake unconditionally — a re-wash serial's "remainder" is measured
-    // against what it was actually re-sent, not the original delivery.
-    const cycleInput = moykaSerials.find((m) => m.serial === s.serial)?.cycleInputKg ?? s.sent
-    const remainderKg = hasRawRemainder(cycleInput, s.sent) ? cycleInput - s.sent : 0
+    const input = moykaSerials.find((m) => m.serial === s.serial)?.inputKg ?? s.sent
+    const remainderKg = hasRawRemainder(input, s.sent) ? input - s.sent : 0
     const lossPct = computeFinalLossPct(s.sent, s.received)
     const reasons = tugallashWarnings(remainderKg, lossPct)
     return reasons.map((reason) =>
@@ -148,16 +145,15 @@ export function OmborTayyorTab() {
   // The form always closes on submit (no auto-reopen — see DECISIONS "Tayyor
   // Mahsulot completion"); a new entry needs an explicit button click. No
   // auto-finalize here anymore (DECISIONS "Manual-only finishing") — saving
-  // a receipt never locks the cycle; only Tugallash does that.
-  // §5.5.4/§5.5.5: wash_cycle tagged with the serial's ACTIVE cycle, not the
-  // DB default of 1 — a re-wash cycle's pallets get new Barcode #2s, kept
-  // separate from the voided cycle's (§2.13, Konditirskiy additive/
-  // per-cycle unchanged).
+  // a receipt never locks the serial; only Tugallash does that.
+  //
+  // The real hard gate is the RLS policy on this INSERT (see file header) —
+  // if it somehow fires (a lab verdict flipping between render and submit),
+  // this throws and FinishedReceiptForm's own error handling surfaces it.
   async function handleReceipt(serial: OutputSerial, values: ReceiptValues) {
     const { error } = await supabase.from('finished_pallets').insert({
       barcode2: values.barcode2,
       serial: serial.serial,
-      wash_cycle: serial.activeCycle,
       type_id: serial.type_id,
       calibre_id: values.calibreId,
       weight_kg: values.weightKg,
@@ -173,21 +169,14 @@ export function OmborTayyorTab() {
 
   // §5.3 Tugallash: the ONLY way a serial reaches Window 2 (DECISIONS
   // "Manual-only finishing") — always a deliberate operator click, never
-  // triggered by any received/sent comparison. Idempotent upsert on
-  // (serial, cycle_no); soft-warned (never blocked) in the UI before this
+  // triggered by any received/sent comparison. Idempotent upsert on serial
+  // (the row already exists from OmborMoykaTab's first-send upsert — this
+  // just updates it); soft-warned (never blocked) in the UI before this
   // runs when raw remainder or loss > 10% applies.
-  //
-  // §5.5.4/§5.5.5: cycle_no is the serial's ACTIVE cycle, not hardcoded 1 —
-  // a re-wash cycle gets its OWN wash_cycles row (cycle 1's stays final
-  // forever, void-never-delete) and its loss is computed against THIS
-  // cycle's own sent/received (already active-cycle-scoped by
-  // useMoykaOutput.ts), i.e. against the re-wash input, never the original
-  // intake.
   async function handleTugallash(serial: OutputSerial) {
     const { error } = await supabase.from('wash_cycles').upsert(
       {
         serial: serial.serial,
-        cycle_no: serial.activeCycle,
         status: 'final',
         final_loss_pct: computeFinalLossPct(serial.sent, serial.received),
         // §5.3 "Ombor printing gaps": the real completion-time signal Window
@@ -197,51 +186,11 @@ export function OmborTayyorTab() {
         // overwrite on update" handling.
         finalized_at: new Date().toISOString(),
       },
-      { onConflict: 'serial,cycle_no' },
+      { onConflict: 'serial' },
     )
     if (error) throw error
     setConfirming(null)
     refresh()
-  }
-
-  // §5.5.4: "the lab FLAGS, Ombor EXECUTES" — the verdict itself changed no
-  // stored state (labVerdict.ts's hard gate already made these pallets
-  // unavailable purely by reading the verdict); this is the one place
-  // anything actually gets voided. All non-Konditirskiy pallets of THIS
-  // cycle → bekor_qilindi; Konditirskiy is excluded from re-send by design
-  // (§2.13) and stays in_stock, untouched, keeping its existing barcode.
-  // No new RLS needed — finished_pallets already has an unrestricted
-  // ombor_updates policy (confirmed live, 0007_rls.sql).
-  async function handleRewash(c: CompletedCycle) {
-    setRewashError(null)
-    setRewashSaving(c.serial)
-    try {
-      const numberlessCalibres = new Set(calibres.filter((cal) => cal.is_numberless).map((cal) => cal.id))
-      const { data: cyclePallets, error: fetchErr } = await supabase
-        .from('finished_pallets')
-        .select('barcode2, calibre_id')
-        .eq('serial', c.serial)
-        .eq('wash_cycle', c.cycleNo)
-        .eq('status', 'in_stock')
-      if (fetchErr) throw fetchErr
-
-      const toVoid = (cyclePallets ?? []).filter((p) => !numberlessCalibres.has(p.calibre_id)).map((p) => p.barcode2)
-      if (toVoid.length > 0) {
-        const { error: voidErr } = await supabase
-          .from('finished_pallets')
-          .update({ status: 'bekor_qilindi' })
-          .in('barcode2', toVoid)
-        if (voidErr) throw voidErr
-      }
-
-      setConfirmingRewash(null)
-      refresh()
-      refreshPendingRewash()
-    } catch (err) {
-      setRewashError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
-    } finally {
-      setRewashSaving(null)
-    }
   }
 
   if (loading || moykaLoading) return null
@@ -264,11 +213,6 @@ export function OmborTayyorTab() {
                 {ownerName(s.owner_id)} · {typeName(s.type_id)}
               </span>
             </div>
-            {s.isRewash && (
-              <div className="mt-1 text-sm font-medium text-amber-700 dark:text-amber-400">
-                Qayta yuvish · sikl {s.activeCycle}
-              </div>
-            )}
 
             <div className="mt-2 grid grid-cols-3 gap-2">
               <Stat value={s.sent.toLocaleString()} label="Yuborilgan" />
@@ -299,13 +243,28 @@ export function OmborTayyorTab() {
             )}
 
             {!isConfirming && (
-              <div className="mt-3 flex gap-2">
-                <Button variant="primary" size="lg" className="flex-1" onClick={() => setActiveForm(s.serial)}>
-                  {s.pallets.length === 0 ? '+ Qabul qilish' : "+ Yana qo'shish"}
-                </Button>
-                <Button variant="secondary" size="lg" className="flex-1" onClick={() => setConfirming(s.serial)}>
-                  Tugallash
-                </Button>
+              <div className="mt-3">
+                {s.labStatus === 'passed' ? (
+                  <div className="flex gap-2">
+                    <Button variant="primary" size="lg" className="flex-1" onClick={() => setActiveForm(s.serial)}>
+                      {s.pallets.length === 0 ? '+ Qabul qilish' : "+ Yana qo'shish"}
+                    </Button>
+                    <Button variant="secondary" size="lg" className="flex-1" onClick={() => setConfirming(s.serial)}>
+                      Tugallash
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <StatusNote tone={s.labStatus === 'failed' ? 'problem' : 'pending'}>
+                      {s.labStatus === 'failed'
+                        ? "Rad etildi — qayta tekshirilmoqda. Barcode #2 uchun o'tdi natijasi kerak."
+                        : "Tahlil kutilmoqda — Barcode #2 chiqarish uchun Laborator tekshiruvi kerak."}
+                    </StatusNote>
+                    <Button variant="secondary" size="lg" fullWidth onClick={() => setConfirming(s.serial)}>
+                      Tugallash
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -341,9 +300,10 @@ export function OmborTayyorTab() {
             )}
 
             {/* Tugallash: always clickable (DECISIONS "Manual-only finishing")
-                — enablement never depends on Jarayonda/remaining. Soft
-                warning (never blocks) when raw remainder remains and/or
-                loss exceeds 10%. Mockup ("Qabul tarixi + 'Tugallash'
+                — enablement never depends on Jarayonda/remaining or lab
+                status (a serial can legitimately finish at 0 output).
+                Soft warning (never blocks) when raw remainder remains
+                and/or loss exceeds 10%. Mockup ("Qabul tarixi + 'Tugallash'
                 tasdiqi"): the receipt history and the double-confirm are the
                 same view — folded together here rather than a separate
                 always-on expand. */}
@@ -391,17 +351,15 @@ export function OmborTayyorTab() {
         )
       })}
 
-      {/* Window 2 — Tugallangan: finalized cycle-1 serials (always via
-          Tugallash). ⋯ expand reuses the Window 1 pallet-list pattern; badge
-          is Ortiqcha (non-blocking overage, wins) or the locked loss %. */}
+      {/* Window 2 — Tugallangan: finalized serials (always via Tugallash). ⋯
+          expand reuses the Window 1 pallet-list pattern; badge is Ortiqcha
+          (non-blocking overage, wins) or the locked loss %. */}
       <div>
         <SectionHeading>2 · Tugallangan</SectionHeading>
         <div className="mt-2 space-y-2">
           {completed.length === 0 && <p className="text-sm text-slate-400">Tugallangan serial yo'q.</p>}
-          {completed.map((c) => {
-            const needsRewash = pendingRewash.has(c.serial)
-            return (
-            <Card key={c.serial} tone={needsRewash ? 'problem' : 'neutral'} padding="compact">
+          {completed.map((c: CompletedSerial) => (
+            <Card key={c.serial} padding="compact">
               <button
                 type="button"
                 onClick={() => setExpandedCompleted(expandedCompleted === c.serial ? null : c.serial)}
@@ -410,59 +368,16 @@ export function OmborTayyorTab() {
                 <SerialChip>{c.serial}</SerialChip>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                   {ownerName(c.owner_id)} · {typeName(c.type_id)}
-                  {c.cycleNo > 1 && (
-                    <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">sikl {c.cycleNo}</span>
-                  )}
                 </span>
                 <span className="shrink-0 text-slate-500 dark:text-slate-400">⋯</span>
               </button>
-              {/* §5.5.4: the lab flags, Ombor executes — this text is the
-                  flag, the button below (behind expand) is the execution. */}
-              {needsRewash && (
-                <div className="mt-1 text-sm font-medium text-red-700 dark:text-red-400">Qayta yuvish kerak</div>
-              )}
               <div className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
                 Yuborilgan {c.sent.toLocaleString()} → tayyor {c.received.toLocaleString()} kg ·{' '}
                 {lossBadge(c.lossPct, c.excess)}
               </div>
-              {expandedCompleted === c.serial && (
-                <>
-                  {palletList(c.serial, c.type_id, c.owner_id, c.pallets)}
-                  {needsRewash && (
-                    <div className="mt-3 border-t border-red-200 pt-2 dark:border-red-900">
-                      {confirmingRewash === c.serial ? (
-                        <div className="space-y-2">
-                          <p className="text-sm text-slate-700 dark:text-slate-300">
-                            Kalibrlangan palletlar (K4/K6/K8) bekor qilinadi. Konditirskiy palletlar omborda qoladi,
-                            o'zgarmaydi. Serial §5.2'ga qayta yuvish uchun qaytadi.
-                          </p>
-                          {rewashError && <StatusNote tone="problem">{rewashError}</StatusNote>}
-                          <div className="flex gap-2">
-                            <Button
-                              variant="danger"
-                              size="md"
-                              onClick={() => handleRewash(c)}
-                              disabled={rewashSaving === c.serial}
-                            >
-                              {rewashSaving === c.serial ? 'Saqlanmoqda…' : 'Ha, qayta yuvishga yuborish'}
-                            </Button>
-                            <Button variant="ghost" size="md" onClick={() => setConfirmingRewash(null)}>
-                              Bekor qilish
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <Button variant="danger" size="md" onClick={() => setConfirmingRewash(c.serial)}>
-                          Qayta yuvishga yuborish
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
+              {expandedCompleted === c.serial && palletList(c.serial, c.type_id, c.owner_id, c.pallets)}
             </Card>
-            )
-          })}
+          ))}
         </div>
       </div>
     </div>

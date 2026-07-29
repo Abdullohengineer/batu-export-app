@@ -94,8 +94,10 @@ export function KirimTahlilForm({
           <span className="font-medium text-slate-900 dark:text-slate-100">{typeName}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500 dark:text-slate-400">Massa</span>
-          <span className="font-medium text-slate-900 dark:text-slate-100">{line.actual_qty.toLocaleString()} kg</span>
+          <span className="text-slate-500 dark:text-slate-400">Massa {line.actual_qty === null ? "(e'lon qilingan)" : ''}</span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">
+            {(line.actual_qty ?? line.declared_qty).toLocaleString()} kg
+          </span>
         </div>
       </div>
 

@@ -126,8 +126,6 @@ export function HisobotTab() {
             onPlateChange={(v) => setFilters({ ...filters, plate: v })}
             driver={filters.driver}
             onDriverChange={(v) => setFilters({ ...filters, driver: v })}
-            washCycle={filters.washCycle}
-            onWashCycleChange={(v) => setFilters({ ...filters, washCycle: v })}
             labVerdict={filters.labVerdict}
             onLabVerdictChange={(v) => setFilters({ ...filters, labVerdict: v })}
             onReset={() => setFilters(defaultReportFilters(filters.from, filters.to))}

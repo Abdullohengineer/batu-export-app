@@ -16,7 +16,6 @@ export interface LaboratorHistoryRow {
   id: string
   scope: 'kirim' | 'chiqim'
   serial: string
-  cycleNo: number | null // null on kirim rows
   type_id: string
   owner_id: string
   sample_date: string
@@ -83,8 +82,8 @@ export function useLaboratorHistory(filters: LaboratorHistoryFilters) {
         const chiqimResults = results.filter((r) => r.scope === 'chiqim' && r.wash_cycle_id)
         const cycleIds = [...new Set(chiqimResults.map((r) => r.wash_cycle_id as string))]
         const { data: cycles } = cycleIds.length
-          ? await supabase.from('wash_cycles').select('id, serial, cycle_no').in('id', cycleIds)
-          : { data: [] as { id: string; serial: string; cycle_no: number }[] }
+          ? await supabase.from('wash_cycles').select('id, serial').in('id', cycleIds)
+          : { data: [] as { id: string; serial: string }[] }
         const cycleById = new Map((cycles ?? []).map((c) => [c.id, c]))
 
         const kirimSerials = results
@@ -127,7 +126,6 @@ export function useLaboratorHistory(filters: LaboratorHistoryFilters) {
               id: r.id,
               scope: r.scope as 'kirim' | 'chiqim',
               serial,
-              cycleNo: cycle?.cycle_no ?? null,
               type_id: line.type_id,
               owner_id: order.owner_id,
               sample_date: r.sample_date,

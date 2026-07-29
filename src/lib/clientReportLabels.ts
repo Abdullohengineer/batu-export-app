@@ -25,7 +25,6 @@ export interface ClientReportLabelSet {
   konditirskiy: string
   processLoss: string
   overageWarning: string
-  crossPeriodNote: string
   byType: string
   byCalibre: string
   qualityRecord: string
@@ -51,7 +50,6 @@ export interface ClientReportLabelSet {
   moisture: string
   so2: string
   verdict: string
-  cycle: string
   plate: string
   driver: string
   weight: string
@@ -78,7 +76,6 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     konditirskiy: 'Konditirskiy',
     processLoss: "Ishlov yo'qotishi",
     overageWarning: 'Diqqat: xom ashyo balansidan ortiq yuborilgan',
-    crossPeriodNote: "Boshqa davr xom ashyosi bo'yicha qayta yuvish",
     byType: 'Tur bo\'yicha',
     byCalibre: 'Kalibr bo\'yicha',
     qualityRecord: 'Kelgan seriyalar va sifat',
@@ -104,7 +101,6 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     moisture: 'Namligi %',
     so2: 'SO₂ mg/kg',
     verdict: 'Verdikt',
-    cycle: 'Sikl',
     plate: 'Moshina',
     driver: 'Haydovchi',
     weight: "Og'irlik",
@@ -129,7 +125,6 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     konditirskiy: 'Кондитерский',
     processLoss: 'Технологические потери',
     overageWarning: 'Внимание: отправлено больше остатка сырья',
-    crossPeriodNote: 'Повторная мойка сырья другого периода',
     byType: 'По видам',
     byCalibre: 'По калибрам',
     qualityRecord: 'Поступившие партии и качество',
@@ -155,7 +150,6 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     moisture: 'Влажность %',
     so2: 'SO₂ мг/кг',
     verdict: 'Вердикт',
-    cycle: 'Цикл',
     plate: 'Машина',
     driver: 'Водитель',
     weight: 'Вес',

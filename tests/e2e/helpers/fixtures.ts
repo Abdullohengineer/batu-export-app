@@ -114,16 +114,23 @@ export interface SeedDispatchableResult {
 // chiqim-full-chain, chiqim-undo-scan, menejer-chiqim-finished-view all
 // need exactly this shape). Writes directly via the dev-only
 // window.supabase client, respecting RLS by logging in as whichever role
-// actually owns each table (menejer: kirim_orders/kirim_lines; ombor:
-// wash_cycles/finished_pallets; laborator: lab_results) — the same
-// established pattern every existing test already uses for direct-DB
-// confirmation (CLAUDE.md "Testing workflow"), extended here to direct-DB
-// *creation* for the same reason these four tests originally gave for
-// skipping a full UI-driven KIRIM->Moyka->Tayyor chain: that's a lot of
-// unrelated setup for a CHIQIM-focused test. Leaves the page logged OUT
-// when done (at /login) — the caller starts its own real flow with its own
-// loginAs from a clean slate, exactly as if a human had seeded this data
-// once via SQL, which is what these tests did before this change.
+// actually owns each table — the same established pattern every existing
+// test already uses for direct-DB confirmation (CLAUDE.md "Testing
+// workflow"), extended here to direct-DB *creation* for the same reason
+// these four tests originally gave for skipping a full UI-driven
+// KIRIM->Moyka->Tayyor chain: that's a lot of unrelated setup for a
+// CHIQIM-focused test. Leaves the page logged OUT when done (at /login) —
+// the caller starts its own real flow with its own loginAs from a clean
+// slate, exactly as if a human had seeded this data once via SQL, which is
+// what these tests did before this change.
+//
+// 🔒 Insert order changed (2026-07-28, Laborator v2 — see DECISIONS.md "Lab
+// moves inside Moyka, wash-cycle concept removed"): finished_pallets' own
+// INSERT policy now requires the parent serial's LATEST chiqim lab verdict
+// to already be 'o_tdi' (the hard gate moved to packing) — lab_results MUST
+// exist and pass BEFORE finished_pallets, the reverse of the old order.
+// wash_cycles is now exactly one row per serial (no cycle_no), and
+// finished_pallets/moyka_sends both dropped their own wash_cycle column.
 export async function seedDispatchablePallets(
   page: Page,
   opts: { count: number; weightKgEach: number; typeLabel: string; calibreLabel: string },
@@ -170,40 +177,23 @@ export async function seedDispatchablePallets(
   )
 
   await switchRole(page, 'OMBOR')
-  const { washCycleId, calibreCode } = await page.evaluate(
-    async ({ serial, calibreLabel, count, weightKgEach }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
-      const { data: calibre, error: calErr } = await w.supabase.from('calibres').select('id, code').eq('label', calibreLabel).single()
-      if (calErr) throw new Error(`calibre lookup: ${calErr.message}`)
-      const { data: type, error: typeErr } = await w.supabase.from('kirim_lines').select('type_id').eq('serial', serial).single()
-      if (typeErr) throw new Error(`type lookup for seeded line: ${typeErr.message}`)
-      const { data: cycle, error: cycleErr } = await w.supabase
-        .from('wash_cycles')
-        .insert({ serial, cycle_no: 1, status: 'final', final_loss_pct: 0 })
-        .select('id')
-        .single()
-      if (cycleErr) throw new Error(`wash_cycles insert: ${cycleErr.message}`)
-      const receivedDate = new Date().toISOString().slice(0, 10)
-      const rows = Array.from({ length: count }, (_, i) => ({
-        barcode2: `PLT-${serial}-${calibre.code}-${i + 1}`,
-        serial,
-        wash_cycle: 1,
-        type_id: type.type_id,
-        calibre_id: calibre.id,
-        weight_kg: weightKgEach,
-        received_date: receivedDate,
-      }))
-      const { error: palletErr } = await w.supabase.from('finished_pallets').insert(rows)
-      if (palletErr) throw new Error(`finished_pallets insert: ${palletErr.message}`)
-      return { washCycleId: cycle.id as string, calibreCode: calibre.code as string }
-    },
-    { serial, calibreLabel, count, weightKgEach },
-  )
+  const washCycleId = await page.evaluate(async ({ serial }) => {
+    const w = window as unknown as { supabase: { from: (t: string) => any } }
+    const { data: cycle, error: cycleErr } = await w.supabase
+      .from('wash_cycles')
+      .insert({ serial, status: 'final', final_loss_pct: 0 })
+      .select('id')
+      .single()
+    if (cycleErr) throw new Error(`wash_cycles insert: ${cycleErr.message}`)
+    return cycle.id as string
+  }, { serial })
 
+  // Lab verdict BEFORE any pallet — the hard gate requires it to already
+  // exist when finished_pallets is inserted below.
   await switchRole(page, 'LABORATOR')
   await page.evaluate(
     async ({ serial, washCycleId }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any }; supabase_auth?: unknown }
+      const w = window as unknown as { supabase: { from: (t: string) => any } }
       const {
         data: { user },
       } = await w.supabase.auth.getUser()
@@ -220,6 +210,30 @@ export async function seedDispatchablePallets(
       if (error) throw new Error(`lab_results insert: ${error.message}`)
     },
     { serial, washCycleId },
+  )
+
+  await switchRole(page, 'OMBOR')
+  const calibreCode = await page.evaluate(
+    async ({ serial, calibreLabel, count, weightKgEach }) => {
+      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const { data: calibre, error: calErr } = await w.supabase.from('calibres').select('id, code').eq('label', calibreLabel).single()
+      if (calErr) throw new Error(`calibre lookup: ${calErr.message}`)
+      const { data: type, error: typeErr } = await w.supabase.from('kirim_lines').select('type_id').eq('serial', serial).single()
+      if (typeErr) throw new Error(`type lookup for seeded line: ${typeErr.message}`)
+      const receivedDate = new Date().toISOString().slice(0, 10)
+      const rows = Array.from({ length: count }, (_, i) => ({
+        barcode2: `PLT-${serial}-${calibre.code}-${i + 1}`,
+        serial,
+        type_id: type.type_id,
+        calibre_id: calibre.id,
+        weight_kg: weightKgEach,
+        received_date: receivedDate,
+      }))
+      const { error: palletErr } = await w.supabase.from('finished_pallets').insert(rows)
+      if (palletErr) throw new Error(`finished_pallets insert: ${palletErr.message}`)
+      return calibre.code as string
+    },
+    { serial, calibreLabel, count, weightKgEach },
   )
 
   // Log out, leaving the page at /login — the caller starts its own real

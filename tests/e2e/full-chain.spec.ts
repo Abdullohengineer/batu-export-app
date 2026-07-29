@@ -268,9 +268,50 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(row.getByRole('button', { name: 'Moykaga yuborish' })).toHaveCount(0)
   }
 
+  // --- Laborator CHIQIM: decisive check. Laborator v2 (2026-07-28 -- see
+  // DECISIONS.md "Lab moves inside Moyka, wash-cycle concept removed"): the
+  // hard gate on Barcode #2 assignment moved to packing, so this verdict
+  // must now happen BEFORE Ombor can pack -- it used to run after packing
+  // and Tugallash, back when CHIQIM lab testing was scoped to a completed
+  // wash cycle. Subxon is sulfured, so ChiqimTahlilForm's requireVerdict is
+  // false (target_so2_mg_kg !== null) -- Tahlil only records moisture
+  // (Saqlash, no verdict yet), the cycle moves to Sera kutilmoqda, and the
+  // verdict happens at Sera kiritish alongside SO2 -- the same two-step
+  // shape as the KIRIM check above. No more pallet <select> in this form
+  // (Laborator v2 dropped it -- a pallet doesn't exist yet at this point in
+  // the flow anymore); the sample-source field is now optional free text.
+  await page.getByRole('button', { name: 'Chiqish' }).click()
+  await page.waitForURL('**/login')
+  await loginAs(page, 'LABORATOR')
+  await page.getByRole('link', { name: 'CHIQIM' }).click()
+  {
+    const w1 = page.getByRole('heading', { name: 'Tahlil kutilmoqda' }).locator('xpath=following-sibling::div[1]')
+    const w2 = page.getByRole('heading', { name: '2 · Sera natijasi kutilmoqda (1 kun)' }).locator('xpath=following-sibling::div[1]')
+    const w3 = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
+
+    const row = w1.locator('div.rounded-md', { hasText: subxonSerial })
+    await expect(row).toBeVisible({ timeout: 20000 })
+    await row.getByRole('button', { name: 'Tahlil' }).click()
+    await row.locator('div:has(> label:text-is("Namligi %")) input').fill('7')
+    await row.getByRole('button', { name: 'Saqlash' }).click()
+
+    const w2row = w2.locator('div.rounded-md', { hasText: subxonSerial })
+    await expect(w2row).toBeVisible({ timeout: 20000 })
+    await expect(w3.locator('div.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
+
+    await w2row.locator('input[type="number"]').fill('40')
+    await w2row.getByRole('button', { name: "O'tdi", exact: true }).click()
+
+    const finishedRow = w3.locator('div.rounded-md', { hasText: subxonSerial })
+    await expect(finishedRow).toBeVisible({ timeout: 20000 })
+    await expect(finishedRow).toContainText("O'tdi")
+  }
+
   const barcode = `PLT-${subxonSerial}-06-1`
   {
-    await page.getByRole('link', { name: 'Skladga KIRIM' }).click()
+    await page.getByRole('button', { name: 'Chiqish' }).click()
+    await page.waitForURL('**/login')
+    await loginAs(page, 'OMBOR')
     await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
     await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
     const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: subxonSerial })
@@ -298,39 +339,6 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     // (5000 - 4600) / 5000 = 8.0% — against Subxon's own 5,000kg intake
     // figure, never the truck's 5,700kg gate net (multi-line, §2.16.1).
     await expect(finishedRow).toContainText('8.0%')
-  }
-
-  // --- Laborator CHIQIM: decisive check. Subxon is sulfured, so
-  // ChiqimTahlilForm's requireVerdict is false (target_so2_mg_kg !== null)
-  // -- Tahlil only records moisture (Saqlash, no verdict yet), the cycle
-  // moves to Sera kutilmoqda, and the verdict happens at Sera kiritish
-  // alongside SO2 -- the same two-step shape as the KIRIM check above. ---
-  await page.getByRole('button', { name: 'Chiqish' }).click()
-  await page.waitForURL('**/login')
-  await loginAs(page, 'LABORATOR')
-  await page.getByRole('link', { name: 'CHIQIM' }).click()
-  {
-    const w1 = page.getByRole('heading', { name: 'Tahlil kutilmoqda' }).locator('xpath=following-sibling::div[1]')
-    const w2 = page.getByRole('heading', { name: '2 · Sera natijasi kutilmoqda (1 kun)' }).locator('xpath=following-sibling::div[1]')
-    const w3 = page.getByRole('heading', { name: 'Yakunlangan' }).locator('xpath=following-sibling::div[1]')
-
-    const row = w1.locator('div.rounded-md', { hasText: subxonSerial })
-    await expect(row).toBeVisible({ timeout: 20000 })
-    await row.getByRole('button', { name: 'Tahlil' }).click()
-    await row.locator('select').selectOption({ index: 1 })
-    await row.locator('div:has(> label:text-is("Namligi %")) input').fill('7')
-    await row.getByRole('button', { name: 'Saqlash' }).click()
-
-    const w2row = w2.locator('div.rounded-md', { hasText: subxonSerial })
-    await expect(w2row).toBeVisible({ timeout: 20000 })
-    await expect(w3.locator('div.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
-
-    await w2row.locator('input[type="number"]').fill('40')
-    await w2row.getByRole('button', { name: "O'tdi", exact: true }).click()
-
-    const finishedRow = w3.locator('div.rounded-md', { hasText: subxonSerial })
-    await expect(finishedRow).toBeVisible({ timeout: 20000 })
-    await expect(finishedRow).toContainText("O'tdi")
   }
 
   // --- Confirm availability directly (SPEC.md §8 "one derived truth, all consumers") ---

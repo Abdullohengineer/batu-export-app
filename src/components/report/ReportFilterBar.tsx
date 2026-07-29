@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Owner } from '../../lib/useOwners'
 import type { ProductType } from '../../lib/useProductTypes'
 import type { Calibre } from '../../lib/useCalibres'
-import { type ReportDirection, type LabVerdictFilter, type WashCycleFilter } from '../../lib/reportQuery'
+import { type ReportDirection, type LabVerdictFilter } from '../../lib/reportQuery'
 import { defaultDateRange } from '../../lib/dateRange'
 
 const inputClass =
@@ -123,8 +123,8 @@ function FilterField({
 // component. Every section below is now field-by-field rather than one
 // `ReportFilters` object + `onChange` — Hisobot (the only other consumer)
 // passes every field it always did, StockOnHand passes only what it needs
-// (no direction/washCycle/labVerdict/plate/driver sections — omitting a
-// section's onChange hides it entirely, no dead UI). Calibre/type/status
+// (no direction/labVerdict/plate/driver sections — omitting a section's
+// onChange hides it entirely, no dead UI). Calibre/type/status
 // are now `string[]`-based everywhere so a multi-select caller and a
 // single-select caller share the identical FilterField control above.
 export function ReportFilterBar({
@@ -166,8 +166,6 @@ export function ReportFilterBar({
   onPlateChange,
   driver,
   onDriverChange,
-  washCycle,
-  onWashCycleChange,
   labVerdict,
   onLabVerdictChange,
 
@@ -211,8 +209,6 @@ export function ReportFilterBar({
   onPlateChange?: (v: string) => void
   driver?: string
   onDriverChange?: (v: string) => void
-  washCycle?: WashCycleFilter
-  onWashCycleChange?: (v: WashCycleFilter) => void
   labVerdict?: LabVerdictFilter
   onLabVerdictChange?: (v: LabVerdictFilter) => void
 
@@ -225,7 +221,6 @@ export function ReportFilterBar({
     onBarcode2Change ? barcode2 : '',
     onPlateChange ? plate : '',
     onDriverChange ? driver : '',
-    onWashCycleChange ? washCycle : '',
     onLabVerdictChange ? labVerdict : '',
   ].filter((v) => (typeof v === 'boolean' ? v : !!v)).length
 
@@ -386,20 +381,6 @@ export function ReportFilterBar({
             <label className="text-sm">
               <span className="block text-slate-500 dark:text-slate-400">Haydovchi</span>
               <input type="text" value={driver ?? ''} onChange={(e) => onDriverChange(e.target.value)} className={inputClass} />
-            </label>
-          )}
-          {onWashCycleChange && (
-            <label className="text-sm">
-              <span className="block text-slate-500 dark:text-slate-400">Yuvish sikli</span>
-              <select
-                value={washCycle ?? ''}
-                onChange={(e) => onWashCycleChange(e.target.value as WashCycleFilter)}
-                className={inputClass}
-              >
-                <option value="">Har qanday</option>
-                <option value="1">1</option>
-                <option value="2+">2+</option>
-              </select>
             </label>
           )}
           {onLabVerdictChange && (

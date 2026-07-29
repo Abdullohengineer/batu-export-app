@@ -36,8 +36,6 @@ export type PalletStatusFilter = '' | 'omborda' | 'band_qilingan' | 'jonatilgan'
 
 export type LabVerdictFilter = '' | 'o_tdi' | 'qayta_yuvish' | 'tekshirilmagan'
 
-export type WashCycleFilter = '' | '1' | '2+'
-
 export interface ReportFilters {
   direction: ReportDirection
   from: string // YYYY-MM-DD, inclusive
@@ -49,7 +47,6 @@ export interface ReportFilters {
   barcode2: string // Barcode #2, substring match (KIRIM rows never match)
   plate: string // substring match
   driver: string // substring match
-  washCycle: WashCycleFilter // '' = any — KIRIM rows never match (always cycle 1, raw)
   labVerdict: LabVerdictFilter
   status: PalletStatusFilter // CHIQIM/pallet rows only
 }
@@ -66,7 +63,6 @@ export function defaultReportFilters(from: string, to: string): ReportFilters {
     barcode2: '',
     plate: '',
     driver: '',
-    washCycle: '',
     labVerdict: '',
     status: '',
   }

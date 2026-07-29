@@ -121,6 +121,7 @@ export function LaboratorKirimTab() {
           {awaiting.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan serial yo'q.</p>}
           {awaiting.map((line) => {
             const isActive = activeTahlil === line.serial
+            const enterable = line.gruzheny_kg !== null
             return (
               <Card key={line.serial}>
                 <div className="flex items-center justify-between gap-3">
@@ -132,15 +133,20 @@ export function LaboratorKirimTab() {
                       </span>
                     </div>
                     <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
-                      {line.actual_qty.toLocaleString()} kg · skladga kirdi {shortDate(line.confirmed_at)}
+                      {(line.actual_qty ?? line.declared_qty).toLocaleString()} kg · keldi {shortDate(line.order_date)}
                     </div>
                   </div>
-                  {!isActive && (
+                  {!isActive && enterable && (
                     <Button variant="primary" size="lg" onClick={() => setActiveTahlil(line.serial)}>
                       Tahlil
                     </Button>
                   )}
                 </div>
+                {!enterable && (
+                  <div className="mt-2">
+                    <StatusNote tone="pending">⏳ Darvoza (1-bosqich) kutilmoqda</StatusNote>
+                  </div>
+                )}
                 {isActive && (
                   <KirimTahlilForm
                     line={line}

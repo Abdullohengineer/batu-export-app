@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
-import { useLaboratorChiqim, type AwaitingCycle, type ChiqimLabResultRow } from '../../lib/useLaboratorChiqim'
+import { useLaboratorChiqim, type AwaitingSerial, type ChiqimLabResultRow } from '../../lib/useLaboratorChiqim'
 import { ChiqimTahlilForm, type ChiqimTahlilValues } from './ChiqimTahlilForm'
 import { GatePhoto } from '../../components/GatePhoto'
 import { Card } from '../../components/ui/Card'
@@ -17,20 +17,17 @@ import { StatusPill } from '../../components/ui/StatusPill'
 
 const VERDICT_LABEL: Record<string, string> = { o_tdi: "O'tdi", qayta_yuvish: 'Qayta yuvish' }
 
-// §5.5.3 Laborator CHIQIM — decisive check, hard-gates dispatch (via
-// useAvailableFinishedStock/chiqimScan.ts, wired separately). Three
-// windows: Tahlil kutilmoqda (FIFO), Sera kutilmoqda (sulfured only,
-// amber), Yakunlangan (values + verdict + cycle number).
+// §5.5.3 Laborator CHIQIM — decisive check, hard-gates BOTH Barcode #2
+// assignment (OmborTayyorTab.tsx, since 2026-07-28 Laborator v2) and
+// dispatch (useAvailableFinishedStock/chiqimScan.ts). Three windows: Tahlil
+// kutilmoqda (FIFO), Sera kutilmoqda (sulfured only, amber), Yakunlangan
+// (values + verdict).
 //
-// 🔒 nav/visual-redesign pass (mockup "BATU-Laborator-Screens-v2.pdf" —
-// visual language only, see docs/DECISIONS.md): the mockup's own CHIQIM
-// pages were drawn against the superseded v1.5 model (dispatch-request-
-// tied, no verdict) and are NOT what's built below. Every card here already
-// read from `AwaitingCycle`/`wash_cycles` (never `chiqim_requests`) before
-// this pass touched anything — this restyle keeps that wash-cycle subject
-// exactly as-is, matching SPEC.md §5.5.3's row definition (parent seriya ·
-// buyurtmachi · tur · pallet soni · jami kg · ishlab chiqarilgan sana ·
-// yuvish sikli), not the mockup's So'rov/moshina/tarkib fields.
+// Trigger changed (2026-07-28, Laborator v2 — see DECISIONS.md "Lab moves
+// inside Moyka, wash-cycle concept removed"): a serial reaches Window 1 as
+// soon as it's sent to Moyka, not once a wash cycle finalizes pallets — no
+// pallets exist yet at this stage, so the row shows total sent kg, not
+// pallet count/weight, and there is no wash-cycle number to display.
 export function LaboratorChiqimTab() {
   const { profile } = useAuth()
   // §3.3: includeInactive=true -- resolves names on historical/in-flight cycles.
@@ -55,7 +52,7 @@ export function LaboratorChiqimTab() {
   // right here, status goes straight to 'complete', skipping W2 entirely.
   // Sulfured -> status 'moisture_in', no verdict yet, moves to W2; verdict
   // happens at Sera kiritish instead.
-  async function handleTahlil(cycle: AwaitingCycle, values: ChiqimTahlilValues) {
+  async function handleTahlil(item: AwaitingSerial, values: ChiqimTahlilValues) {
     let photoPath: string | null = null
     if (values.photoFile) {
       const path = `${crypto.randomUUID()}.jpg`
@@ -64,12 +61,12 @@ export function LaboratorChiqimTab() {
       photoPath = path
     }
 
-    const isSulfured = cycle.target_so2_mg_kg !== null
+    const isSulfured = item.target_so2_mg_kg !== null
     const { error } = await supabase.from('lab_results').insert({
       scope: 'chiqim',
-      parent_serial: cycle.serial,
-      wash_cycle_id: cycle.washCycleId,
-      sampled_pallet: values.sampledPallet,
+      parent_serial: item.serial,
+      wash_cycle_id: item.washCycleId,
+      sampled_pallet: values.sampledPallet || null,
       sample_date: values.sampleDate,
       moisture_pct: values.moisturePct,
       sample_photo: photoPath,
@@ -126,38 +123,41 @@ export function LaboratorChiqimTab() {
         <SectionHeading>1 · Tahlil kutilmoqda — namuna oling</SectionHeading>
         <div className="mt-2 space-y-2">
           {awaiting.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan partiya yo'q.</p>}
-          {awaiting.map((cycle) => {
-            const isActive = activeTahlil === cycle.washCycleId
-            const jamiKg = cycle.pallets.reduce((sum, p) => sum + p.weight_kg, 0)
+          {awaiting.map((item) => {
+            const isActive = activeTahlil === item.washCycleId
             return (
-              <Card key={cycle.washCycleId}>
+              <Card key={item.washCycleId} tone={item.rejected ? 'problem' : 'neutral'}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <SerialChip>{cycle.serial}</SerialChip>
+                      <SerialChip>{item.serial}</SerialChip>
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
-                        {ownerName(cycle.owner_id)} · {typeName(cycle.type_id)}
+                        {ownerName(item.owner_id)} · {typeName(item.type_id)}
                       </span>
                     </div>
                     <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
-                      {cycle.pallets.length} ta pallet · {jamiKg.toLocaleString()} kg · {cycle.producedDate ?? '—'} · sikl{' '}
-                      {cycle.cycleNo}
+                      {item.sentKg.toLocaleString()} kg · yuborilgan {item.sentDate}
                     </div>
+                    {item.rejected && (
+                      <div className="mt-1 text-sm font-medium text-red-700 dark:text-red-400">
+                        Rad etildi — qayta tekshirish kerak
+                      </div>
+                    )}
                   </div>
                   {!isActive && (
-                    <Button variant="primary" size="lg" onClick={() => setActiveTahlil(cycle.washCycleId)}>
+                    <Button variant="primary" size="lg" onClick={() => setActiveTahlil(item.washCycleId)}>
                       Tahlil
                     </Button>
                   )}
                 </div>
                 {isActive && (
                   <ChiqimTahlilForm
-                    cycle={cycle}
-                    ownerName={ownerName(cycle.owner_id)}
-                    typeName={typeName(cycle.type_id)}
-                    requireVerdict={cycle.target_so2_mg_kg === null}
+                    item={item}
+                    ownerName={ownerName(item.owner_id)}
+                    typeName={typeName(item.type_id)}
+                    requireVerdict={item.target_so2_mg_kg === null}
                     onCancel={() => setActiveTahlil(null)}
-                    onSubmit={(v) => handleTahlil(cycle, v)}
+                    onSubmit={(v) => handleTahlil(item, v)}
                   />
                 )}
               </Card>
@@ -175,7 +175,7 @@ export function LaboratorChiqimTab() {
               <div className="flex items-center gap-2">
                 <SerialChip>{row.serial}</SerialChip>
                 <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
-                  {ownerName(row.owner_id)} · {typeName(row.type_id)} · sikl {row.cycleNo}
+                  {ownerName(row.owner_id)} · {typeName(row.type_id)}
                 </span>
               </div>
               <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
@@ -231,7 +231,7 @@ export function LaboratorChiqimTab() {
               >
                 <SerialChip>{row.serial}</SerialChip>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
-                  {ownerName(row.owner_id)} · {typeName(row.type_id)} · sikl {row.cycleNo}
+                  {ownerName(row.owner_id)} · {typeName(row.type_id)}
                 </span>
                 {row.verdict && (
                   <StatusPill tone={row.verdict === 'qayta_yuvish' ? 'problem' : 'ok'}>
@@ -253,7 +253,8 @@ export function LaboratorChiqimTab() {
                     )}
                   </div>
                   <div>
-                    {row.sample_date} · namuna: {row.sampled_pallet}
+                    {row.sample_date}
+                    {row.sampledPallet ? ` · namuna manbai: ${row.sampledPallet}` : ''}
                   </div>
                   {row.note && <div>Qayd: {row.note}</div>}
                   <GatePhoto path={row.sample_photo} label="Namuna rasmi" bucket="lab-photos" />

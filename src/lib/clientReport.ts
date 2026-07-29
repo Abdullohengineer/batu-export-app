@@ -10,18 +10,6 @@ export interface ClientReportCappedSerial {
   overageKg: number
 }
 
-export interface ClientReportCrossPeriodRewash {
-  serial: string
-  cycleNo: number
-  completedDate: string
-  rawConsumedDate: string
-  sentKg: number
-  calibreKg: number
-  konditirskiyKg: number
-  lossKg: number
-  lossPct: number
-}
-
 export interface ClientReportRawByType {
   typeId: string
   openingKg: number
@@ -44,7 +32,6 @@ export interface ClientReportRaw {
     lossKg: number
     lossPct: number
   }
-  crossPeriodRewash: ClientReportCrossPeriodRewash[]
   byType: ClientReportRawByType[]
 }
 
@@ -72,7 +59,6 @@ export interface ClientReportLabReading {
 
 export interface ClientReportDeliveredLab extends ClientReportLabReading {
   verdict: 'o_tdi' | 'qayta_yuvish'
-  cycleNo: number
 }
 
 export interface ClientReportQualityRow {

@@ -13,8 +13,8 @@ import { StockOnHandTab } from './pages/reports/StockOnHandTab'
 import { WipTab } from './pages/reports/WipTab'
 import { ClientReportTab } from './pages/reports/ClientReportTab'
 import { YieldTab } from './pages/reports/YieldTab'
-import { RahbarExceptionsTab } from './pages/rahbar/RahbarExceptionsTab'
-import { RahbarSettingsTab } from './pages/rahbar/RahbarSettingsTab'
+import { MenejerExceptionsTab } from './pages/menejer/MenejerExceptionsTab'
+import { MenejerSettingsTab } from './pages/menejer/MenejerSettingsTab'
 import { MenejerClientsTab } from './pages/menejer/MenejerClientsTab'
 import { QorovulHome } from './pages/qorovul/QorovulHome'
 import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
@@ -66,9 +66,6 @@ function AppRoutes() {
         <Route path="kutilmoqda" element={<WipTab />} />
         <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
         <Route path="hosildorlik" element={<YieldTab />} />
-        <Route path="diqqat-talab" element={<RahbarExceptionsTab />} />
-        <Route path="sozlamalar" element={<RahbarSettingsTab />} />
-        <Route path="foydalanuvchilar" element={<UsersAdminPage />} />
       </Route>
 
       <Route
@@ -87,6 +84,9 @@ function AppRoutes() {
         <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
         <Route path="hosildorlik" element={<YieldTab />} />
         <Route path="mijozlar" element={<MenejerClientsTab />} />
+        <Route path="diqqat-talab" element={<MenejerExceptionsTab />} />
+        <Route path="sozlamalar" element={<MenejerSettingsTab />} />
+        <Route path="foydalanuvchilar" element={<UsersAdminPage />} />
       </Route>
       <Route
         path="/qorovul"

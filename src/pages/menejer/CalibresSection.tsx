@@ -10,10 +10,12 @@ import { FormField, TextInput } from '../../components/ui/FormField'
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top text-sm'
 
-// §3.3 — Rahbar-only. calibres was the one master table with no `active`
-// column before this task (§3.3's own migration added it). Code/is_numberless
-// are set once at creation (they feed Barcode #2 formatting, §2.2) and are
-// not editable here — only the display label and active status are.
+// §3.3 — Menejer-only (moved from Rahbar, see DECISIONS.md "Boshqaruv
+// moved to Menejer"). calibres was the one master table with no `active`
+// column before the original §3.3 task (its own migration added it).
+// Code/is_numberless are set once at creation (they feed Barcode #2
+// formatting, §2.2) and are not editable here — only the display label and
+// active status are.
 export function CalibresSection() {
   const { calibres, loading, refetch } = useCalibres(true)
   const { categories } = useProductCategories() // active-only: category picker for new calibres

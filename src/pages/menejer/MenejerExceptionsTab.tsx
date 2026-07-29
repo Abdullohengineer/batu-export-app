@@ -47,21 +47,28 @@ function detailText(row: ExceptionRow): string {
 // §6.2 Diqqat talab (Exceptions) — "what needs attention", not a row list.
 // Four kinds, three reusing existing thresholds/views outright (§3.2.6's
 // ageing, §3.2.9's lab-overdue, the existing abnormal_loss_pct), one new
-// (high re-wash rate, §2.14's new high_rewash_rate_pct). Rahbar-only.
+// (high re-wash rate, §2.14's new high_rewash_rate_pct).
 //
-// Nav/visual-redesign pass (Rahbar prompt): kind-filter pills + serial/
-// owner search, per mockup "BATU-Rahbar-Screens-v1_1.pdf" p2 -- both pure
-// client-side narrowing over the SAME `rows` this screen already fetches in
-// full (no new query), plus per-kind StatusPill coloring in place of the one
-// hardcoded red pill every row got before regardless of kind -- exactly the
-// "doesn't read as triage" gap the task called out (nothing was visually
-// differentiated by severity before this). The mockup's own list shows 6-7
-// problem kinds, including "Kam chiqdi" (shortfall) and "Nishonga to'g'ri
-// kelmadi" (manifest-mismatch) detection; SPEC.md §6.2 still lists those
-// too, but `rahbarDashboard.ts`'s ExceptionKind union has exactly the 4 this
-// screen already builds, matching this task's own "four kinds" framing --
-// kept at 4, did not add shortfall/manifest-mismatch detection logic.
-export function RahbarExceptionsTab() {
+// Moved from Rahbar to Menejer (see DECISIONS.md "Boshqaruv moved to
+// Menejer") -- component/behavior unchanged, only its route/nav ownership
+// moved. No RLS change was needed for this screen: its backing
+// `rahbar_exceptions()` RPC was already `grant execute to authenticated`,
+// not role-restricted, same as the other rahbar_* dashboard RPCs.
+//
+// Nav/visual-redesign pass (original Rahbar prompt): kind-filter pills +
+// serial/owner search, per mockup "BATU-Rahbar-Screens-v1_1.pdf" p2 -- both
+// pure client-side narrowing over the SAME `rows` this screen already
+// fetches in full (no new query), plus per-kind StatusPill coloring in
+// place of the one hardcoded red pill every row got before regardless of
+// kind -- exactly the "doesn't read as triage" gap that task called out
+// (nothing was visually differentiated by severity before this). The
+// mockup's own list shows 6-7 problem kinds, including "Kam chiqdi"
+// (shortfall) and "Nishonga to'g'ri kelmadi" (manifest-mismatch) detection;
+// SPEC.md §6.2 still lists those too, but `rahbarDashboard.ts`'s
+// ExceptionKind union has exactly the 4 this screen already builds,
+// matching that task's own "four kinds" framing -- kept at 4, did not add
+// shortfall/manifest-mismatch detection logic.
+export function MenejerExceptionsTab() {
   // §3.3: includeInactive=true -- resolves ids on exception rows that may
   // reference a since-deactivated client/type/calibre.
   const { owners } = useOwners(true)

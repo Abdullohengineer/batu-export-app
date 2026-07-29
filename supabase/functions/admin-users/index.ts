@@ -1,10 +1,11 @@
-// Rahbar-only user administration (docs/DECISIONS.md — "Auth method").
+// Menejer-only user administration (docs/DECISIONS.md — "Auth method";
+// moved from Rahbar to Menejer, see "Boshqaruv moved to Menejer").
 //
 // Public signup is disabled and there is no real inbox behind the
 // synthesized <phone>@batu.local addresses, so Supabase's built-in
 // email-based signup / password-reset flows are unusable here. This
 // function is the replacement: only a caller whose profile role is
-// 'rahbar' may create a user or reset a password, and it does so with
+// 'menejer' may create a user or reset a password, and it does so with
 // the service_role key (never exposed to the browser).
 //
 // Actions (POST body: { action: 'create-user' | 'reset-password', ... }):
@@ -60,8 +61,8 @@ Deno.serve(async (req) => {
     .eq('id', callerData.user.id)
     .single()
 
-  if (callerProfileErr || !callerProfile || callerProfile.role !== 'rahbar' || !callerProfile.active) {
-    return json({ error: 'Forbidden — rahbar only' }, 403)
+  if (callerProfileErr || !callerProfile || callerProfile.role !== 'menejer' || !callerProfile.active) {
+    return json({ error: 'Forbidden — menejer only' }, 403)
   }
 
   let body: Record<string, unknown>

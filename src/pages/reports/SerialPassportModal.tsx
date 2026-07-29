@@ -193,15 +193,20 @@ function PassportBody({
         )}
       </section>
 
-      {/* Yuvish sikllari (wash cycles), repeated 1..N */}
+      {/* Laborator v2 (2026-07-28): a serial has at most one Moyka/lab
+          record now (no more wash-cycle repeats), but `cycles` stays a
+          0-or-1-length array for shape compatibility with the rest of this
+          modal's rendering. */}
       <section>
-        <h3 className={sectionTitle}>Yuvish sikllari</h3>
+        <h3 className={sectionTitle}>Moyka</h3>
         {cycles.length === 0 && <p className={`mt-2 ${label}`}>Hali Moykaga yuborilmagan.</p>}
         <div className="mt-2 space-y-4">
           {cycles.map((cycle) => (
-            <div key={cycle.cycleNo} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+            <div key={cycle.status} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Sikl {cycle.cycleNo}</div>
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {cycle.status === 'final' ? 'Yakunlangan' : 'Faol'}
+                </div>
                 {cycle.finalLossPct !== null && (
                   <div className="text-xs font-medium text-red-600 dark:text-red-400">Yo'qotish: {cycle.finalLossPct.toFixed(1)}%</div>
                 )}
@@ -414,12 +419,12 @@ function PhotosSection({ passport }: { passport: SerialPassport }) {
     ? [{ path: kirimLab.samplePhoto, bucket: 'lab-photos', what: 'Namuna (kirim)', who: kirimLab.testedByName, when: kirimLab.sampleDate }]
     : []
 
-  // One per cycle — labelled with the cycle number so a re-washed serial's
-  // several sample photos aren't ambiguous about which wash they're from.
+  // `cycles` is 0-or-1-length now (Laborator v2, 2026-07-28) — at most one
+  // CHIQIM sample photo per serial, same shape as kirimLabPhotos above.
   const chiqimLabPhotos: PhotoItem[] = cycles.map((c) => ({
     path: c.lab?.samplePhoto ?? null,
     bucket: 'lab-photos',
-    what: `Namuna (chiqim, sikl ${c.cycleNo})`,
+    what: 'Namuna (chiqim)',
     who: c.lab?.testedByName ?? null,
     when: c.lab?.sampleDate ?? null,
   }))

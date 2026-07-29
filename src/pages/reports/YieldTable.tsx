@@ -55,7 +55,7 @@ export function YieldTable({
                     {row.serial}
                     {row.rewashed && (
                       <span className="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
-                        sikl {row.maxCycleNo}
+                        qayta tekshirilgan
                       </span>
                     )}
                   </td>

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { jarayonda, ortiqcha } from './tayyorCompletion'
 import { sortByDateDesc, maxDate } from './sortByDate'
 import { isAwaitingTugallash } from './stageMembership'
-import { fetchActiveCycles } from './activeCycles'
+import { currentLabStatus, type LabGateStatus } from './labVerdict'
 
 export { computeFinalLossPct } from './tayyorCompletion'
 
@@ -19,32 +19,29 @@ export interface OutputSerial {
   type_id: string
   category_id: string
   owner_id: string
-  activeCycle: number // §5.5.4/§5.5.5: 1 unless a prior cycle was voided into a re-wash
-  isRewash: boolean
-  sent: number // Yuborilgan — Σ moyka_sends.qty_kg for the ACTIVE cycle only (derived)
-  received: number // Qabul qilingan — Σ finished_pallets.weight_kg for the ACTIVE cycle, non-void (derived)
+  labStatus: LabGateStatus // Laborator v2 (2026-07-28): hard gate on Barcode #2 assignment —
+  // 'passed' required before this serial can be packed; OmborTayyorTab.tsx reads this to gate the receive action.
+  sent: number // Yuborilgan — Σ moyka_sends.qty_kg (derived)
+  received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void (derived)
   inProcess: number // Jarayonda — max(0, sent − received); never negative (see DECISIONS)
   excess: number // Ortiqcha — max(0, received − sent); non-blocking overage flag
-  pallets: FinishedPallet[] // this cycle's pallets only
+  pallets: FinishedPallet[] // this serial's pallets
   lastActivityDate: string | null // max(last moyka_sends.sent_date, last finished_pallets.received_date)
   // — used to sort this list newest-first (DECISIONS "Universal sort rule").
-  barcodeSeqByCalibre: Record<string, number> // §5.5.5: count of EVERY pallet ever made for this
-  // serial+calibre, across ALL cycles and INCLUDING voided ones — barcode2 is a permanent PK
-  // (void-never-delete), so the next barcode's sequence number must never collide with a prior
-  // cycle's, not even a voided one. Deliberately NOT scoped to the active cycle like `pallets`.
+  barcodeSeqByCalibre: Record<string, number> // count of every pallet ever made for this serial+calibre —
+  // barcode2 is a permanent PK, so the next barcode's sequence number must never collide with a prior one.
 }
 
-// §5.3 Window 2 (Tugallangan): a serial whose ACTIVE cycle has a
-// wash_cycles row with status='final' — always via manual Tugallash now
-// (DECISIONS.md "Manual-only finishing"). lossPct is the LOCKED figure from
+// §5.3 Window 2 (Tugallangan): a serial whose wash_cycles row has
+// status='final' — always via manual Tugallash now (DECISIONS.md
+// "Manual-only finishing"). lossPct is the LOCKED figure from
 // wash_cycles.final_loss_pct (source of truth once finalized, not
-// recomputed) — sent/received/excess stay derived like the active list,
-// for display and for the Ortiqcha badge.
-export interface CompletedCycle {
+// recomputed) — sent/received/excess stay derived like the active list, for
+// display and for the Ortiqcha badge.
+export interface CompletedSerial {
   serial: string
   type_id: string
   owner_id: string
-  cycleNo: number
   sent: number
   received: number
   lossPct: number // locked wash_cycles.final_loss_pct, floored at 0 (see tayyorCompletion.ts)
@@ -52,73 +49,74 @@ export interface CompletedCycle {
   pallets: FinishedPallet[]
   lastReceivedDate: string | null // max finished_pallets.received_date — used as a fallback sort
   // key (below) for cycles finalized before wash_cycles.finalized_at existed.
-  finalizedAt: string | null // §5.3 "Ombor printing gaps": wash_cycles.finalized_at, set at the
-  // actual Tugallash moment (0032_wash_cycles_finalized_at.sql) — the real signal for "when this
-  // cycle was completed", used to sort Window 2 newest-first (DECISIONS "History list ordering",
-  // "Universal sort rule"). Null for any cycle finalized before that column existed; the sort
-  // below falls back to lastReceivedDate for those rather than treating them as infinitely old.
+  finalizedAt: string | null // the real completion-time signal (0032_wash_cycles_finalized_at.sql) —
+  // used to sort Window 2 newest-first (DECISIONS "History list ordering", "Universal sort rule").
 }
 
 // §5.3 data: serials sent to Moyka (Step 5) split into two windows — active
 // (awaiting Tugallash: sent > 0 and not yet manually finished, regardless
 // of received/sent quantities — see stageMembership.ts isAwaitingTugallash
 // and DECISIONS "Manual-only finishing") and completed (Tugallangan: a
-// final wash_cycles row exists for the ACTIVE cycle, always via Tugallash —
-// there is no auto-finalize path anymore). These two are independent, not
-// mutually exclusive: a serial can be active AND completed at once if more
-// was sent after an earlier cycle finalized. All totals DERIVED (CLAUDE.md
-// "derive, don't store") except the locked final_loss_pct itself: sent from
-// moyka_sends, received from finished_pallets — both scoped to the serial's
-// ACTIVE cycle (§5.5.4/§5.5.5, Step 8 prompt 2 split 2d) via the shared
-// fetchActiveCycles helper, so a re-washed serial's numbers describe its
-// current cycle, not a mix of cycle 1's already-finalized figures and cycle
-// 2's in-progress ones. Both lists sort newest-first (DECISIONS "Universal
-// sort rule").
+// final wash_cycles row exists, always via Tugallash — there is no
+// auto-finalize path). These two are independent, not mutually exclusive: a
+// serial can be active AND completed at once if more was sent after an
+// earlier finalization. All totals DERIVED (CLAUDE.md "derive, don't
+// store") except the locked final_loss_pct itself. Both lists sort
+// newest-first (DECISIONS "Universal sort rule").
+//
+// Wash-cycle scoping removed (2026-07-28, Laborator v2 — see DECISIONS.md
+// "Lab moves inside Moyka, wash-cycle concept removed"): re-washing now
+// happens invisibly inside Moyka, so every send/pallet for a serial belongs
+// to the same single balance for its whole life — no more active-cycle
+// derivation (the old fetchActiveCycles/rewash.ts, both deleted).
 export function useMoykaOutput() {
   const [serials, setSerials] = useState<OutputSerial[]>([])
-  const [completed, setCompleted] = useState<CompletedCycle[]>([])
+  const [completed, setCompleted] = useState<CompletedSerial[]>([])
   const [loading, setLoading] = useState(true)
+  // 🔒 refresh is called both from the mount effect below AND from mutation
+  // handlers elsewhere (handleSend/handleReceipt/handleTugallash) — a plain
+  // per-effect `cancelled` closure (this codebase's usual guard, e.g.
+  // useYieldRows.ts) can't cover both call sites. A monotonic request id
+  // does: only the most-recently-STARTED call is ever allowed to commit
+  // state, regardless of which one resolves first. Without this, React
+  // StrictMode's dev-only double-invoke of the mount effect (or a mutation's
+  // refresh() landing while the mount fetch is still in flight) can let an
+  // earlier, in-flight response overwrite a later, correct one with stale
+  // (sometimes empty) data.
+  const requestIdRef = useRef(0)
 
   const refresh = useCallback(async () => {
+    const requestId = ++requestIdRef.current
     setLoading(true)
     try {
       const [{ data: sends }, { data: pallets }, { data: cycles }] = await Promise.all([
-        supabase.from('moyka_sends').select('serial, qty_kg, sent_date, wash_cycle'),
-        supabase.from('finished_pallets').select('barcode2, serial, wash_cycle, calibre_id, weight_kg, received_date, status'),
-        supabase.from('wash_cycles').select('serial, cycle_no, status, final_loss_pct, finalized_at'),
+        supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
+        supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, status'),
+        supabase.from('wash_cycles').select('serial, status, final_loss_pct, finalized_at'),
       ])
 
       const serialList = [...new Set((sends ?? []).map((s) => s.serial))]
       if (serialList.length === 0) {
-        setSerials([])
-        setCompleted([])
+        if (requestIdRef.current === requestId) {
+          setSerials([])
+          setCompleted([])
+        }
         return
       }
 
-      const activeCycles = await fetchActiveCycles(serialList)
-      function cycleOf(serial: string): number {
-        return activeCycles.get(serial)?.cycle ?? 1
-      }
+      const labStatusBySerial = await currentLabStatus(serialList)
 
-      // Sent totals (and last send date, for sorting) per serial, scoped to
-      // that serial's ACTIVE cycle only — a re-washed serial's cycle-1 sends
-      // must not bleed into cycle 2's in-progress total.
       const sentBySerial = new Map<string, number>()
       const lastSentDateBySerial = new Map<string, string>()
       for (const s of sends ?? []) {
-        if (s.wash_cycle !== cycleOf(s.serial)) continue
         sentBySerial.set(s.serial, (sentBySerial.get(s.serial) ?? 0) + s.qty_kg)
         const prevSent = lastSentDateBySerial.get(s.serial)
         if (!prevSent || s.sent_date > prevSent) lastSentDateBySerial.set(s.serial, s.sent_date)
       }
 
-      // Pallets (and their received total) per serial, same active-cycle
-      // scoping — Konditirskiy from an earlier cycle stays in_stock (§2.13)
-      // but must not count toward the CURRENT cycle's received/loss maths.
       const palletsBySerial = new Map<string, FinishedPallet[]>()
       for (const p of pallets ?? []) {
         if (p.status === 'bekor_qilindi') continue
-        if (p.wash_cycle !== cycleOf(p.serial)) continue
         const list = palletsBySerial.get(p.serial) ?? []
         list.push({ barcode2: p.barcode2, calibre_id: p.calibre_id, weight_kg: p.weight_kg, received_date: p.received_date })
         palletsBySerial.set(p.serial, list)
@@ -131,10 +129,9 @@ export function useMoykaOutput() {
         )
       }
 
-      // §5.5.5: EVERY pallet ever made for a (serial, calibre) — every
-      // cycle, including voided ones — since barcode2 is a permanent PK
-      // (void-never-delete) and a new cycle's first same-calibre pallet
-      // must not reuse a sequence number a voided cycle already claimed.
+      // Every pallet ever made for a (serial, calibre) — barcode2 is a
+      // permanent PK, so the next barcode's sequence number must never
+      // collide with a prior one.
       const barcodeSeqBySerial = new Map<string, Record<string, number>>()
       for (const p of pallets ?? []) {
         const bySerial = barcodeSeqBySerial.get(p.serial) ?? {}
@@ -142,17 +139,12 @@ export function useMoykaOutput() {
         barcodeSeqBySerial.set(p.serial, bySerial)
       }
 
-      // A cycle is "final" only when its OWN wash_cycles row (cycle_no =
-      // that serial's active cycle) has status='final' — not just any past
-      // cycle. Cycle 1's finalized-and-voided record stays in wash_cycles
-      // forever (void-never-delete) but must not be read as "still final"
-      // once the serial has moved on to a re-wash cycle.
-      const finalCycleByKey = new Map((cycles ?? []).filter((c) => c.status === 'final').map((c) => [`${c.serial}:${c.cycle_no}`, c]))
+      const finalCycleBySerial = new Map((cycles ?? []).filter((c) => c.status === 'final').map((c) => [c.serial, c]))
       const lossPctBySerial = new Map<string, number>()
       const finalizedAtBySerial = new Map<string, string | null>()
       const finalizedSerials = new Set<string>()
       for (const serial of serialList) {
-        const cycle = finalCycleByKey.get(`${serial}:${cycleOf(serial)}`)
+        const cycle = finalCycleBySerial.get(serial)
         if (cycle) {
           lossPctBySerial.set(serial, cycle.final_loss_pct ?? 0)
           finalizedAtBySerial.set(serial, cycle.finalized_at)
@@ -167,10 +159,10 @@ export function useMoykaOutput() {
       // until the operator clicks Tugallash (DECISIONS "Manual-only
       // finishing").
       const activeSerials = serialList.filter((s) => isAwaitingTugallash(sentBySerial.get(s) ?? 0, finalizedSerials.has(s)))
-      // §5.3 Window 2 (Tugallangan) membership — the ACTIVE cycle has a
-      // final wash_cycles row. A serial can be in BOTH activeSerials (not
-      // yet finished) and completedSerials at once if more was sent after
-      // an earlier cycle finalized.
+      // §5.3 Window 2 (Tugallangan) membership — the serial's wash_cycles
+      // row is final. A serial can be in BOTH activeSerials (not yet
+      // finished) and completedSerials at once if more was sent after an
+      // earlier finalization.
       const completedSerials = serialList.filter((s) => finalizedSerials.has(s))
 
       const { data: kLines } = await supabase
@@ -218,13 +210,11 @@ export function useMoykaOutput() {
         .map((serial): OutputSerial | null => {
           const base = baseRow(serial)
           if (!base) return null
-          const cycle = cycleOf(serial)
           return {
             serial: base.serial,
             type_id: base.type_id,
             owner_id: base.owner_id,
-            activeCycle: cycle,
-            isRewash: cycle > 1,
+            labStatus: labStatusBySerial.get(serial) ?? 'untested',
             sent: base.sent,
             received: base.received,
             pallets: base.pallets,
@@ -237,15 +227,14 @@ export function useMoykaOutput() {
         })
         .filter((s): s is OutputSerial => s !== null)
 
-      const completedRows: CompletedCycle[] = completedSerials
-        .map((serial): CompletedCycle | null => {
+      const completedRows: CompletedSerial[] = completedSerials
+        .map((serial): CompletedSerial | null => {
           const base = baseRow(serial)
           if (!base) return null
           return {
             serial: base.serial,
             type_id: base.type_id,
             owner_id: base.owner_id,
-            cycleNo: cycleOf(serial),
             sent: base.sent,
             received: base.received,
             pallets: base.pallets,
@@ -255,23 +244,17 @@ export function useMoykaOutput() {
             finalizedAt: finalizedAtBySerial.get(serial) ?? null,
           }
         })
-        .filter((c): c is CompletedCycle => c !== null)
+        .filter((c): c is CompletedSerial => c !== null)
 
       // Universal sort rule (DECISIONS "Universal sort rule", SPEC.md §5
       // intro): every stage/history list sorts newest-first. Sorted once
       // here, at the shared hook, so both consumers of `serials`
       // (§5.2 Window 2 and §5.3 Window 1 — section mirroring) inherit it.
+      if (requestIdRef.current !== requestId) return
       setSerials(sortByDateDesc(combined, (s) => s.lastActivityDate))
-      // §5.3 "Ombor printing gaps": finalizedAt (the real Tugallash moment,
-      // 0032_wash_cycles_finalized_at.sql) is the correct sort key — the old
-      // lastReceivedDate proxy could put a just-finished serial below one
-      // finalized earlier but with a more recently-received pallet. Falls
-      // back to lastReceivedDate only for cycles finalized before that
-      // column existed (null finalizedAt), so already-sorted older rows
-      // don't all collapse to "oldest possible" the day this ships.
       setCompleted(sortByDateDesc(completedRows, (c) => c.finalizedAt ?? c.lastReceivedDate))
     } finally {
-      setLoading(false)
+      if (requestIdRef.current === requestId) setLoading(false)
     }
   }, [])
 

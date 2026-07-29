@@ -18,7 +18,6 @@ export interface YieldRow {
   rawConsumedKg: number
   rawOverageKg: number
   completedDate: string
-  maxCycleNo: number
   rewashed: boolean
   liveCalibreKg: number
   liveKonditirskiyKg: number

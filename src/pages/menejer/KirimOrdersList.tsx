@@ -3,7 +3,6 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
-import { usePendingRewash } from '../../lib/usePendingRewash'
 import { useEffectiveQty } from '../../lib/effectiveQty'
 import { pendingLabel } from '../../lib/weightAuthority'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
@@ -12,7 +11,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { SerialChip } from '../../components/ui/SerialChip'
-import { toneStyles, type Tone } from '../../components/ui/tokens'
+import type { Tone } from '../../components/ui/tokens'
 import { SerialPassportModal } from '../reports/SerialPassportModal'
 
 // kirim_orders.status has exactly these two values (confirmed against the
@@ -79,11 +78,6 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
 
     load()
   }, [profile, refreshKey])
-
-  // §5.5.4: read-only flag — "Menejer sees it, Ombor acts on it" (no action
-  // button here, deliberately). Same shared query Ombor's own flag uses, so
-  // the two can never disagree.
-  const { pending: pendingRewash } = usePendingRewash(orders.flatMap((o) => o.kirim_lines.map((l) => l.serial)))
 
   // §3.1 amend: quantity displayed against a serial is effective_qty
   // (§2.15.1), provisional until gate stage 2, then final — declared stays
@@ -154,9 +148,6 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                         </>
                       )}
                     </span>
-                    {pendingRewash.has(line.serial) && (
-                      <span className={`font-medium ${toneStyles.problem.text}`}>Qayta yuvish kerak</span>
-                    )}
                     <button
                       type="button"
                       onClick={() => setPassportSerial(line.serial)}

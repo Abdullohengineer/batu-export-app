@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { PhotoField } from '../../components/PhotoField'
-import type { AwaitingCycle } from '../../lib/useLaboratorChiqim'
+import type { AwaitingSerial } from '../../lib/useLaboratorChiqim'
 import { Button } from '../../components/ui/Button'
 import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
@@ -15,9 +15,7 @@ export interface ChiqimTahlilValues {
   verdict: 'o_tdi' | 'qayta_yuvish' | null
 }
 
-// §5.5.3 CHIQIM Tahlil form. Unlike KIRIM, a real pallet dropdown makes
-// sense here — Barcode #2 pallets exist by this stage (§5.3 output), unlike
-// KIRIM's raw-serial-only intake. Client target shown next to the moisture
+// §5.5.3 CHIQIM Tahlil form. Client target shown next to the moisture
 // input, greyed, soft-warn only (never blocks) if the reading exceeds it —
 // "misses the target" read as exceeding the client's maximum, the standard
 // quality-spec direction for both moisture and sulfur in this context.
@@ -29,24 +27,21 @@ export interface ChiqimTahlilValues {
 // field on this form either way — SO2 is only ever entered via Sera
 // kiritish, matching the KIRIM form's identical choice (see DECISIONS.md).
 //
-// nav/visual-redesign pass (mockup "BATU-Laborator-Screens-v2.pdf" p5 —
-// visual language only, see docs/DECISIONS.md for why that page's own
-// dispatch-shaped kv block/explainer text is NOT what's built here):
-// `cycle`/`ownerName`/`typeName` replace the old `targetMoisturePct`/
-// `pallets`-only prop pair so the kv context block can show the v1.9
-// wash-cycle fields SPEC §5.5.3 actually names (parent seriya, buyurtmachi,
-// tur, pallet soni, jami kg, ishlab chiqarilgan sana, yuvish sikli) instead
-// of the mockup's So'rov/Moshina/Tarkib dispatch fields — all read from
-// `cycle`, already fetched in full by the parent tab, no new query.
+// Laborator v2 (2026-07-28 — see DECISIONS.md "Lab moves inside Moyka,
+// wash-cycle concept removed"): testing now happens BEFORE any pallet
+// exists (the hard gate moved to packing), so there is no real pallet to
+// sample from anymore. "Namuna olingan pallet" (a required dropdown of
+// existing Barcode #2s) is now "Namuna manbai" — an optional free-text
+// field (e.g. a tank/lot label) rather than a reference to a real row.
 export function ChiqimTahlilForm({
-  cycle,
+  item,
   ownerName,
   typeName,
   requireVerdict,
   onCancel,
   onSubmit,
 }: {
-  cycle: AwaitingCycle
+  item: AwaitingSerial
   ownerName: string
   typeName: string
   requireVerdict: boolean
@@ -61,24 +56,19 @@ export function ChiqimTahlilForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const targetMoisturePct = cycle.target_moisture_pct
-  const jamiKg = cycle.pallets.reduce((sum, p) => sum + p.weight_kg, 0)
+  const targetMoisturePct = item.target_moisture_pct
   const moisturePct = parseFloat(moisture)
   const missesTarget = targetMoisturePct !== null && !isNaN(moisturePct) && moisturePct > targetMoisturePct
 
   async function submit(verdict: 'o_tdi' | 'qayta_yuvish' | null) {
     setError(null)
-    if (!sampledPallet) {
-      setError('Namuna olingan palletni tanlang.')
-      return
-    }
     if (isNaN(moisturePct)) {
       setError('Namligi % ni kiriting.')
       return
     }
     setSubmitting(true)
     try {
-      await onSubmit({ sampleDate, sampledPallet, moisturePct, photoFile, note: note.trim(), verdict })
+      await onSubmit({ sampleDate, sampledPallet: sampledPallet.trim(), moisturePct, photoFile, note: note.trim(), verdict })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {
@@ -99,13 +89,13 @@ export function ChiqimTahlilForm({
       <div>
         <StatusPill tone="info">LABORATOR · CHIQIM TAHLILI</StatusPill>
         <h3 className="mt-2 text-base font-semibold text-slate-900 dark:text-slate-100">Namuna tahlili</h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Bitta palletdan namuna — natija butun yuvish sikliga tegishli</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Natija butun seriyaga tegishli</p>
       </div>
 
       <div className="space-y-1.5 rounded-md bg-slate-100 p-3 dark:bg-slate-800/60">
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500 dark:text-slate-400">Seriya</span>
-          <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{cycle.serial}</span>
+          <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{item.serial}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500 dark:text-slate-400">Egasi</span>
@@ -116,35 +106,20 @@ export function ChiqimTahlilForm({
           <span className="font-medium text-slate-900 dark:text-slate-100">{typeName}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500 dark:text-slate-400">Pallet soni · og'irlik</span>
+          <span className="text-slate-500 dark:text-slate-400">Moykaga yuborilgan</span>
           <span className="font-medium text-slate-900 dark:text-slate-100">
-            {cycle.pallets.length} ta · {jamiKg.toLocaleString()} kg
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500 dark:text-slate-400">Ishlab chiqarilgan · sikl</span>
-          <span className="font-medium text-slate-900 dark:text-slate-100">
-            {cycle.producedDate ?? '—'} · {cycle.cycleNo}
+            {item.sentKg.toLocaleString()} kg · {item.sentDate}
           </span>
         </div>
       </div>
 
-      <FormField label="Namuna olingan pallet">
-        <select
-          required
+      <FormField label="Namuna manbai (ixtiyoriy)">
+        <TextInput
+          type="text"
+          placeholder="masalan: 3-tank"
           value={sampledPallet}
           onChange={(e) => setSampledPallet(e.target.value)}
-          className="w-full rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        >
-          <option value="" disabled>
-            Tanlang…
-          </option>
-          {cycle.pallets.map((p) => (
-            <option key={p.barcode2} value={p.barcode2}>
-              {p.barcode2} · {p.weight_kg.toLocaleString()} kg
-            </option>
-          ))}
-        </select>
+        />
       </FormField>
 
       <FormField label="Tahlil sanasi">
@@ -186,7 +161,7 @@ export function ChiqimTahlilForm({
         )}
       </div>
 
-      {cycle.target_so2_mg_kg !== null && (
+      {item.target_so2_mg_kg !== null && (
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Oltingugurt (SO₂)</label>
           <div className="mt-1">
@@ -206,17 +181,12 @@ export function ChiqimTahlilForm({
         />
       </FormField>
 
-      {/* Reworded for v1.9 (nav/visual-redesign pass, per explicit
-          instruction): the mockup's own text here says "shu jo'natmaning
-          barcha palletlariga tegishli" (this dispatch's pallets) — CHIQIM
-          isn't tied to a dispatch at all (§5.5.3/correction #1), so this
-          says wash cycle instead. */}
       <div className="rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
         <p className="text-sm font-medium text-blue-700 dark:text-blue-400">Natija qayerga tegishli</p>
         <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
-          Bu natija <strong>{cycle.serial}</strong> seriyaning <strong>{cycle.cycleNo}-yuvish sikliga</strong> tegishli
-          — shu sikldan chiqqan barcha palletlar (K4, K6, K8, Konditirskiy) namligi va serasini meros qilib oladi.
-          Dispatch (so'rov)ga emas, sikldagi barcha palletlarga tegishli.
+          Bu natija <strong>{item.serial}</strong> seriyaning butun moyka chiqishiga tegishli — namligi va serasini
+          shu seriyadan chiqadigan barcha palletlar (K4, K6, K8, Konditirskiy) meros qilib oladi.{' '}
+          <strong>O'tdi</strong> natijasisiz bu seriya uchun Barcode #2 chiqarib bo'lmaydi.
         </p>
       </div>
 

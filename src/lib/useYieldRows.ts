@@ -12,7 +12,6 @@ interface YieldDbRow {
   raw_consumed_kg: number | string
   raw_overage_kg: number | string
   completed_date: string
-  max_cycle_no: number
   rewashed: boolean
   live_calibre_kg: number | string
   live_konditirskiy_kg: number | string
@@ -40,7 +39,6 @@ function mapRow(r: YieldDbRow): YieldRow {
     rawConsumedKg: Number(r.raw_consumed_kg),
     rawOverageKg: Number(r.raw_overage_kg),
     completedDate: r.completed_date,
-    maxCycleNo: r.max_cycle_no,
     rewashed: r.rewashed,
     liveCalibreKg: Number(r.live_calibre_kg),
     liveKonditirskiyKg: Number(r.live_konditirskiy_kg),

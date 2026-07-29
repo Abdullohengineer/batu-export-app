@@ -169,9 +169,6 @@ export function LaboratorTarixTab() {
             <SerialChip>{r.serial}</SerialChip>
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
               {ownerName(r.owner_id)} · {typeName(r.type_id)}
-              {r.cycleNo !== null && r.cycleNo > 1 && (
-                <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">sikl {r.cycleNo}</span>
-              )}
             </span>
             <span className="shrink-0 text-xs font-medium uppercase text-slate-400 dark:text-slate-500">
               {r.scope}

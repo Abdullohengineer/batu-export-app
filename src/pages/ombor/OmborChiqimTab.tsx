@@ -7,7 +7,7 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useOmborChiqimRequests, type ChiqimRequest } from '../../lib/useOmborChiqimRequests'
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { resolveScan, lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimScan'
-import { currentCycleLabStatus } from '../../lib/labVerdict'
+import { currentLabStatus } from '../../lib/labVerdict'
 import { BarcodeCameraScanner, type ScanFeedback } from '../../components/BarcodeCameraScanner'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
@@ -150,10 +150,10 @@ export function OmborChiqimTab() {
       ? await supabase.from('dispatch_manifest').select('barcode2').eq('barcode2', barcode2).maybeSingle()
       : { data: null }
 
-    // §5.5.3/§8 hard gate (v1.9): same currentCycleLabStatus helper
+    // §5.5.3/§8 hard gate: same currentLabStatus helper
     // Menejer's feasibility checker uses — untested/re-wash-flagged stock
     // must be refused here too, not just hidden from the request form.
-    const labStatus = pallet ? (await currentCycleLabStatus([pallet.serial])).get(pallet.serial) : undefined
+    const labStatus = pallet ? (await currentLabStatus([pallet.serial])).get(pallet.serial) : undefined
 
     // §5.4 Option B (2026-07-26/27): which line (if any) this barcode is
     // reserved to on THIS request — derived from data useOmborChiqimRequests

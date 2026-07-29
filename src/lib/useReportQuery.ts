@@ -46,7 +46,11 @@ function toRpcParams(filters: ReportFilters): RpcParams {
     p_barcode2: filters.barcode2 || null,
     p_plate: filters.plate || null,
     p_driver: filters.driver || null,
-    p_wash_cycle: filters.washCycle || null,
+    // Laborator v2 (2026-07-28): the underlying wash_cycle column is always
+    // null now (no more re-wash cycles) -- report_query_page/report_totals
+    // still require this param (no SQL default), so it's always passed as
+    // null rather than exposing a filter control that could never match.
+    p_wash_cycle: null,
     p_lab_verdict: filters.labVerdict || null,
     p_status: filters.status || null,
   }

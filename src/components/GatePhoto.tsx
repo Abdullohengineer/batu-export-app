@@ -10,21 +10,24 @@ import { supabase } from '../lib/supabase'
 // Laborator's `lab-photos` bucket is the first other consumer.
 //
 // `thumbnail` (additive, default false — every existing call site keeps its
-// current full-size-inline look) renders a small clickable image instead:
-// no separate thumbnail asset exists anywhere in this app, so "opens
-// full-size" is simply an `<a target="_blank">` around the same signed URL
-// at native resolution — the browser's own image view, not a new lightbox
-// component for a first use case this small.
+// current full-size-inline look) renders a small clickable image instead —
+// no visible caption (the field-table row it sits in already carries the
+// label), just the bare image. `onOpen`, if given, is called with the
+// resolved URL + label instead of the default `target="_blank"` behaviour —
+// the serial passport (§3.2.5, restructure task) uses this to open an
+// in-page lightbox rather than a new browser tab.
 export function GatePhoto({
   path,
   label,
   bucket = 'gate-photos',
   thumbnail = false,
+  onOpen,
 }: {
   path: string | null
   label: string
   bucket?: string
   thumbnail?: boolean
+  onOpen?: (url: string, label: string) => void
 }) {
   const [url, setUrl] = useState<string | null>(null)
 
@@ -48,16 +51,18 @@ export function GatePhoto({
   if (!path) return null
 
   if (thumbnail) {
+    if (!url) return null
+    const thumbClass = 'block h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700'
+    if (onOpen) {
+      return (
+        <button type="button" onClick={() => onOpen(url, label)} className={thumbClass} aria-label={label}>
+          <img src={url} alt={label} className="h-full w-full object-cover" />
+        </button>
+      )
+    }
     return (
-      <a href={url ?? undefined} target="_blank" rel="noopener noreferrer" className="block w-20 shrink-0">
-        <div className="truncate text-xs text-slate-500 dark:text-slate-400">{label}</div>
-        {url && (
-          <img
-            src={url}
-            alt={label}
-            className="mt-1 h-20 w-20 rounded-md border border-slate-200 object-cover dark:border-slate-700"
-          />
-        )}
+      <a href={url} target="_blank" rel="noopener noreferrer" className={thumbClass}>
+        <img src={url} alt={label} className="h-full w-full object-cover" />
       </a>
     )
   }

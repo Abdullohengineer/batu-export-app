@@ -15,6 +15,7 @@ interface StockOnHandDbRow {
   days_held: number | string
   aged_90: boolean
   moisture_pct: number | string | null
+  box_mass_kg: number | string | null
 }
 
 function mapRow(r: StockOnHandDbRow): StockOnHandRow {
@@ -31,6 +32,7 @@ function mapRow(r: StockOnHandDbRow): StockOnHandRow {
     daysHeld: Number(r.days_held),
     aged90: r.aged_90,
     moisturePct: r.moisture_pct === null ? null : Number(r.moisture_pct),
+    boxMassKg: r.box_mass_kg === null ? null : Number(r.box_mass_kg),
   }
 }
 

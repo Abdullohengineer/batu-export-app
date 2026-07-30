@@ -28,7 +28,8 @@ const HEADER = [
   'Kalibr',
   'Moshina',
   'Haydovchi',
-  'Miqdor (kg)',
+  'Netto (kg)',
+  'Tara (kg)',
   'Holat / izoh',
 ]
 
@@ -62,6 +63,7 @@ export async function buildReportWorkbook(
         row.plate,
         row.driver,
         row.effectiveQtyKg,
+        row.boxMassKg ?? '',
         row.provisional ? 'tarozi kutilmoqda' : '',
       ])
     } else {
@@ -82,6 +84,7 @@ export async function buildReportWorkbook(
         row.plate,
         row.driver,
         row.weightKg,
+        row.boxMassKg ?? '',
         note,
       ])
     }
@@ -91,6 +94,7 @@ export async function buildReportWorkbook(
   sheet.addRow(['Jami kirim (kg)', totals.kgIn])
   sheet.addRow(['Jami chiqim (kg)', totals.kgOut])
   sheet.addRow(['Neto (kg)', totals.net])
+  sheet.addRow(['Jami tara (kg)', totals.tara])
 
   sheet.columns.forEach((col) => {
     col.width = 18

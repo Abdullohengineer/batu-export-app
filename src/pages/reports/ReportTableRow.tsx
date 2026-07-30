@@ -11,7 +11,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const td = 'px-3 py-2 align-top'
 
-export const REPORT_TABLE_COLUMN_COUNT = 11
+export const REPORT_TABLE_COLUMN_COUNT = 12
 
 // §3.2.4 result row — desktop rework (Menejer/Rahbar are PC-only surfaces;
 // see ReportResultsTable.tsx's own header comment for why a real <table>
@@ -60,6 +60,9 @@ export function ReportTableRow({
         </td>
         <td className={`${td} whitespace-nowrap text-right tabular-nums font-medium text-slate-900 dark:text-slate-100`}>
           {row.kind === 'kirim' && row.provisional ? 'tarozi kutilmoqda' : `${qty.toLocaleString()} kg`}
+        </td>
+        <td className={`${td} whitespace-nowrap text-right tabular-nums text-slate-700 dark:text-slate-300`}>
+          {row.boxMassKg !== null ? `${row.boxMassKg.toLocaleString()} kg` : '—'}
         </td>
         <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{row.plate || '—'}</td>
         <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{row.driver || '—'}</td>

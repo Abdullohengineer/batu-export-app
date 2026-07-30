@@ -23,6 +23,7 @@ export interface StockOnHandRow {
   daysHeld: number
   aged90: boolean
   moisturePct: number | null
+  boxMassKg: number | null
 }
 
 // §3.2.6's five states, in the order the section itself lists them.

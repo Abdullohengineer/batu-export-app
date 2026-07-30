@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
@@ -6,7 +6,9 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useEffectiveQty } from '../../lib/effectiveQty'
 import { pendingLabel } from '../../lib/weightAuthority'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
+import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { FormField, TextInput } from '../../components/ui/FormField'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
@@ -20,6 +22,12 @@ import { SerialPassportModal } from '../reports/SerialPassportModal'
 const STATUS_LABEL: Record<string, { label: string; tone: Tone }> = {
   kutilmoqda: { label: 'Kutilmoqda', tone: 'pending' },
   qabul_qilindi: { label: 'Qabul qilindi', tone: 'ok' },
+}
+
+const FIELD_LABEL: Record<string, string> = {
+  order_date: 'Sana',
+  plate: 'Moshina raqami',
+  driver: 'Haydovchi',
 }
 
 interface KirimLine {
@@ -38,6 +46,23 @@ interface KirimOrder {
   kirim_lines: KirimLine[]
 }
 
+// §5.1/§5.4 "correcting mistaken entries" — Menejer may fix a wrong
+// date/plate/driver on an order Qorovul hasn't touched at the gate yet.
+// Locked as soon as ANY gate_weighings row exists for the order (stage 1 OR
+// stage 2), not just once status flips to 'qabul_qilindi' (only stage 2
+// flips that) -- dated/plated gate photos already exist the moment Qorovul
+// touches this order at all, and the RLS policy (menejer_edits,
+// 0038_kirim_chiqim_second_window_edits.sql) enforces the identical
+// condition server-side. owner_id/declared_qty/type_id stay locked
+// entirely -- confirmed with the user: they feed client-scoped reporting
+// and effective_qty respectively, unlike date/plate/driver which nothing
+// downstream reads for math.
+interface EditDraft {
+  order_date: string
+  plate: string
+  driver: string
+}
+
 export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
   const { profile } = useAuth()
   // §3.3: includeInactive=true -- resolves type/calibre names on historical
@@ -47,6 +72,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
   const [orders, setOrders] = useState<KirimOrder[]>([])
+  const [gateStarted, setGateStarted] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // §3.2.5 passport drill-down — one link per LINE, not per order, since
@@ -54,30 +80,105 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
   // line (same reasoning stock-on-hand/Hisobot's own drill-down already
   // established, just reached from a different list here).
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<EditDraft>({ order_date: '', plate: '', driver: '' })
+  const [editBusy, setEditBusy] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!profile) return
-    const profileId = profile.id
-
-    async function load() {
-      setLoading(true)
-      try {
-        const { data } = await supabase
+    setLoading(true)
+    try {
+      const [{ data }, { data: weighings }] = await Promise.all([
+        supabase
           .from('kirim_orders')
           .select(
             'order_id, order_date, plate, driver, declared_total, status, kirim_lines(serial, type_id, declared_qty)',
           )
-          .eq('created_by', profileId)
-          .order('created_at', { ascending: false })
+          .eq('created_by', profile.id)
+          .order('created_at', { ascending: false }),
+        // Same existence check the menejer_edits RLS policy enforces
+        // server-side (0038) -- mirrored here only to hide/show the
+        // Tahrirlash control correctly, not as the real gate.
+        supabase.from('gate_weighings').select('order_id').eq('dir', 'kirim'),
+      ])
 
-        setOrders((data as KirimOrder[] | null) ?? [])
-      } finally {
-        setLoading(false)
-      }
+      setOrders((data as KirimOrder[] | null) ?? [])
+      setGateStarted(new Set((weighings ?? []).map((w) => w.order_id).filter((id): id is string => !!id)))
+    } finally {
+      setLoading(false)
+    }
+  }, [profile])
+
+  useEffect(() => {
+    load()
+  }, [load, refreshKey])
+
+  function startEdit(order: KirimOrder) {
+    setEditingId(order.order_id)
+    setEditDraft({ order_date: order.order_date, plate: order.plate, driver: order.driver })
+    setEditError(null)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditError(null)
+  }
+
+  async function saveEdit(order: KirimOrder) {
+    const changes: Record<string, { before: unknown; after: unknown }> = {}
+    if (editDraft.order_date !== order.order_date) changes.order_date = { before: order.order_date, after: editDraft.order_date }
+    if (editDraft.plate !== order.plate) changes.plate = { before: order.plate, after: editDraft.plate }
+    if (editDraft.driver !== order.driver) changes.driver = { before: order.driver, after: editDraft.driver }
+
+    if (Object.keys(changes).length === 0) {
+      setEditingId(null)
+      return
     }
 
-    load()
-  }, [profile, refreshKey])
+    setEditBusy(true)
+    setEditError(null)
+    try {
+      const { error } = await supabase
+        .from('kirim_orders')
+        .update({ order_date: editDraft.order_date, plate: editDraft.plate, driver: editDraft.driver })
+        .eq('order_id', order.order_id)
+      if (error) throw error
+
+      // Traceability (§2.7-style, this task's own requirement 4) — the
+      // audit_log table has existed since Phase 0 with RLS already in
+      // place (any signed-in INSERT, rahbar-only SELECT) but was unused by
+      // any code path until now. A Qaydlar note is also posted so the
+      // correction is visible in-app, not just queryable by Rahbar.
+      const before = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.before]))
+      const after = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.after]))
+      await Promise.all([
+        supabase.from('audit_log').insert({
+          table_name: 'kirim_orders',
+          row_id: order.order_id,
+          actor: profile?.id,
+          action: 'edit',
+          before,
+          after,
+        }),
+        supabase.from('notes').insert({
+          entity_type: 'kirim_orders',
+          entity_id: order.order_id,
+          author: profile?.id,
+          body: `Tuzatildi: ${Object.entries(changes)
+            .map(([k, v]) => `${FIELD_LABEL[k] ?? k} ${v.before} → ${v.after}`)
+            .join(', ')}`,
+        }),
+      ])
+
+      setEditingId(null)
+      await load()
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
+    } finally {
+      setEditBusy(false)
+    }
+  }
 
   // §3.1 amend: quantity displayed against a serial is effective_qty
   // (§2.15.1), provisional until gate stage 2, then final — declared stays
@@ -172,6 +273,56 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                 </div>
                 )
               })}
+
+              {/* Tahrirlash — only offered while no gate_weighings row
+                  exists for this order (see menejer_edits RLS, 0038).
+                  Once Qorovul touches this order at the gate, the button
+                  simply stops rendering, matching FinishedChiqimList's own
+                  void-button visibility pattern. */}
+              {!gateStarted.has(order.order_id) && (
+                <div className="border-t border-slate-200 pt-2 dark:border-slate-700">
+                  {editingId === order.order_id ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <FormField label="Sana">
+                          <TextInput
+                            type="date"
+                            value={editDraft.order_date}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, order_date: e.target.value }))}
+                          />
+                        </FormField>
+                        <FormField label="Moshina raqami">
+                          <TextInput
+                            type="text"
+                            value={editDraft.plate}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, plate: e.target.value }))}
+                          />
+                        </FormField>
+                        <FormField label="Haydovchi ismi">
+                          <TextInput
+                            type="text"
+                            value={editDraft.driver}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, driver: e.target.value }))}
+                          />
+                        </FormField>
+                      </div>
+                      {editError && <StatusNote tone="problem">{editError}</StatusNote>}
+                      <div className="flex gap-2">
+                        <Button variant="primary" size="md" disabled={editBusy} onClick={() => saveEdit(order)}>
+                          {editBusy ? 'Saqlanmoqda…' : 'Saqlash'}
+                        </Button>
+                        <Button variant="ghost" size="md" onClick={cancelEdit}>
+                          Bekor qilish
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button variant="secondary" size="md" onClick={() => startEdit(order)}>
+                      Tahrirlash
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </Card>

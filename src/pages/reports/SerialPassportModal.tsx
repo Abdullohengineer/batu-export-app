@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { fetchSerialPassport, type SerialPassport, type PassportGate } from '../../lib/serialPassport'
 import { GatePhoto } from '../../components/GatePhoto'
+
+type OpenPhoto = (url: string, label: string) => void
 
 // §3.2.5 Serial passport — the densest screen in the app, deliberately: one
 // parent serial's whole life, grouped by lifecycle stage so it reads top to
@@ -27,6 +29,10 @@ export function SerialPassportModal({
   const [passport, setPassport] = useState<SerialPassport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Lightbox lives at this level, not inside PassportBody's own scroll
+  // container -- it needs to render above (and unclipped by) the passport's
+  // own `overflow-y-auto` content area.
+  const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -48,12 +54,20 @@ export function SerialPassportModal({
   }, [serial])
 
   useEffect(() => {
+    // Escape closes the lightbox first if one is open, the passport itself
+    // otherwise -- one shared listener rather than a second one duplicated
+    // inside Lightbox, so the two never race over the same keypress.
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      if (lightbox) {
+        setLightbox(null)
+        return
+      }
+      onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [onClose, lightbox])
 
   return (
     <div
@@ -87,10 +101,85 @@ export function SerialPassportModal({
             </p>
           )}
           {passport && !loading && (
-            <PassportBody passport={passport} typeName={typeName} calibreLabel={calibreLabel} />
+            <PassportBody
+              passport={passport}
+              typeName={typeName}
+              calibreLabel={calibreLabel}
+              onOpenPhoto={(url, label) => setLightbox({ url, label })}
+            />
           )}
         </div>
       </div>
+
+      {lightbox && <Lightbox url={lightbox.url} label={lightbox.label} onClose={() => setLightbox(null)} />}
+    </div>
+  )
+}
+
+// Full-size image overlay, stacked above the passport's own z-50. Click on
+// the backdrop (or the × button) closes just the lightbox -- stopPropagation
+// keeps that click from also reaching the passport's own onClose handler,
+// since this renders as a sibling inside that same click-to-close div.
+function Lightbox({ url, label, onClose }: { url: string; label: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 p-4 sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClose()
+      }}
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onClose()
+        }}
+        aria-label="Yopish"
+        className="absolute right-4 top-4 rounded-md px-2 py-1 text-2xl leading-none text-white/80 hover:text-white"
+      >
+        ×
+      </button>
+      <figure className="max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+        <img src={url} alt={label} className="max-h-[calc(100vh-6rem)] max-w-full rounded-md object-contain" />
+        <figcaption className="mt-2 text-center text-sm text-white/70">{label}</figcaption>
+      </figure>
+    </div>
+  )
+}
+
+// One label+value row inside a FieldTable.
+interface FieldRow {
+  label: string
+  value: ReactNode
+}
+
+// The shared "headline + table" shape every passport section uses —
+// restructure task: a clean label/value table replaces the previous run-on
+// text paragraphs. Rows are just label+value pairs; a photo row's value is
+// a GatePhoto thumbnail (or several, side by side) instead of text. Callers
+// omit a row entirely for a field that doesn't apply yet (a still-pending
+// photo, an optional note) rather than rendering an empty value — same
+// "missing shows nothing" rule the photos themselves already followed.
+function FieldTable({ rows }: { rows: FieldRow[] }) {
+  if (rows.length === 0) return null
+  return (
+    <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
+      <table className="w-full border-collapse text-sm">
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className={i > 0 ? 'border-t border-slate-100 dark:border-slate-800' : ''}>
+              <td className="w-40 shrink-0 px-3 py-2 align-top text-xs font-medium text-slate-500 dark:text-slate-400">
+                {row.label}
+              </td>
+              <td className="px-3 py-2 align-top text-slate-900 dark:text-slate-100">{row.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -102,12 +191,35 @@ function PassportBody({
   passport,
   typeName,
   calibreLabel,
+  onOpenPhoto,
 }: {
   passport: SerialPassport
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
+  onOpenPhoto: OpenPhoto
 }) {
   const { order, effectiveQty, gate, intake, kirimLab, cycles, dispatches, currentPosition } = passport
+
+  const effectiveQtyValue = effectiveQty && (
+    <>
+      {effectiveQty.valueKg.toLocaleString()} kg
+      {effectiveQty.provisional && <span className="text-amber-700 dark:text-amber-400"> (tarozi kutilmoqda)</span>}
+      {!effectiveQty.provisional &&
+        effectiveQty.truckVarianceDiffKg !== null &&
+        effectiveQty.truckVarianceDiffPct !== null &&
+        Math.abs(effectiveQty.truckVarianceDiffKg) > 0 && (
+          <span className="text-amber-700 dark:text-amber-400 font-normal">
+            {' '}
+            (e'lon qilingandan {effectiveQty.truckVarianceDiffKg >= 0 ? '+' : ''}
+            {effectiveQty.truckVarianceDiffKg.toLocaleString()} kg, {effectiveQty.truckVarianceDiffPct >= 0 ? '+' : ''}
+            {effectiveQty.truckVarianceDiffPct.toFixed(1)}% farq)
+          </span>
+        )}
+      {order?.isMultiLine && (
+        <span className={`${label} font-normal`}> — ko'p turdagi reys, darvoza netto hech qachon qabul qilinmaydi</span>
+      )}
+    </>
+  )
 
   return (
     <div className="space-y-6">
@@ -115,35 +227,58 @@ function PassportBody({
       <section>
         <h3 className={sectionTitle}>Buyurtma</h3>
         {order ? (
-          <div className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-300">
-            <div>
-              {order.ownerName} · {typeName(order.typeId)} · {order.plate} · {order.driver} · {order.orderDate}
-            </div>
-            <div>
-              E'lon qilingan: {order.declaredQty.toLocaleString()} kg
-              {order.isMultiLine && order.declaredTotal !== null && (
-                <span className={label}> (butun reys: {order.declaredTotal.toLocaleString()} kg, ko'p turdagi)</span>
-              )}
-            </div>
-            <div className={label}>
-              Mijoz talabi — Namligi: {order.targetMoisturePct !== null ? `${order.targetMoisturePct}%` : "Talab yo'q"} · SO₂:{' '}
-              {order.targetSo2MgKg !== null ? `${order.targetSo2MgKg} mg/kg` : "Talab yo'q · naturel"}
-            </div>
-            {effectiveQty && (
-              <div className="font-medium">
-                Effektiv miqdor: {effectiveQty.valueKg.toLocaleString()} kg
-                {effectiveQty.provisional && <span className="text-amber-700 dark:text-amber-400"> (tarozi kutilmoqda)</span>}
-                {!effectiveQty.provisional && effectiveQty.truckVarianceDiffKg !== null && effectiveQty.truckVarianceDiffPct !== null && Math.abs(effectiveQty.truckVarianceDiffKg) > 0 && (
-                  <span className="text-amber-700 dark:text-amber-400 font-normal">
-                    {' '}
-                    (e'lon qilingandan {effectiveQty.truckVarianceDiffKg >= 0 ? '+' : ''}
-                    {effectiveQty.truckVarianceDiffKg.toLocaleString()} kg, {effectiveQty.truckVarianceDiffPct >= 0 ? '+' : ''}
-                    {effectiveQty.truckVarianceDiffPct.toFixed(1)}% farq)
-                  </span>
-                )}
-                {order.isMultiLine && <span className={`${label} font-normal`}> — ko'p turdagi reys, darvoza netto hech qachon qabul qilinmaydi</span>}
-              </div>
-            )}
+          <div className="mt-2">
+            <FieldTable
+              rows={[
+                { label: 'Buyurtmachi', value: order.ownerName },
+                { label: 'Mahsulot turi', value: typeName(order.typeId) },
+                { label: 'Moshina raqami', value: order.plate },
+                { label: 'Haydovchi', value: order.driver },
+                { label: 'Sana', value: order.orderDate },
+                {
+                  label: "E'lon qilingan",
+                  value: (
+                    <>
+                      {order.declaredQty.toLocaleString()} kg
+                      {order.isMultiLine && order.declaredTotal !== null && (
+                        <span className={`${label} font-normal`}>
+                          {' '}
+                          (butun reys: {order.declaredTotal.toLocaleString()} kg, ko'p turdagi)
+                        </span>
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  label: 'Mijoz talabi — Namligi',
+                  value: order.targetMoisturePct !== null ? `${order.targetMoisturePct}%` : "Talab yo'q",
+                },
+                {
+                  label: 'Mijoz talabi — SO₂',
+                  value: order.targetSo2MgKg !== null ? `${order.targetSo2MgKg} mg/kg` : "Talab yo'q · naturel",
+                },
+                ...(effectiveQtyValue ? [{ label: 'Effektiv miqdor', value: effectiveQtyValue }] : []),
+                // Nakladnoy — captured on the KIRIM form ("Mijoz nakladnoyasini
+                // biriktirish") since day one but never shown here before this
+                // task; kirim-photos is where KirimForm.tsx uploads it.
+                ...(order.docPhoto
+                  ? [
+                      {
+                        label: 'Nakladnoy',
+                        value: (
+                          <GatePhoto
+                            path={order.docPhoto}
+                            label="Nakladnoy"
+                            bucket="kirim-photos"
+                            thumbnail
+                            onOpen={onOpenPhoto}
+                          />
+                        ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </div>
         ) : (
           <p className={label}>Buyurtma topilmadi.</p>
@@ -153,40 +288,57 @@ function PassportBody({
       {/* Darvoza (Gate) */}
       <section>
         <h3 className={sectionTitle}>Darvoza (KIRIM)</h3>
-        <GateBlock gate={gate} stage1Label="Yuk bilan (1-bosqich)" stage2Label="Bo'sh (2-bosqich)" />
+        <div className="mt-2">
+          <FieldTable
+            rows={buildGateRows(gate, 'Yuk bilan (1-bosqich)', "Bo'sh (2-bosqich)", onOpenPhoto)}
+          />
+        </div>
       </section>
 
-      {/* Qabul qilish (Intake) + KIRIM lab */}
+      {/* Qabul qilish (Intake) + KIRIM lab — one section, two tables (intake
+          and lab have independent existence: intake can exist without a lab
+          reading yet), matching the original's two independent empty states. */}
       <section>
         <h3 className={sectionTitle}>Qabul qilish</h3>
         {intake ? (
-          <div className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-300">
-            <div>
-              Aniq (Ombor): {intake.actualQty.toLocaleString()} kg
-              <span className={`${label} font-normal`}> — qatorlar bo'yicha taqsimot, o'lchov emas (§2.16)</span>
-            </div>
-            <div className={label}>
-              {intake.confirmedByName ?? '—'} · {new Date(intake.confirmedAt).toLocaleString()}
-              {intake.barcode1 && ` · Barcode #1: ${intake.barcode1}`}
-            </div>
-            {intake.komment && <div className={label}>Izoh: {intake.komment}</div>}
-            {intake.pilePhoto && <GatePhoto path={intake.pilePhoto} label="Uyum rasmi" bucket="intake-photos" />}
+          <div className="mt-2">
+            <FieldTable
+              rows={[
+                {
+                  label: 'Aniq (Ombor)',
+                  value: (
+                    <>
+                      {intake.actualQty.toLocaleString()} kg
+                      <span className={`${label} font-normal`}> — qatorlar bo'yicha taqsimot, o'lchov emas (§2.16)</span>
+                    </>
+                  ),
+                },
+                { label: 'Qabul qildi', value: `${intake.confirmedByName ?? '—'} · ${new Date(intake.confirmedAt).toLocaleString()}` },
+                ...(intake.barcode1 ? [{ label: 'Barcode #1', value: intake.barcode1 }] : []),
+                ...(intake.komment ? [{ label: 'Izoh', value: intake.komment }] : []),
+                ...(intake.pilePhoto
+                  ? [{ label: 'Uyum rasmi', value: <GatePhoto path={intake.pilePhoto} label="Uyum rasmi" bucket="intake-photos" thumbnail onOpen={onOpenPhoto} /> }]
+                  : []),
+              ]}
+            />
           </div>
         ) : (
           <p className={label}>Hali qabul qilinmagan.</p>
         )}
         {kirimLab ? (
-          <div className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-300">
-            <div>
-              Laboratoriya (kirim, tavsiflovchi): Namligi {kirimLab.moisturePct}%
-              {' · '}
-              SO₂: {kirimLab.so2MgKg !== null ? `${kirimLab.so2MgKg} mg/kg` : "yo'q · naturel"}
-            </div>
-            <div className={label}>
-              {kirimLab.testedByName ?? '—'} · {kirimLab.sampleDate}
-              {kirimLab.note && ` · ${kirimLab.note}`}
-            </div>
-            {kirimLab.samplePhoto && <GatePhoto path={kirimLab.samplePhoto} label="Namuna rasmi" bucket="lab-photos" />}
+          <div className="mt-3">
+            <div className={`${label} mb-1 font-semibold uppercase tracking-wide`}>Laboratoriya (kirim, tavsiflovchi)</div>
+            <FieldTable
+              rows={[
+                { label: 'Namligi', value: `${kirimLab.moisturePct}%` },
+                { label: 'SO₂', value: kirimLab.so2MgKg !== null ? `${kirimLab.so2MgKg} mg/kg` : "yo'q · naturel" },
+                { label: 'Tekshirdi', value: `${kirimLab.testedByName ?? '—'} · ${kirimLab.sampleDate}` },
+                ...(kirimLab.note ? [{ label: 'Izoh', value: kirimLab.note }] : []),
+                ...(kirimLab.samplePhoto
+                  ? [{ label: 'Namuna rasmi', value: <GatePhoto path={kirimLab.samplePhoto} label="Namuna rasmi" bucket="lab-photos" thumbnail onOpen={onOpenPhoto} /> }]
+                  : []),
+              ]}
+            />
           </div>
         ) : (
           <p className={`mt-2 ${label}`}>Hali laboratoriya tekshiruvi yo'q.</p>
@@ -214,6 +366,8 @@ function PassportBody({
               <div className={`mt-1 ${label}`}>Yuborilgan: {cycle.sentKg.toLocaleString()} kg</div>
 
               <div className="mt-2 overflow-x-auto">
+                {/* Pallet breakdown — already a proper multi-column table
+                    (not run-on text), left as-is per this task's own scope. */}
                 <table className="w-full text-sm">
                   <thead>
                     <tr className={label}>
@@ -250,19 +404,36 @@ function PassportBody({
               </div>
 
               {cycle.lab ? (
-                <div className="mt-2 text-sm">
-                  <span className={cycle.lab.verdict === 'o_tdi' ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'font-medium text-red-600 dark:text-red-400'}>
-                    {cycle.lab.verdict === 'o_tdi' ? "O'tdi" : 'Qayta yuvish'}
-                  </span>
-                  <span className="text-slate-700 dark:text-slate-300">
-                    {' '}
-                    — Namligi {cycle.lab.moisturePct}% (talab: {order?.targetMoisturePct !== null && order?.targetMoisturePct !== undefined ? `${order.targetMoisturePct}%` : "yo'q"}) · SO₂:{' '}
-                    {cycle.lab.so2MgKg !== null ? `${cycle.lab.so2MgKg} mg/kg` : "yo'q · naturel"}
-                    {order?.targetSo2MgKg !== null && order?.targetSo2MgKg !== undefined && ` (talab: ${order.targetSo2MgKg} mg/kg)`}
-                  </span>
-                  <div className={label}>
-                    {cycle.lab.testedByName ?? '—'} · {cycle.lab.sampleDate}
-                  </div>
+                <div className="mt-2">
+                  <FieldTable
+                    rows={[
+                      {
+                        label: 'Xulosa',
+                        value: (
+                          <span className={cycle.lab.verdict === 'o_tdi' ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'font-medium text-red-600 dark:text-red-400'}>
+                            {cycle.lab.verdict === 'o_tdi' ? "O'tdi" : 'Qayta yuvish'}
+                          </span>
+                        ),
+                      },
+                      {
+                        label: 'Namligi',
+                        value: `${cycle.lab.moisturePct}% (talab: ${order?.targetMoisturePct !== null && order?.targetMoisturePct !== undefined ? `${order.targetMoisturePct}%` : "yo'q"})`,
+                      },
+                      {
+                        label: 'SO₂',
+                        value: `${cycle.lab.so2MgKg !== null ? `${cycle.lab.so2MgKg} mg/kg` : "yo'q · naturel"}${
+                          order?.targetSo2MgKg !== null && order?.targetSo2MgKg !== undefined ? ` (talab: ${order.targetSo2MgKg} mg/kg)` : ''
+                        }`,
+                      },
+                      { label: 'Tekshirdi', value: `${cycle.lab.testedByName ?? '—'} · ${cycle.lab.sampleDate}` },
+                      // Was only ever shown in the aggregate Rasmlar gallery
+                      // before this task — folded in here now that that
+                      // section is going away, so it isn't lost.
+                      ...(cycle.lab.samplePhoto
+                        ? [{ label: 'Namuna rasmi', value: <GatePhoto path={cycle.lab.samplePhoto} label="Namuna rasmi" bucket="lab-photos" thumbnail onOpen={onOpenPhoto} /> }]
+                        : []),
+                    ]}
+                  />
                 </div>
               ) : (
                 <p className={`mt-2 ${label}`}>Hali laboratoriya xulosasi yo'q.</p>
@@ -279,15 +450,23 @@ function PassportBody({
         <div className="mt-2 space-y-4">
           {dispatches.map((d) => (
             <div key={d.requestId} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
-              <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                {d.plate} · {d.driver} · {d.requestDate}
-              </div>
-              <div className={label}>
-                {d.omborFinishedByName ? `${d.omborFinishedByName} yakunladi` : 'Ombor hali yakunlamagan'}
-                {d.omborFinishedAt && ` · ${new Date(d.omborFinishedAt).toLocaleString()}`}
-              </div>
-              <GateBlock gate={d.gate} stage1Label="Bo'sh (1-bosqich)" stage2Label="Yuk bilan (2-bosqich)" />
+              <FieldTable
+                rows={[
+                  { label: 'Moshina raqami', value: d.plate },
+                  { label: 'Haydovchi', value: d.driver },
+                  { label: 'Sana', value: d.requestDate },
+                  {
+                    label: 'Ombor',
+                    value: `${d.omborFinishedByName ? `${d.omborFinishedByName} yakunladi` : 'Ombor hali yakunlamagan'}${
+                      d.omborFinishedAt ? ` · ${new Date(d.omborFinishedAt).toLocaleString()}` : ''
+                    }`,
+                  },
+                  ...buildGateRows(d.gate, "Bo'sh (1-bosqich)", 'Yuk bilan (2-bosqich)', onOpenPhoto),
+                ]}
+              />
               <div className="mt-2 overflow-x-auto">
+                {/* Pallet breakdown — already a proper multi-column table
+                    (not run-on text), left as-is per this task's own scope. */}
                 <table className="w-full text-sm">
                   <thead>
                     <tr className={label}>
@@ -313,12 +492,6 @@ function PassportBody({
           ))}
         </div>
       </section>
-
-      {/* Rasmlar (Photos) — every image captured across this serial's life,
-          gathered into one section, lifecycle order. get_serial_passport
-          already returns every path used here (checked the SQL directly,
-          nothing added) — this section is purely presentational. */}
-      <PhotosSection passport={passport} />
 
       {/* Joriy holat (Current position), by calibre */}
       <section>
@@ -354,141 +527,43 @@ function PassportBody({
   )
 }
 
-interface PhotoItem {
-  path: string | null
-  bucket: string
-  what: string
-  who: string | null
-  when: string | null
-}
+// Builds the label/value rows for a gate block (KIRIM's own Darvoza section,
+// and each dispatch's own gate info in Jo'natishlar) — every photo lives
+// inline here as its own row now; there is no separate aggregate gallery
+// any more (removed in the same pass — it duplicated every photo a second
+// time, and a serial's dated/actor'd context already lives on the row next
+// to it). A still-pending photo is simply omitted, matching the "missing
+// shows nothing" rule; the two actor/timestamp rows keep showing
+// "kutilmoqda" since they're always relevant once any gate row exists at
+// all, just not yet complete.
+function buildGateRows(gate: PassportGate | null, stage1Label: string, stage2Label: string, onOpenPhoto: OpenPhoto): FieldRow[] {
+  if (!gate || (gate.gruzhenyKg === null && gate.pustoyKg === null)) return []
 
-// GatePhoto's own `if (!path) return null` already hides a missing photo's
-// image — this also hides the who/when caption that would otherwise sit
-// above nothing, since captions only make sense attached to a real photo.
-function PhotoThumb({ item }: { item: PhotoItem }) {
-  if (!item.path) return null
-  return (
-    <div className="w-24 shrink-0">
-      <GatePhoto path={item.path} label={item.what} bucket={item.bucket} thumbnail />
-      <div
-        className="mt-0.5 truncate text-[10px] text-slate-400"
-        title={`${item.who ?? '—'}${item.when ? ' · ' + new Date(item.when).toLocaleString() : ''}`}
-      >
-        {item.who ?? '—'}
-        {item.when && ` · ${new Date(item.when).toLocaleDateString()}`}
-      </div>
-    </div>
-  )
-}
-
-function PhotoGroup({ title, items }: { title: string; items: PhotoItem[] }) {
-  if (items.every((i) => !i.path)) return null
-  return (
-    <div>
-      <div className={label}>{title}</div>
-      <div className="mt-1 flex flex-wrap gap-3">
-        {items.map((item, i) => (
-          <PhotoThumb key={i} item={item} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Every path here already comes back from get_serial_passport today (see
-// the comment at this section's call site) — this just assembles what's
-// already on `passport` into one lifecycle-ordered gallery, grouped by
-// stage so a serial with many dispatches or re-wash cycles doesn't turn
-// into one undifferentiated wall of thumbnails.
-function PhotosSection({ passport }: { passport: SerialPassport }) {
-  const { gate, intake, kirimLab, cycles, dispatches } = passport
-
-  const kirimGatePhotos: PhotoItem[] = gate
-    ? [
-        { path: gate.stage1PlatePhoto, bucket: 'gate-photos', what: 'Moshina raqami', who: gate.stage1CreatedByName, when: gate.stage1CompletedAt },
-        { path: gate.stage1ScalePhoto, bucket: 'gate-photos', what: 'Tarozi (1-bosqich)', who: gate.stage1CreatedByName, when: gate.stage1CompletedAt },
-        { path: gate.stage2ScalePhoto, bucket: 'gate-photos', what: 'Tarozi (2-bosqich)', who: gate.stage2CreatedByName, when: gate.stage2CompletedAt },
-      ]
-    : []
-
-  const intakePhotos: PhotoItem[] = intake
-    ? [{ path: intake.pilePhoto, bucket: 'intake-photos', what: 'Uyum rasmi', who: intake.confirmedByName, when: intake.confirmedAt }]
-    : []
-
-  const kirimLabPhotos: PhotoItem[] = kirimLab
-    ? [{ path: kirimLab.samplePhoto, bucket: 'lab-photos', what: 'Namuna (kirim)', who: kirimLab.testedByName, when: kirimLab.sampleDate }]
-    : []
-
-  // `cycles` is 0-or-1-length now (Laborator v2, 2026-07-28) — at most one
-  // CHIQIM sample photo per serial, same shape as kirimLabPhotos above.
-  const chiqimLabPhotos: PhotoItem[] = cycles.map((c) => ({
-    path: c.lab?.samplePhoto ?? null,
-    bucket: 'lab-photos',
-    what: 'Namuna (chiqim)',
-    who: c.lab?.testedByName ?? null,
-    when: c.lab?.sampleDate ?? null,
-  }))
-
-  // Oldest-first for this section specifically — a lifecycle narrative reads
-  // forward in time, even though the Jo'natishlar section above (its own
-  // established order) shows dispatches newest-first.
-  const dispatchPhotos: PhotoItem[] = [...dispatches]
-    .sort((a, b) => a.requestDate.localeCompare(b.requestDate))
-    .flatMap((d) => [
-      { path: d.gate.stage1PlatePhoto, bucket: 'gate-photos', what: `Moshina raqami (${d.plate})`, who: d.gate.stage1CreatedByName, when: d.gate.stage1CompletedAt },
-      { path: d.gate.stage1ScalePhoto, bucket: 'gate-photos', what: `Tarozi 1-bosqich (${d.plate})`, who: d.gate.stage1CreatedByName, when: d.gate.stage1CompletedAt },
-      { path: d.gate.stage2ScalePhoto, bucket: 'gate-photos', what: `Tarozi 2-bosqich (${d.plate})`, who: d.gate.stage2CreatedByName, when: d.gate.stage2CompletedAt },
-      { path: d.gate.departureDocPhoto, bucket: 'gate-photos', what: `Jo'natish hujjati (${d.plate})`, who: d.gate.stage2CreatedByName, when: d.gate.stage2CompletedAt },
-    ])
-
-  const groups = [
-    { title: 'Darvoza (KIRIM)', items: kirimGatePhotos },
-    { title: 'Qabul qilish', items: intakePhotos },
-    { title: 'Laboratoriya (kirim)', items: kirimLabPhotos },
-    { title: 'Laboratoriya (chiqim)', items: chiqimLabPhotos },
-    { title: "Jo'natishlar", items: dispatchPhotos },
+  const photos: [string | null, string][] = [
+    [gate.stage1PlatePhoto, 'Moshina raqami rasmi'],
+    [gate.stage1ScalePhoto, 'Tarozi rasmi (1-bosqich)'],
+    [gate.stage2ScalePhoto, 'Tarozi rasmi (2-bosqich)'],
+    [gate.departureDocPhoto, "Jo'natish hujjati"],
   ]
-  const hasAnyPhoto = groups.some((g) => g.items.some((i) => i.path))
 
-  return (
-    <section>
-      <h3 className={sectionTitle}>Rasmlar</h3>
-      {hasAnyPhoto ? (
-        <div className="mt-2 space-y-3">
-          {groups.map((g) => (
-            <PhotoGroup key={g.title} title={g.title} items={g.items} />
-          ))}
-        </div>
-      ) : (
-        <p className={`mt-2 ${label}`}>Hali rasm yo'q.</p>
-      )}
-    </section>
-  )
+  return [
+    { label: 'Net', value: gate.netKg !== null ? `${gate.netKg.toLocaleString()} kg` : 'kutilmoqda' },
+    ...(gate.gruzhenyKg !== null ? [{ label: 'Yuk bilan', value: `${gate.gruzhenyKg.toLocaleString()} kg` }] : []),
+    ...(gate.pustoyKg !== null ? [{ label: "Bo'sh", value: `${gate.pustoyKg.toLocaleString()} kg` }] : []),
+    {
+      label: stage1Label,
+      value: `${gate.stage1CreatedByName ?? '—'} · ${gate.stage1CompletedAt ? new Date(gate.stage1CompletedAt).toLocaleString() : 'kutilmoqda'}`,
+    },
+    {
+      label: stage2Label,
+      value: `${gate.stage2CreatedByName ?? '—'} · ${gate.stage2CompletedAt ? new Date(gate.stage2CompletedAt).toLocaleString() : 'kutilmoqda'}`,
+    },
+    ...photos
+      .filter((p): p is [string, string] => !!p[0])
+      .map(([path, photoLabel]) => ({
+        label: photoLabel,
+        value: <GatePhoto path={path} label={photoLabel} thumbnail onOpen={onOpenPhoto} />,
+      })),
+  ]
 }
 
-function GateBlock({ gate, stage1Label, stage2Label }: { gate: PassportGate | null; stage1Label: string; stage2Label: string }) {
-  if (!gate || (gate.gruzhenyKg === null && gate.pustoyKg === null)) {
-    return <p className={`mt-1 ${label}`}>Hali darvoza ma'lumoti yo'q.</p>
-  }
-  return (
-    <div className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-300">
-      <div>
-        Net: {gate.netKg !== null ? `${gate.netKg.toLocaleString()} kg` : 'kutilmoqda'}
-        {gate.gruzhenyKg !== null && ` · Yuk bilan: ${gate.gruzhenyKg.toLocaleString()} kg`}
-        {gate.pustoyKg !== null && ` · Bo'sh: ${gate.pustoyKg.toLocaleString()} kg`}
-      </div>
-      <div className={label}>
-        {stage1Label}: {gate.stage1CreatedByName ?? '—'} · {gate.stage1CompletedAt ? new Date(gate.stage1CompletedAt).toLocaleString() : 'kutilmoqda'}
-      </div>
-      <div className={label}>
-        {stage2Label}: {gate.stage2CreatedByName ?? '—'} · {gate.stage2CompletedAt ? new Date(gate.stage2CompletedAt).toLocaleString() : 'kutilmoqda'}
-      </div>
-      <div className="flex flex-wrap gap-3">
-        <GatePhoto path={gate.stage1PlatePhoto} label="Moshina raqami rasmi" />
-        <GatePhoto path={gate.stage1ScalePhoto} label="Tarozi rasmi (1-bosqich)" />
-        <GatePhoto path={gate.stage2ScalePhoto} label="Tarozi rasmi (2-bosqich)" />
-        <GatePhoto path={gate.departureDocPhoto} label="Jo'natish hujjati" />
-      </div>
-    </div>
-  )
-}

@@ -29,6 +29,11 @@ export interface PassportOrder {
   targetMoisturePct: number | null
   targetSo2MgKg: number | null
   typeId: string
+  // The nakladnoy attached on the KIRIM form ("Mijoz nakladnoyasini
+  // biriktirish") -- captured since day one, only added here (§3.2.5
+  // passport improvements task) once confirmed the passport was the one
+  // place not showing it.
+  docPhoto: string | null
 }
 
 export interface PassportEffectiveQty {

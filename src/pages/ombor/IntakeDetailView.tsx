@@ -29,11 +29,27 @@ export function IntakeDetailView({
 
   return (
     <div className="space-y-3 border-t border-slate-200 px-3 py-3 text-sm dark:border-slate-700">
+      {/* Ombor card-polish pass: Aniq + arrival date moved to the top and made
+          prominent -- the two figures the operator looks for first when
+          opening this detail, previously buried inline in the Ombor/Menejer
+          paragraphs below. */}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Aniq</div>
+          <div className="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+            {line.intake.actual_qty.toLocaleString()} kg
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Sana</div>
+          <div className="text-base font-bold text-slate-900 dark:text-slate-100">{line.order_date}</div>
+        </div>
+      </div>
+
       <div>
         <div className="font-medium text-slate-700 dark:text-slate-300">Menejer</div>
         <div className="text-slate-500 dark:text-slate-400">
-          {typeName} · {line.declared_qty.toLocaleString()} kg (kutilgan) · {ownerName} · {line.plate} ·{' '}
-          {line.driver} · {line.order_date}
+          {typeName} · {line.declared_qty.toLocaleString()} kg (kutilgan) · {ownerName} · {line.plate} · {line.driver}
         </div>
       </div>
 
@@ -49,7 +65,7 @@ export function IntakeDetailView({
       <div>
         <div className="font-medium text-slate-700 dark:text-slate-300">Ombor</div>
         <div className="text-slate-500 dark:text-slate-400">
-          Aniq: {line.intake.actual_qty.toLocaleString()} kg · Quti massasi: {line.intake.box_mass_kg.toLocaleString()} kg
+          Quti massasi: {line.intake.box_mass_kg.toLocaleString()} kg
           {line.intake.komment ? ` · ${line.intake.komment}` : ''}
         </div>
         {pileUrl && (

@@ -120,7 +120,7 @@ export function OmborMoykaTab() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center gap-2">
-              <SerialChip>{s.serial}</SerialChip>
+              <SerialChip variant="prominent">{s.serial}</SerialChip>
               <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                 {ownerName(s.owner_id)} · {typeName(s.type_id)}
               </span>
@@ -132,21 +132,11 @@ export function OmborMoykaTab() {
         </div>
 
         <div className="mt-2 grid grid-cols-3 gap-2">
-          <Stat value={s.provisional ? 'kutilmoqda' : s.inputKg.toLocaleString()} label="Jami xom" />
-          <Stat value={s.sent.toLocaleString()} label="Yuborilgan" tone="ok" />
-          <Stat value={s.available.toLocaleString()} label="Qoldiq" tone="pending" />
+          <Stat value={s.provisional ? 'kutilmoqda' : s.inputKg.toLocaleString()} label="Jami xom" valueSize="compact" />
+          <Stat value={s.sent.toLocaleString()} label="Yuborilgan" tone="ok" valueSize="compact" />
+          <Stat value={s.available.toLocaleString()} label="Qoldiq" tone="pending" valueSize="compact" />
         </div>
 
-        {/* §5.1 amend: gate-vs-declared, once gate stage 2 is known. */}
-        {s.truckVariance && Math.abs(s.truckVariance.diffKg) > 0 && (
-          <div className="mt-2">
-            <StatusNote tone="pending">
-              Darvoza neta reys bo'yicha e'lon qilingandan {s.truckVariance.diffKg >= 0 ? '+' : ''}
-              {s.truckVariance.diffKg.toLocaleString()} kg ({s.truckVariance.diffPct >= 0 ? '+' : ''}
-              {s.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
-            </StatusNote>
-          </div>
-        )}
         {/* §2.15.2 edge case: this material was already sent while the weight
             was still provisional, and the gate net later landed materially
             different — flag, don't block (never re-blocks the send that

@@ -216,14 +216,18 @@ export function OmborIntakeTab() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex items-center gap-2">
-                    <SerialChip>{line.serial}</SerialChip>
+                    <SerialChip variant="emphasized">{line.serial}</SerialChip>
                     <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                       {ownerName(line.owner_id)} · {typeName(line.type_id)}
                     </span>
                   </div>
                   <div className="truncate text-sm text-slate-500 dark:text-slate-400">
-                    {eq?.provisional ? pendingLabel(eq.pendingOn) : `Netto ${eqValue.toLocaleString()} kg`} · Qoldiq{' '}
-                    {remaining.toLocaleString()} kg
+                    {eq?.provisional ? (
+                      pendingLabel(eq.pendingOn)
+                    ) : (
+                      <span className="font-bold text-slate-900 dark:text-slate-100">Netto {eqValue.toLocaleString()} kg</span>
+                    )}{' '}
+                    · Qoldiq {remaining.toLocaleString()} kg
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -244,15 +248,17 @@ export function OmborIntakeTab() {
                   </IconButton>
                 </div>
               </div>
-              {/* §5.1 amend: gate-vs-declared variance, shown once gate stage 2 is known. */}
+              {/* §5.1 amend: gate-vs-declared variance, shown once gate stage 2 is known.
+                  Ombor card-polish pass: deliberately NOT a StatusNote here (unlike the
+                  identical line on OmborMoykaTab's card, which the same pass removes
+                  entirely) -- softened to quiet ordinary text instead of a status/warning
+                  tone, per-card override, StatusNote itself untouched. */}
               {eq?.truckVariance && Math.abs(eq.truckVariance.diffKg) > 0 && (
-                <div className="mt-1">
-                  <StatusNote tone="pending">
-                    Darvoza neta reys bo'yicha e'lon qilingandan {eq.truckVariance.diffKg >= 0 ? '+' : ''}
-                    {eq.truckVariance.diffKg.toLocaleString()} kg ({eq.truckVariance.diffPct >= 0 ? '+' : ''}
-                    {eq.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
-                  </StatusNote>
-                </div>
+                <p className="mt-1 text-sm italic text-slate-900 dark:text-slate-100">
+                  Darvoza neta reys bo'yicha e'lon qilingandan {eq.truckVariance.diffKg >= 0 ? '+' : ''}
+                  {eq.truckVariance.diffKg.toLocaleString()} kg ({eq.truckVariance.diffPct >= 0 ? '+' : ''}
+                  {eq.truckVariance.diffPct.toFixed(1)}%) farq qiladi.
+                </p>
               )}
               {eq?.lineReconciliation && Math.abs(eq.lineReconciliation.diffKg) > 0 && (
                 <div className="mt-1">

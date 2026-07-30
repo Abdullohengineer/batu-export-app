@@ -33,7 +33,8 @@ export function StockOnHandTable({
             <th className={th}>Buyurtmachi</th>
             <th className={th}>Tur</th>
             <th className={th}>Kalibr</th>
-            <th className={`${th} text-right`}>Miqdor, kg</th>
+            <th className={`${th} text-right`}>Netto, kg</th>
+            <th className={`${th} text-right`}>Tara, kg</th>
             <th className={`${th} text-right`}>Namligi</th>
             <th className={th}>Holat</th>
             <th className={th}>Sana</th>
@@ -57,6 +58,9 @@ export function StockOnHandTable({
               </td>
               <td className={`${td} whitespace-nowrap text-right tabular-nums font-medium text-slate-900 dark:text-slate-100`}>
                 {Math.round(row.qtyKg).toLocaleString()} kg
+              </td>
+              <td className={`${td} whitespace-nowrap text-right tabular-nums text-slate-700 dark:text-slate-300`}>
+                {row.boxMassKg !== null ? `${row.boxMassKg.toLocaleString()} kg` : '—'}
               </td>
               <td className={`${td} whitespace-nowrap text-right tabular-nums text-slate-700 dark:text-slate-300`}>
                 {row.moisturePct === null ? '—' : `${row.moisturePct}%`}

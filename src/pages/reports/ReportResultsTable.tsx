@@ -49,7 +49,8 @@ export function ReportResultsTable({
               <th className={th}>Buyurtmachi</th>
               <th className={th}>Tur</th>
               <th className={th}>Kalibr</th>
-              <th className={`${th} text-right`}>Miqdor, kg</th>
+              <th className={`${th} text-right`}>Netto, kg</th>
+              <th className={`${th} text-right`}>Tara, kg</th>
               <th className={th}>Moshina</th>
               <th className={th}>Haydovchi</th>
               <th className={th}>Holat</th>

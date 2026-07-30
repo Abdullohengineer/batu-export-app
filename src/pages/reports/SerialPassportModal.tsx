@@ -216,7 +216,7 @@ function PassportBody({
           </span>
         )}
       {order?.isMultiLine && (
-        <span className={`${label} font-normal`}> — ko'p turdagi reys, darvoza netto hech qachon qabul qilinmaydi</span>
+        <span className={`${label} font-normal`}> — ko'p turdagi reys, darvoza brutto hech qachon qabul qilinmaydi</span>
       )}
     </>
   )
@@ -290,7 +290,7 @@ function PassportBody({
         <h3 className={sectionTitle}>Darvoza (KIRIM)</h3>
         <div className="mt-2">
           <FieldTable
-            rows={buildGateRows(gate, 'Yuk bilan (1-bosqich)', "Bo'sh (2-bosqich)", onOpenPhoto)}
+            rows={buildGateRows(gate, 'Yuk bilan (1-bosqich)', "Bo'sh (2-bosqich)", onOpenPhoto, intake ? intake.boxMassKg : null)}
           />
         </div>
       </section>
@@ -305,7 +305,7 @@ function PassportBody({
             <FieldTable
               rows={[
                 {
-                  label: 'Aniq (Ombor)',
+                  label: 'Netto (Ombor)',
                   value: (
                     <>
                       {intake.actualQty.toLocaleString()} kg
@@ -313,6 +313,7 @@ function PassportBody({
                     </>
                   ),
                 },
+                { label: 'Tara', value: intake.boxMassKg !== null ? `${intake.boxMassKg.toLocaleString()} kg` : '—' },
                 { label: 'Qabul qildi', value: `${intake.confirmedByName ?? '—'} · ${new Date(intake.confirmedAt).toLocaleString()}` },
                 ...(intake.barcode1 ? [{ label: 'Barcode #1', value: intake.barcode1 }] : []),
                 ...(intake.komment ? [{ label: 'Izoh', value: intake.komment }] : []),
@@ -536,7 +537,24 @@ function PassportBody({
 // shows nothing" rule; the two actor/timestamp rows keep showing
 // "kutilmoqda" since they're always relevant once any gate row exists at
 // all, just not yet complete.
-function buildGateRows(gate: PassportGate | null, stage1Label: string, stage2Label: string, onOpenPhoto: OpenPhoto): FieldRow[] {
+// taraKg is only passed by the KIRIM Darvoza call site (see PassportBody) --
+// gate.netKg is a generated column (gruzheny_kg - pustoy_kg) that never
+// subtracts box mass, so it's always "Brutto", never "Netto" (confirmed with
+// the user: "if it's loaded - empty, add it as Brutto. if it's loaded -
+// empty - box mass, then it's netto"). When taraKg is passed (even as null,
+// meaning "not entered yet"), two extra rows make that deduction explicit:
+// Tara (this serial's own box mass) and Netto (= Brutto - Tara). The
+// dispatch/Jo'natishlar gate omits taraKg entirely -- a dispatched pallet's
+// weight has no box mass of its own to subtract (already deducted upstream
+// at the raw intake stage), so its gate figure needs no third row, just the
+// Brutto rename.
+function buildGateRows(
+  gate: PassportGate | null,
+  stage1Label: string,
+  stage2Label: string,
+  onOpenPhoto: OpenPhoto,
+  taraKg?: number | null,
+): FieldRow[] {
   if (!gate || (gate.gruzhenyKg === null && gate.pustoyKg === null)) return []
 
   const photos: [string | null, string][] = [
@@ -545,11 +563,18 @@ function buildGateRows(gate: PassportGate | null, stage1Label: string, stage2Lab
     [gate.stage2ScalePhoto, 'Tarozi rasmi (2-bosqich)'],
     [gate.departureDocPhoto, "Jo'natish hujjati"],
   ]
+  const nettoKg = gate.netKg !== null && taraKg !== undefined && taraKg !== null ? gate.netKg - taraKg : null
 
   return [
-    { label: 'Net', value: gate.netKg !== null ? `${gate.netKg.toLocaleString()} kg` : 'kutilmoqda' },
     ...(gate.gruzhenyKg !== null ? [{ label: 'Yuk bilan', value: `${gate.gruzhenyKg.toLocaleString()} kg` }] : []),
     ...(gate.pustoyKg !== null ? [{ label: "Bo'sh", value: `${gate.pustoyKg.toLocaleString()} kg` }] : []),
+    { label: 'Brutto', value: gate.netKg !== null ? `${gate.netKg.toLocaleString()} kg` : 'kutilmoqda' },
+    ...(taraKg !== undefined
+      ? [
+          { label: 'Tara', value: taraKg !== null ? `${taraKg.toLocaleString()} kg` : '—' },
+          { label: 'Netto', value: nettoKg !== null ? `${nettoKg.toLocaleString()} kg` : 'kutilmoqda' },
+        ]
+      : []),
     {
       label: stage1Label,
       value: `${gate.stage1CreatedByName ?? '—'} · ${gate.stage1CompletedAt ? new Date(gate.stage1CompletedAt).toLocaleString() : 'kutilmoqda'}`,

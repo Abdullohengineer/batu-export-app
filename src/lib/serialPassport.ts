@@ -64,6 +64,7 @@ export interface PassportIntake {
   barcode1: string | null
   pilePhoto: string | null
   komment: string | null
+  boxMassKg: number | null
 }
 
 export interface PassportKirimLab {

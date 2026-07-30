@@ -32,6 +32,9 @@ export function TotalsStrip({ totals, dateBasisText }: { totals: ReportTotals; d
             {kg(totals.net)}
           </span>
         </span>
+        <span className="text-slate-700 dark:text-slate-300">
+          Tara: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.tara)}</span>
+        </span>
       </div>
       <span className="text-xs text-slate-400">{dateBasisText}</span>
     </div>

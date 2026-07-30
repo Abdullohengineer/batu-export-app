@@ -91,6 +91,7 @@ export interface KirimReportRow {
   targetSo2MgKg: number | null
   kirimMoisturePct: number | null // lab_results scope=kirim, descriptive only, no verdict (§5.5.2)
   kirimSo2MgKg: number | null
+  boxMassKg: number | null // Tara — storage_intake.box_mass_kg for this serial, entered by Ombor at intake
 }
 
 export interface ChiqimReportRow {
@@ -114,6 +115,7 @@ export interface ChiqimReportRow {
   moisturePct: number | null
   so2MgKg: number | null
   voidInfo: VoidedBarcodeInfo | null // populated only when palletStatus === 'bekor_qilingan'
+  boxMassKg: null // Tara — finished goods never carry their own box mass (already deducted upstream at the raw stage); always null, kept here so ReportTableRow can read row.boxMassKg without a kind check
 }
 
 export type ReportRow = KirimReportRow | ChiqimReportRow
@@ -138,6 +140,7 @@ export interface ReportTotals {
   kgIn: number
   kgOut: number
   net: number
+  tara: number
 }
 
 // §3.2.3 🔒 date basis label, shown on screen and in exports — printed
@@ -185,6 +188,7 @@ export interface ReportDbRow {
   moisture_pct: number | string | null
   so2_mg_kg: number | string | null
   void_successor_barcodes: string[] | null
+  box_mass_kg: number | string | null
 }
 
 function num(v: number | string | null): number | null {
@@ -214,6 +218,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       targetSo2MgKg: num(row.target_so2_mg_kg),
       kirimMoisturePct: num(row.moisture_pct),
       kirimSo2MgKg: num(row.so2_mg_kg),
+      boxMassKg: num(row.box_mass_kg),
     }
   }
 
@@ -245,5 +250,6 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
     moisturePct: num(row.moisture_pct),
     so2MgKg: num(row.so2_mg_kg),
     voidInfo,
+    boxMassKg: null,
   }
 }

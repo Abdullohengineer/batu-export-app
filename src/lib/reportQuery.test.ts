@@ -40,6 +40,7 @@ function kirimDbRow(overrides: Partial<ReportDbRow> = {}): ReportDbRow {
     moisture_pct: null,
     so2_mg_kg: null,
     void_successor_barcodes: null,
+    box_mass_kg: null,
     ...overrides,
   }
 }
@@ -73,12 +74,13 @@ function chiqimDbRow(overrides: Partial<ReportDbRow> = {}): ReportDbRow {
     moisture_pct: null,
     so2_mg_kg: null,
     void_successor_barcodes: null,
+    box_mass_kg: null,
     ...overrides,
   }
 }
 
 test('mapDbRowToReportRow: KIRIM row maps field-for-field', () => {
-  const row = mapDbRowToReportRow(kirimDbRow())
+  const row = mapDbRowToReportRow(kirimDbRow({ box_mass_kg: 412.6 }))
   assert.equal(row.kind, 'kirim')
   if (row.kind !== 'kirim') return
   assert.equal(row.key, 's1')
@@ -88,6 +90,19 @@ test('mapDbRowToReportRow: KIRIM row maps field-for-field', () => {
   assert.equal(row.truckVarianceDiffPct, 5.26)
   assert.equal(row.provisional, false)
   assert.equal(row.dateBasisSource, 'gate_stage1')
+  assert.equal(row.boxMassKg, 412.6)
+})
+
+test('mapDbRowToReportRow: KIRIM row with no box mass yet maps to null, not zero', () => {
+  const row = mapDbRowToReportRow(kirimDbRow({ box_mass_kg: null }))
+  if (row.kind !== 'kirim') throw new Error('expected kirim')
+  assert.equal(row.boxMassKg, null)
+})
+
+test('mapDbRowToReportRow: CHIQIM row always maps boxMassKg to null (finished goods never carry their own tara)', () => {
+  const row = mapDbRowToReportRow(chiqimDbRow())
+  if (row.kind !== 'chiqim') throw new Error('expected chiqim')
+  assert.equal(row.boxMassKg, null)
 })
 
 test('mapDbRowToReportRow: numeric columns coerced even when the wire sends them as strings (PostgREST numeric quirk)', () => {

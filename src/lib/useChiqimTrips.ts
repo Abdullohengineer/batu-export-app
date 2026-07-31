@@ -3,7 +3,13 @@ import { supabase } from './supabase'
 
 export interface ChiqimLine {
   type_id: string
-  calibre_id: string
+  // Raw dispatch (2026-07-31): a line is either finished (calibre_id set)
+  // or raw (raw_serial set) — mirrors chiqim_lines' own DB constraint.
+  // Neither is read by name here today (only type_id, via typeName in
+  // QorovulChiqimTab.tsx) — widened to keep this type honest about the
+  // actual DB shape, not because a consumer branches on it.
+  calibre_id: string | null
+  raw_serial: string | null
   qty_kg: number
 }
 
@@ -48,7 +54,7 @@ export function useChiqimTrips() {
           .from('chiqim_requests')
           .select('id, request_date, plate, driver, owner_id, status')
           .order('created_at', { ascending: false }),
-        supabase.from('chiqim_lines').select('type_id, calibre_id, qty_kg, request_id'),
+        supabase.from('chiqim_lines').select('type_id, calibre_id, raw_serial, qty_kg, request_id'),
         supabase
           .from('gate_weighings')
           .select('id, request_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')

@@ -42,6 +42,7 @@ export function ClientReportTab() {
   const [to, setTo] = useState(initial.to)
   const [locale, setLocale] = useState<ReportLocale>('uz')
   const [detailOpen, setDetailOpen] = useState(false)
+  const [rawDetailOpen, setRawDetailOpen] = useState(false)
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
@@ -142,6 +143,7 @@ export function ClientReportTab() {
             <BalanceLine label={t.openingBalance} value={report.raw.openingKg} />
             <BalanceLine label={`+ ${t.received}`} value={report.raw.receivedKg} />
             <BalanceLine label={`- ${t.processed}`} value={report.raw.processedKg} />
+            <BalanceLine label={`- ${t.rawDispatched}`} value={report.raw.rawDispatchedKg} />
             <BalanceLine label={t.calibreOutput} value={report.raw.processedBreakdown.calibreKg} indent />
             <BalanceLine label={t.konditirskiy} value={report.raw.processedBreakdown.konditirskiyKg} indent />
             <BalanceLine
@@ -180,6 +182,7 @@ export function ClientReportTab() {
                       <th className="px-2 py-1 text-right">{t.openingBalance}</th>
                       <th className="px-2 py-1 text-right">{t.received}</th>
                       <th className="px-2 py-1 text-right">{t.processed}</th>
+                      <th className="px-2 py-1 text-right">{t.rawDispatched}</th>
                       <th className="px-2 py-1 text-right">{t.closingBalance}</th>
                     </tr>
                   </thead>
@@ -190,6 +193,7 @@ export function ClientReportTab() {
                         <td className="px-2 py-1 text-right tabular-nums">{bt.openingKg.toLocaleString()}</td>
                         <td className="px-2 py-1 text-right tabular-nums">{bt.receivedKg.toLocaleString()}</td>
                         <td className="px-2 py-1 text-right tabular-nums">{bt.processedKg.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{bt.rawDispatchedKg.toLocaleString()}</td>
                         <td className="px-2 py-1 text-right tabular-nums">{bt.closingKg.toLocaleString()}</td>
                       </tr>
                     ))}
@@ -289,6 +293,43 @@ export function ClientReportTab() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Raw dispatch (2026-07-31) -- kept as its own collapsed section,
+              never merged with the finished-goods dispatches list below, so
+              raw-taken and washed-and-collected are shown distinctly (per
+              the task's own requirement). Same collapsed-by-default shape,
+              own toggle state. */}
+          <div className="rounded-md border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setRawDetailOpen(!rawDetailOpen)}
+              className="flex w-full items-center justify-between px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60"
+            >
+              <span>{t.rawDispatches} ({report.raw.dispatches.length})</span>
+              <span>{rawDetailOpen ? '▲' : '▼'}</span>
+            </button>
+            {rawDetailOpen && (
+              <div className="space-y-2 border-t border-slate-200 p-4 dark:border-slate-700">
+                {report.raw.dispatches.length === 0 ? (
+                  <p className="text-sm text-slate-400">{t.noData}</p>
+                ) : (
+                  report.raw.dispatches.map((d, i) => (
+                    <div key={`${d.requestId}-${d.serial}-${i}`} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-700 dark:text-slate-300">
+                        <span className="font-mono font-medium">{d.serial}</span>
+                        <span>{d.plate}</span>
+                        <span>{d.driver}</span>
+                        <span className="text-slate-400">{d.requestDate}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                        {d.weightKg.toLocaleString()} kg − {d.boxMassKg.toLocaleString()} kg tara = {d.netKg.toLocaleString()} kg
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           {/* Collapsed, never absent (requirement C): dispatch trips + gate/staff detail */}

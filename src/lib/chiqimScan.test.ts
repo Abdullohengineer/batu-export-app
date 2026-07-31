@@ -3,8 +3,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolveScan, lineStatus, shortfallLines, sortFinishedByOmborFinish, type ChiqimLineLike } from './chiqimScan.ts'
 
-const lineA: ChiqimLineLike = { id: 'line-a', type_id: 'subxon', calibre_id: 'k6', qty_kg: 3600 }
-const lineB: ChiqimLineLike = { id: 'line-b', type_id: 'isfara', calibre_id: 'k8', qty_kg: 2000 }
+const lineA: ChiqimLineLike = { id: 'line-a', type_id: 'subxon', calibre_id: 'k6', raw_serial: null, qty_kg: 3600 }
+const lineB: ChiqimLineLike = { id: 'line-b', type_id: 'isfara', calibre_id: 'k8', raw_serial: null, qty_kg: 2000 }
 
 function basePallet(overrides: Partial<{ type_id: string; calibre_id: string; status: string }> = {}) {
   return { type_id: 'subxon', calibre_id: 'k6', status: 'in_stock', ...overrides }
@@ -199,8 +199,8 @@ test('zero-reservation fallback: a line with no reservations at all still accept
 // the fallback still needs to pick one, so it keeps Option A's original
 // "largest remaining gap" tie-break.
 test('zero-reservation fallback, duplicate type+calibre lines: largest remaining gap wins', () => {
-  const lineC: ChiqimLineLike = { id: 'line-c', type_id: 'subxon', calibre_id: 'k6', qty_kg: 1000 }
-  const lineD: ChiqimLineLike = { id: 'line-d', type_id: 'subxon', calibre_id: 'k6', qty_kg: 5000 }
+  const lineC: ChiqimLineLike = { id: 'line-c', type_id: 'subxon', calibre_id: 'k6', raw_serial: null, qty_kg: 1000 }
+  const lineD: ChiqimLineLike = { id: 'line-d', type_id: 'subxon', calibre_id: 'k6', raw_serial: null, qty_kg: 5000 }
   const result = resolveScan({
     barcode2: 'PLT-x',
     alreadyScannedBarcodes: [],
@@ -220,8 +220,8 @@ test('zero-reservation fallback, duplicate type+calibre lines: largest remaining
 // even though it type/calibre-matches, so the zero-reservation sibling
 // wins outright, not by gap comparison.
 test('duplicate type+calibre lines, one already reserved elsewhere: only the zero-reservation sibling is eligible', () => {
-  const lineC: ChiqimLineLike = { id: 'line-c', type_id: 'subxon', calibre_id: 'k6', qty_kg: 1000 }
-  const lineD: ChiqimLineLike = { id: 'line-d', type_id: 'subxon', calibre_id: 'k6', qty_kg: 5000 }
+  const lineC: ChiqimLineLike = { id: 'line-c', type_id: 'subxon', calibre_id: 'k6', raw_serial: null, qty_kg: 1000 }
+  const lineD: ChiqimLineLike = { id: 'line-d', type_id: 'subxon', calibre_id: 'k6', raw_serial: null, qty_kg: 5000 }
   const result = resolveScan({
     barcode2: 'PLT-x',
     alreadyScannedBarcodes: [],

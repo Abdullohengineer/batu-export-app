@@ -8,6 +8,7 @@ import { useAvailableFinishedStock } from '../../lib/useAvailableFinishedStock'
 import { checkFeasibility } from '../../lib/chiqimFeasibility'
 import { useStockOnHand } from '../../lib/useStockOnHand'
 import { useReservedPalletBarcodes } from '../../lib/useReservedPalletBarcodes'
+import { useMoykaSerials, type MoykaSerial } from '../../lib/useMoykaSerials'
 import type { StockOnHandRow } from '../../lib/stockOnHand'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -19,6 +20,12 @@ import { toneStyles } from '../../components/ui/tokens'
 
 interface LineRow {
   key: string
+  // Raw dispatch (2026-07-31): a row is either a finished-calibre line or a
+  // raw line pinned to one specific raw serial — mirrors the DB's own
+  // mutually-exclusive calibre_id/raw_serial shape (chiqim_lines_calibre_xor_raw).
+  // Washing-path raw only — a KN load bound for cutting is out of scope, see
+  // the Rezka inspection report.
+  kind: 'finished' | 'raw'
   typeId: string
   calibreId: string
   qty: string
@@ -26,18 +33,24 @@ interface LineRow {
   // only: these barcodes ARE what gets persisted to chiqim_line_pallets on
   // submit, reserving them for this request until it completes or is
   // voided. Reset whenever it would otherwise go stale (type/calibre/owner
-  // changed) — see the picker's own comment for why.
+  // changed) — see the picker's own comment for why. Finished rows only.
   selectedBarcodes: Set<string>
+  // Raw dispatch: which raw serial this row targets — one serial per row
+  // (a truck taking from two serials is two rows), matching selectedBarcodes'
+  // own "row = named source" shape rather than a re-derivation of qty.
+  rawSerial: string
 }
 
 function newRow(): LineRow {
-  return { key: crypto.randomUUID(), typeId: '', calibreId: '', qty: '', selectedBarcodes: new Set() }
+  return { key: crypto.randomUUID(), kind: 'finished', typeId: '', calibreId: '', qty: '', selectedBarcodes: new Set(), rawSerial: '' }
 }
 
 interface SavedLine {
   key: string
+  kind: 'finished' | 'raw'
   typeId: string
   calibreId: string
+  rawSerial: string
   qtyKg: number
 }
 
@@ -78,6 +91,11 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   // same shared hook useAvailableFinishedStock.ts uses, so the picker and
   // the feasibility hint can never disagree about what's really available.
   const { reserved: reservedBarcodes } = useReservedPalletBarcodes()
+  // Raw dispatch (2026-07-31) — the SAME hook the Moyka send screen reads,
+  // per the "build once" decision (see DECISIONS.md "Raw dispatch"): this
+  // picker and Ombor's send window can never disagree about what raw
+  // balance a serial has left.
+  const { serials: rawSerials } = useMoykaSerials()
 
   const [sana, setSana] = useState(() => new Date().toISOString().slice(0, 10))
   const [plate, setPlate] = useState('')
@@ -107,7 +125,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   // Excludes anything another open request already reserved (Option B) —
   // a reserved pallet must never be double-offered here.
   function matchingPallets(row: LineRow): StockOnHandRow[] {
-    if (!ownerId || !row.typeId || !row.calibreId) return []
+    if (row.kind !== 'finished' || !ownerId || !row.typeId || !row.calibreId) return []
     return stockRows.filter(
       (r) =>
         r.bucket === 'available' &&
@@ -132,9 +150,27 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
     updateRow(row.key, { selectedBarcodes: next, qty: String(Math.round(sumKg * 100) / 100) })
   }
 
+  // Raw dispatch — this client's own raw serials with a positive balance,
+  // matching this row's type. One serial per row (a truck taking from two
+  // serials is two rows, see LineRow's own comment) — unlike matchingPallets,
+  // this never hard-reserves (raw isn't atomic like a pallet); Ombor's actual
+  // load, entered later, is what really draws the balance down.
+  function matchingRawSerials(row: LineRow): MoykaSerial[] {
+    if (row.kind !== 'raw' || !ownerId || !row.typeId) return []
+    return rawSerials.filter((s) => s.owner_id === ownerId && s.type_id === row.typeId && s.available > 0)
+  }
+
+  // Picking a raw serial fills qty with its full available balance — a
+  // starting point Menejer can edit down (partial dispatch, e.g. "half taken
+  // raw"), same "select, then adjust" shape as togglePallet's sum, but
+  // single-select and not read-only (nothing here is hard-reserved).
+  function selectRawSerial(row: LineRow, serial: MoykaSerial) {
+    updateRow(row.key, { rawSerial: serial.serial, qty: String(Math.round(serial.available * 100) / 100) })
+  }
+
   function feasibilityHint(row: LineRow): string | null {
     const target = parseFloat(row.qty)
-    if (!row.typeId || !row.calibreId || !(target > 0)) return null
+    if (row.kind !== 'finished' || !row.typeId || !row.calibreId || !(target > 0)) return null
 
     const weights = pallets
       .filter((p) => p.type_id === row.typeId && p.calibre_id === row.calibreId)
@@ -154,9 +190,14 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
     e.preventDefault()
     setError(null)
 
-    const validRows = rows.filter((r) => r.typeId && r.calibreId && parseFloat(r.qty) > 0)
+    const validRows = rows.filter(
+      (r) =>
+        r.typeId &&
+        parseFloat(r.qty) > 0 &&
+        (r.kind === 'finished' ? !!r.calibreId : !!r.rawSerial),
+    )
     if (!ownerId || !plate || !driver || validRows.length === 0) {
-      setError('Barcha maydonlarni to\'ldiring va kamida bitta tur/kalibr qatorini kiriting.')
+      setError('Barcha maydonlarni to\'ldiring va kamida bitta tur/kalibr yoki xom qatorini kiriting.')
       return
     }
     // §5.4 Option B (requirement 5, "no special-casing"): a row with real
@@ -165,8 +206,11 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
     // selections only happens if stock existed when typed then vanished
     // (another request claimed it) before submit. The zero-pallets
     // fallback row (matches.length === 0 the whole time) is exempt, same
-    // as before this pass.
-    const missingPicks = validRows.filter((r) => matchingPallets(r).length > 0 && r.selectedBarcodes.size === 0)
+    // as before this pass. Raw rows never reach this check — a raw row's
+    // "pick" is rawSerial, already required by validRows above.
+    const missingPicks = validRows.filter(
+      (r) => r.kind === 'finished' && matchingPallets(r).length > 0 && r.selectedBarcodes.size === 0,
+    )
     if (missingPicks.length > 0) {
       setError('Bir yoki bir nechta qatorda pallet tanlanmagan — palletlarni tanlang yoki qatorni yangilang.')
       return
@@ -197,17 +241,25 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
       for (const r of validRows) {
         const { data: line, error: lineErr } = await supabase
           .from('chiqim_lines')
-          .insert({ request_id: request.id, type_id: r.typeId, calibre_id: r.calibreId, qty_kg: parseFloat(r.qty) })
+          .insert({
+            request_id: request.id,
+            type_id: r.typeId,
+            calibre_id: r.kind === 'finished' ? r.calibreId : null,
+            raw_serial: r.kind === 'raw' ? r.rawSerial : null,
+            qty_kg: parseFloat(r.qty),
+          })
           .select('id')
           .single()
         if (lineErr) throw lineErr
         lineIdByRowKey.set(r.key, line.id)
       }
 
-      const reservations = validRows.flatMap((r) => {
-        const lineId = lineIdByRowKey.get(r.key)!
-        return [...r.selectedBarcodes].map((barcode2) => ({ line_id: lineId, barcode2 }))
-      })
+      const reservations = validRows
+        .filter((r) => r.kind === 'finished')
+        .flatMap((r) => {
+          const lineId = lineIdByRowKey.get(r.key)!
+          return [...r.selectedBarcodes].map((barcode2) => ({ line_id: lineId, barcode2 }))
+        })
       if (reservations.length > 0) {
         const { error: reserveErr } = await supabase.from('chiqim_line_pallets').insert(reservations)
         if (reserveErr) {
@@ -225,7 +277,14 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
       }
 
       setSavedLines(
-        validRows.map((r) => ({ key: r.key, typeId: r.typeId, calibreId: r.calibreId, qtyKg: parseFloat(r.qty) })),
+        validRows.map((r) => ({
+          key: r.key,
+          kind: r.kind,
+          typeId: r.typeId,
+          calibreId: r.calibreId,
+          rawSerial: r.rawSerial,
+          qtyKg: parseFloat(r.qty),
+        })),
       )
       setPlate('')
       setDriver('')
@@ -300,14 +359,47 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
         {rows.map((row) => {
           const hint = feasibilityHint(row)
           const matches = matchingPallets(row)
-          const pickerActive = !!ownerId && !!row.typeId && !!row.calibreId
+          const rawMatches = matchingRawSerials(row)
+          const pickerActive =
+            row.kind === 'finished' ? !!ownerId && !!row.typeId && !!row.calibreId : !!ownerId && !!row.typeId
           return (
             <Card key={row.key} padding="compact">
-              <div className="flex items-center gap-2">
+              {/* Raw dispatch (2026-07-31) — a row is either a finished-
+                  calibre line or a raw line pinned to one raw serial (§ see
+                  LineRow's own comment). Switching kind clears whatever the
+                  other kind had picked, same "stale selection" reasoning the
+                  owner/type/calibre onChange handlers already use below. */}
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => updateRow(row.key, { kind: 'finished', rawSerial: '', qty: '' })}
+                  className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                    row.kind === 'finished'
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  Kalibrlangan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateRow(row.key, { kind: 'raw', calibreId: '', selectedBarcodes: new Set(), qty: '' })}
+                  className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                    row.kind === 'raw'
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  Xom
+                </button>
+              </div>
+              <div className="mt-1.5 flex items-center gap-2">
                 <select
                   required
                   value={row.typeId}
-                  onChange={(e) => updateRow(row.key, { typeId: e.target.value, selectedBarcodes: new Set() })}
+                  onChange={(e) =>
+                    updateRow(row.key, { typeId: e.target.value, selectedBarcodes: new Set(), rawSerial: '', qty: '' })
+                  }
                   className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="" disabled>
@@ -319,21 +411,23 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                     </option>
                   ))}
                 </select>
-                <select
-                  required
-                  value={row.calibreId}
-                  onChange={(e) => updateRow(row.key, { calibreId: e.target.value, selectedBarcodes: new Set() })}
-                  className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                >
-                  <option value="" disabled>
-                    Kalibr…
-                  </option>
-                  {calibres.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
+                {row.kind === 'finished' && (
+                  <select
+                    required
+                    value={row.calibreId}
+                    onChange={(e) => updateRow(row.key, { calibreId: e.target.value, selectedBarcodes: new Set() })}
+                    className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    <option value="" disabled>
+                      Kalibr…
                     </option>
-                  ))}
-                </select>
+                    {calibres.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <TextInput
                   type="number"
                   min="0"
@@ -347,8 +441,11 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   // through with no pallets backing it, breaking "every
                   // line has named pallets" (requirement 5). Manual typing
                   // stays live only for the pre-existing zero-pallets
-                  // fallback (matchingPallets(row).length === 0).
-                  readOnly={matchingPallets(row).length > 0}
+                  // fallback (matchingPallets(row).length === 0). Raw rows
+                  // are never read-only — raw isn't hard-reserved, a partial
+                  // plan (less than the picked serial's full balance) is a
+                  // legitimate, expected edit (§ raw dispatch build).
+                  readOnly={row.kind === 'finished' && matchingPallets(row).length > 0}
                   onChange={(e) => updateRow(row.key, { qty: e.target.value, selectedBarcodes: new Set() })}
                   className="w-40"
                 />
@@ -359,7 +456,40 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                 )}
               </div>
 
-              {pickerActive && (
+              {pickerActive && row.kind === 'raw' && (
+                <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                  <p className="text-xs text-slate-400">
+                    Xom seriyani tanlang — miqdor tanlangan seriyaning mavjud xom balansiga to'ldiriladi, kerak
+                    bo'lsa kamaytiring (qisman olib ketish).
+                  </p>
+                  {rawMatches.length === 0 ? (
+                    <p className="mt-1 text-xs text-slate-400">Bu buyurtmachida ushbu turda mavjud xom seriya yo'q.</p>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {rawMatches.map((s) => {
+                        const selected = row.rawSerial === s.serial
+                        return (
+                          <button
+                            key={s.serial}
+                            type="button"
+                            onClick={() => selectRawSerial(row, s)}
+                            className={`rounded-md border px-2 py-1 text-left text-xs ${
+                              selected
+                                ? 'border-blue-400 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <span className="font-mono">{selected ? '✓ ' : ''}{s.serial}</span>
+                            <span className="ml-1.5">{Math.round(s.available).toLocaleString()} kg mavjud</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {pickerActive && row.kind === 'finished' && (
                 <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
                   <p className="text-xs text-slate-400">
                     Palletlarni tanlang — ular ushbu so'rov uchun band qilinadi va Omborga qaysi palletlarni
@@ -419,7 +549,8 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
         <div className="flex items-center justify-between text-sm">
           <span className={`font-medium ${toneStyles.info.text}`}>Jami (avto)</span>
           <span className={`font-semibold ${toneStyles.info.text}`}>
-            {jamiAvto.toLocaleString()} kg · {rows.filter((r) => r.typeId && r.calibreId).length} qator
+            {jamiAvto.toLocaleString()} kg ·{' '}
+            {rows.filter((r) => r.typeId && (r.kind === 'finished' ? r.calibreId : r.rawSerial)).length} qator
           </span>
         </div>
       </Card>
@@ -431,7 +562,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
           {savedLines.map((line) => (
             <div key={line.key} className="flex items-center justify-between text-sm">
               <span className="text-slate-600 dark:text-slate-400">
-                {typeName(line.typeId)} · {calibreLabel(line.calibreId)}
+                {typeName(line.typeId)} · {line.kind === 'finished' ? calibreLabel(line.calibreId) : `Xom · ${line.rawSerial}`}
               </span>
               <span className="font-mono text-slate-900 dark:text-slate-100">{line.qtyKg.toLocaleString()} kg</span>
             </div>

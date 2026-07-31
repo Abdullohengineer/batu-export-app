@@ -198,7 +198,7 @@ function PassportBody({
   calibreLabel: (id: string) => string
   onOpenPhoto: OpenPhoto
 }) {
-  const { order, effectiveQty, gate, intake, kirimLab, cycles, dispatches, currentPosition } = passport
+  const { order, effectiveQty, gate, intake, kirimLab, cycles, dispatches, rawDispatches, currentPosition } = passport
 
   const effectiveQtyValue = effectiveQty && (
     <>
@@ -493,6 +493,35 @@ function PassportBody({
           ))}
         </div>
       </section>
+
+      {/* Xom jo'natmalar (Raw dispatches, 2026-07-31) — a distinct entry from
+          the pallet-based Jo'natishlar above, per the task's own "distinct
+          entry under dispatches" instruction, same headline+FieldTable
+          shape. Omitted entirely when empty, matching every other "missing
+          shows nothing" section on this passport (e.g. cycles/dispatches
+          above don't render an empty table either). */}
+      {rawDispatches.length > 0 && (
+        <section>
+          <h3 className={sectionTitle}>Xom jo'natmalar</h3>
+          <div className="mt-2 space-y-3">
+            {rawDispatches.map((rd) => (
+              <div key={`${rd.requestId}-${rd.loadedAt}`} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                <FieldTable
+                  rows={[
+                    { label: 'Moshina raqami', value: rd.plate },
+                    { label: 'Haydovchi', value: rd.driver },
+                    { label: 'Sana', value: rd.requestDate },
+                    { label: 'Vazn', value: `${rd.weightKg.toLocaleString()} kg` },
+                    { label: 'Tara', value: `${rd.boxMassKg.toLocaleString()} kg` },
+                    { label: 'Netto', value: `${rd.netKg.toLocaleString()} kg` },
+                    { label: 'Yuklangan', value: new Date(rd.loadedAt).toLocaleString() },
+                  ]}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Joriy holat (Current position), by calibre */}
       <section>

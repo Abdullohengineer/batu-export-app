@@ -4,8 +4,10 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
-import { useOmborChiqimRequests, type ChiqimRequest } from '../../lib/useOmborChiqimRequests'
+import { useOmborChiqimRequests, type ChiqimRequest, type ChiqimLine } from '../../lib/useOmborChiqimRequests'
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
+import { useRawDispatchLinesByRequest } from '../../lib/useRawDispatchLinesByRequest'
+import { useMoykaSerials } from '../../lib/useMoykaSerials'
 import { resolveScan, lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimScan'
 import { currentLabStatus } from '../../lib/labVerdict'
 import { BarcodeCameraScanner, type ScanFeedback } from '../../components/BarcodeCameraScanner'
@@ -76,6 +78,24 @@ export function OmborChiqimTab() {
   const [undoError, setUndoError] = useState<string | null>(null)
   const [undoingId, setUndoingId] = useState<string | null>(null)
   const { lines: manifestLines, loading: manifestLoading, refresh: refreshManifest } = useDispatchManifestLines(expandedFinished)
+  const { lines: rawDispatchLines, loading: rawDispatchLoading } = useRawDispatchLinesByRequest(expandedFinished)
+  // Over-collection warning (2026-07-31, see DECISIONS.md "Raw dispatch") —
+  // the SAME hook the picker/available-balance figure already reads
+  // everywhere else, so this warning can never disagree with what the
+  // serial actually has left. Non-blocking, matching this app's warn-never-
+  // block convention: a typed weight beyond the serial's remaining balance
+  // is still savable (Ombor may be correcting a stale balance), it's just
+  // flagged rather than lost silently to the DB's floor-at-zero elsewhere.
+  const { serials: rawSerials } = useMoykaSerials()
+  // Raw dispatch (2026-07-31) — a raw line's weight+box-mass entry, held
+  // client-side until "Yuklashni yakunlash" (same deferred-commit shape as
+  // scannedByRequest above, for the same reason: append-only
+  // raw_dispatch_lines needs a pre-commit undo path, and removing/editing an
+  // uncommitted draft here IS that undo — see DECISIONS.md "Raw dispatch").
+  // Keyed by request id, then by chiqim_line_id.
+  const [rawDraftByRequest, setRawDraftByRequest] = useState<
+    Record<string, Record<string, { weightKg: string; boxMassKg: string }>>
+  >({})
 
   useEffect(() => {
     return () => {
@@ -98,6 +118,14 @@ export function OmborChiqimTab() {
   function calibreLabel(id: string) {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
+  // Raw dispatch — a line's own display label, whichever kind it is. Kept
+  // separate from calibreLabel (which stays finished-only, never called
+  // with null) rather than making calibreLabel itself null-tolerant. Takes
+  // the minimal shape (not the full ChiqimLine) so it also works on
+  // shortfallLines' returned {line, missingKg} pairs (typed ChiqimLineLike).
+  function lineLabel(line: { calibre_id: string | null; raw_serial: string | null }) {
+    return line.raw_serial !== null ? `Xom · ${line.raw_serial}` : calibreLabel(line.calibre_id ?? '')
+  }
 
   function lineTotal(requestId: string, lineId: string): number {
     return (scannedByRequest[requestId] ?? [])
@@ -111,6 +139,42 @@ export function OmborChiqimTab() {
   function lineTotalsFor(requestId: string): Record<string, number> {
     const totals: Record<string, number> = {}
     for (const s of scannedByRequest[requestId] ?? []) totals[s.lineId] = (totals[s.lineId] ?? 0) + s.weight_kg
+    return totals
+  }
+
+  // Raw dispatch — a raw line's own draft net (weight − box mass), 0 until
+  // both fields hold a valid number. Never negative-displayed (floored),
+  // matching every other "not there yet" figure in this app.
+  function rawDraftNetKg(requestId: string, lineId: string): number {
+    const draft = rawDraftByRequest[requestId]?.[lineId]
+    if (!draft) return 0
+    const weight = parseFloat(draft.weightKg)
+    const boxMass = parseFloat(draft.boxMassKg)
+    if (!(weight > 0) || !(boxMass >= 0)) return 0
+    return Math.max(0, weight - boxMass)
+  }
+
+  function setRawDraftField(requestId: string, lineId: string, patch: Partial<{ weightKg: string; boxMassKg: string }>) {
+    setRawDraftByRequest((m) => {
+      const existing = m[requestId]?.[lineId] ?? { weightKg: '', boxMassKg: '' }
+      return {
+        ...m,
+        [requestId]: { ...m[requestId], [lineId]: { ...existing, ...patch } },
+      }
+    })
+  }
+
+  // The progress figure a line shows, whichever kind it is — scanned pallet
+  // sum for a finished line, draft net for a raw line. Used everywhere a
+  // per-line "how much so far" number is needed (progress bars, shortfall,
+  // the aggregate tone) so those never need their own kind branch.
+  function lineProgressKg(request: ChiqimRequest, line: ChiqimLine): number {
+    return line.raw_serial !== null ? rawDraftNetKg(request.id, line.id) : lineTotal(request.id, line.id)
+  }
+
+  function combinedTotalsByLine(request: ChiqimRequest): Record<string, number> {
+    const totals: Record<string, number> = {}
+    for (const line of request.lines) totals[line.id] = lineProgressKg(request, line)
     return totals
   }
 
@@ -267,6 +331,27 @@ export function OmborChiqimTab() {
         }
       }
 
+      // Raw dispatch — committed here, not at entry (see rawDraftByRequest's
+      // own comment): only lines with a real, valid draft (weight > 0,
+      // box mass >= 0) become a row. A line the operator left blank is
+      // simply not dispatched this trip, same as an un-scanned finished line.
+      const rawEntries = Object.entries(rawDraftByRequest[request.id] ?? {}).filter(([lineId]) =>
+        request.lines.some((l) => l.id === lineId && l.raw_serial !== null),
+      )
+      const rawInserts = rawEntries
+        .map(([lineId, draft]) => {
+          const line = request.lines.find((l) => l.id === lineId)
+          const weight = parseFloat(draft.weightKg)
+          const boxMass = parseFloat(draft.boxMassKg)
+          if (!line?.raw_serial || !(weight > 0) || !(boxMass >= 0)) return null
+          return { chiqim_line_id: lineId, serial: line.raw_serial, weight_kg: weight, box_mass_kg: boxMass, created_by: profile?.id }
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null)
+      if (rawInserts.length > 0) {
+        const { error: rawErr } = await supabase.from('raw_dispatch_lines').insert(rawInserts)
+        if (rawErr) throw rawErr
+      }
+
       const { error: reqErr } = await supabase
         .from('chiqim_requests')
         .update({ ombor_finished_at: new Date().toISOString(), ombor_finished_by: profile?.id })
@@ -274,6 +359,11 @@ export function OmborChiqimTab() {
       if (reqErr) throw reqErr
 
       setScannedByRequest((m) => {
+        const next = { ...m }
+        delete next[request.id]
+        return next
+      })
+      setRawDraftByRequest((m) => {
         const next = { ...m }
         delete next[request.id]
         return next
@@ -299,8 +389,11 @@ export function OmborChiqimTab() {
           {open.map((request) => {
             const isExpanded = expandedOpen === request.id
             const target = requestTarget(request)
-            const scanned = (scannedByRequest[request.id] ?? []).reduce((sum, s) => sum + s.weight_kg, 0)
-            const totalsByLine = lineTotalsFor(request.id)
+            // Raw dispatch: the running total now includes both exits —
+            // scanned finished pallets AND raw draft nets (combinedTotalsByLine
+            // covers both; summed here for the aggregate Stat).
+            const totalsByLine = combinedTotalsByLine(request)
+            const scanned = Object.values(totalsByLine).reduce((sum, v) => sum + v, 0)
             const shortfalls = computeShortfallLines(request.lines, totalsByLine)
             // Aggregate glance-state for the running-total banner —
             // composed here from the SAME per-line lineStatus() every line
@@ -309,7 +402,7 @@ export function OmborChiqimTab() {
             // neutral (still in progress, never a problem on its own),
             // overage on ANY line is the pending/amber signal, and emerald
             // only once every line is exact.
-            const lineStatuses = request.lines.map((l) => lineStatus(l.qty_kg, lineTotal(request.id, l.id)))
+            const lineStatuses = request.lines.map((l) => lineStatus(l.qty_kg, lineProgressKg(request, l)))
             const aggregateTone: Tone =
               scanned === 0
                 ? 'neutral'
@@ -334,9 +427,7 @@ export function OmborChiqimTab() {
                 </div>
 
                 <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
-                  {request.lines
-                    .map((l) => `${typeName(l.type_id)} ${calibreLabel(l.calibre_id)} · ${l.qty_kg.toLocaleString()}`)
-                    .join('   ')}
+                  {request.lines.map((l) => `${typeName(l.type_id)} ${lineLabel(l)} · ${l.qty_kg.toLocaleString()}`).join('   ')}
                 </div>
 
                 {/* Gate-weighing status (flagged item #2 of this task's inspect-
@@ -397,14 +488,14 @@ export function OmborChiqimTab() {
                       </div>
                       <div className="space-y-2">
                         {request.lines.map((line) => {
-                          const lineScanned = lineTotal(request.id, line.id)
+                          const lineScanned = lineProgressKg(request, line)
                           const status = lineStatus(line.qty_kg, lineScanned)
                           const pct = line.qty_kg > 0 ? Math.min(100, (lineScanned / line.qty_kg) * 100) : 0
                           return (
                             <div key={line.id}>
                               <div className="flex items-center justify-between text-sm">
                                 <span className="text-slate-700 dark:text-slate-300">
-                                  {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
+                                  {typeName(line.type_id)} · {lineLabel(line)}
                                 </span>
                                 <span
                                   className={
@@ -449,10 +540,12 @@ export function OmborChiqimTab() {
                         Yig'ish kerak — palletlar
                       </div>
                       <div className="space-y-3">
-                        {request.lines.map((line) => (
+                        {request.lines
+                          .filter((line) => line.raw_serial === null)
+                          .map((line) => (
                           <div key={line.id}>
                             <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                              {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
+                              {typeName(line.type_id)} · {lineLabel(line)}
                             </div>
                             {line.reservedPallets.length === 0 ? (
                               <p className="text-xs text-slate-400">Bu qator uchun pallet belgilanmagan.</p>
@@ -486,6 +579,85 @@ export function OmborChiqimTab() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Raw dispatch (2026-07-31) — a structurally different
+                        branch from the scan zone below, not a forced-generic
+                        line renderer: weight + box-mass inputs, no scan zone,
+                        no dispatch_manifest row. Only rendered when this
+                        request actually has a raw line. Net (weight − box
+                        mass) is shown live; nothing is written until
+                        "Yuklashni yakunlash" (see rawDraftByRequest's own
+                        comment for why). */}
+                    {request.lines.some((l) => l.raw_serial !== null) && (
+                      <div>
+                        <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Xom yuklash — vazn kiritish (skanerlanmaydi)
+                        </div>
+                        <div className="space-y-2">
+                          {request.lines
+                            .filter((line) => line.raw_serial !== null)
+                            .map((line) => {
+                              const draft = rawDraftByRequest[request.id]?.[line.id] ?? { weightKg: '', boxMassKg: '' }
+                              const net = rawDraftNetKg(request.id, line.id)
+                              const available = rawSerials.find((s) => s.serial === line.raw_serial)?.available ?? null
+                              const overCollected = available !== null && net > available
+                              return (
+                                <Card key={line.id} padding="compact">
+                                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                                    <span>{typeName(line.type_id)} · {lineLabel(line)}</span>
+                                    <span>maqsad {line.qty_kg.toLocaleString()} kg</span>
+                                  </div>
+                                  {available !== null && (
+                                    <div className="mt-0.5 text-xs text-slate-400">Bu seriyada qolgan: {available.toLocaleString()} kg</div>
+                                  )}
+                                  <div className="mt-1.5 flex items-center gap-2">
+                                    <TextInput
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      placeholder="Vazn (kg)"
+                                      value={draft.weightKg}
+                                      onChange={(e) => setRawDraftField(request.id, line.id, { weightKg: e.target.value })}
+                                      className="flex-1"
+                                    />
+                                    <TextInput
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      placeholder="Quti massasi (kg)"
+                                      value={draft.boxMassKg}
+                                      onChange={(e) => setRawDraftField(request.id, line.id, { boxMassKg: e.target.value })}
+                                      className="flex-1"
+                                    />
+                                    {(draft.weightKg || draft.boxMassKg) && (
+                                      <IconButton
+                                        label="Tozalash"
+                                        tone="danger"
+                                        onClick={() => setRawDraftField(request.id, line.id, { weightKg: '', boxMassKg: '' })}
+                                      >
+                                        ✕
+                                      </IconButton>
+                                    )}
+                                  </div>
+                                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Net: {net.toLocaleString()} kg</div>
+                                  {/* Warn-never-block (2026-07-31 feedback, see DECISIONS.md "Raw
+                                      dispatch"): entering more than the serial has left is still
+                                      savable (Ombor may be correcting a stale balance) -- just
+                                      flagged, not silently floored away downstream. */}
+                                  {overCollected && (
+                                    <div className="mt-1">
+                                      <StatusNote tone="pending">
+                                        Diqqat: bu seriyada faqat {available!.toLocaleString()} kg qolgan — siz{' '}
+                                        {net.toLocaleString()} kg kiritmoqdasiz.
+                                      </StatusNote>
+                                    </div>
+                                  )}
+                                </Card>
+                              )
+                            })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Scan zone — the repeated action (10-20x per truck).
                         Camera first (the primary, minimal-tap path), manual
@@ -530,7 +702,7 @@ export function OmborChiqimTab() {
                                   <span className="font-mono text-xs text-slate-600 dark:text-slate-400">{sc.barcode2}</span>
                                   {line && (
                                     <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
-                                      · {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
+                                      · {typeName(line.type_id)} · {lineLabel(line)}
                                     </span>
                                   )}
                                 </span>
@@ -566,7 +738,7 @@ export function OmborChiqimTab() {
                       {shortfalls.length > 0 && (
                         <StatusNote tone="pending">
                           Yetarli emas: {shortfalls
-                            .map((s) => `${typeName(s.line.type_id)} ${calibreLabel(s.line.calibre_id)} — ${s.missingKg.toLocaleString()} kg kam`)
+                            .map((s) => `${typeName(s.line.type_id)} ${lineLabel(s.line)} — ${s.missingKg.toLocaleString()} kg kam`)
                             .join(' · ')}
                           . Baribir yakunlash mumkin — sabab qayd sifatida yoziladi.
                         </StatusNote>
@@ -644,7 +816,7 @@ export function OmborChiqimTab() {
                   {request.lines.map((line) => (
                     <div key={line.id} className="flex items-center justify-between text-sm">
                       <span className="text-slate-600 dark:text-slate-400">
-                        {typeName(line.type_id)} · {calibreLabel(line.calibre_id)}
+                        {typeName(line.type_id)} · {lineLabel(line)}
                       </span>
                       <span className="text-slate-600 dark:text-slate-400">{line.qty_kg.toLocaleString()} kg</span>
                     </div>
@@ -687,6 +859,31 @@ export function OmborChiqimTab() {
                     )}
                     {undoError && <StatusNote tone="problem">{undoError}</StatusNote>}
                   </div>
+
+                  {/* Raw dispatch's own W2 record — no undo here (unlike
+                      scanned pallets): raw_dispatch_lines is append-only,
+                      committed only at the finish click that put this
+                      request in Window 2 to begin with (see
+                      rawDraftByRequest's own comment). */}
+                  {rawDispatchLines.length > 0 && (
+                    <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                      <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                        <span>Xom yuklangan</span>
+                        <span>{rawDispatchLines.reduce((sum, r) => sum + r.net_kg, 0).toLocaleString()} kg</span>
+                      </div>
+                      {rawDispatchLoading && <p className="mt-1 text-xs text-slate-400">Yuklanmoqda…</p>}
+                      <ul className="mt-1 space-y-0.5">
+                        {rawDispatchLines.map((r) => (
+                          <li key={r.id} className="flex items-center justify-between text-xs">
+                            <span className="font-mono text-slate-600 dark:text-slate-400">{r.serial}</span>
+                            <span className="text-slate-600 dark:text-slate-400">
+                              {r.weight_kg.toLocaleString()} kg − {r.box_mass_kg.toLocaleString()} kg tara = {r.net_kg.toLocaleString()} kg
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>

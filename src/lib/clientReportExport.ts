@@ -37,6 +37,7 @@ export async function buildClientReportWorkbook(
   sheet.addRow([t.openingBalance, report.raw.openingKg])
   sheet.addRow([`+ ${t.received}`, report.raw.receivedKg])
   sheet.addRow([`- ${t.processed}`, report.raw.processedKg])
+  sheet.addRow([`- ${t.rawDispatched}`, report.raw.rawDispatchedKg])
   sheet.addRow(['    ' + t.calibreOutput, report.raw.processedBreakdown.calibreKg])
   sheet.addRow(['    ' + t.konditirskiy, report.raw.processedBreakdown.konditirskiyKg])
   sheet.addRow(['    ' + t.processLoss, report.raw.processedBreakdown.lossKg, `${report.raw.processedBreakdown.lossPct}%`])
@@ -55,12 +56,24 @@ export async function buildClientReportWorkbook(
   if (report.raw.byType.length > 0) {
     sheet.addRow([])
     sheet.addRow([t.byType]).font = { bold: true }
-    sheet.addRow([t.turi, t.openingBalance, t.received, t.processed, t.closingBalance]).font = { bold: true }
+    sheet.addRow([t.turi, t.openingBalance, t.received, t.processed, t.rawDispatched, t.closingBalance]).font = { bold: true }
     for (const bt of report.raw.byType) {
-      sheet.addRow([lookups.typeName(bt.typeId), bt.openingKg, bt.receivedKg, bt.processedKg, bt.closingKg])
+      sheet.addRow([lookups.typeName(bt.typeId), bt.openingKg, bt.receivedKg, bt.processedKg, bt.rawDispatchedKg, bt.closingKg])
     }
   }
   sheet.addRow([])
+
+  // Raw dispatch (2026-07-31) -- printed in full here (Excel has no
+  // collapsed state), kept as its own block, never merged with the
+  // finished-goods dispatches section below.
+  if (report.raw.dispatches.length > 0) {
+    sheet.addRow([t.rawDispatches]).font = { bold: true, size: 12 }
+    sheet.addRow([t.seriya, t.plate, t.driver, 'Sana / Дата', t.weight, 'Tara / Тара', 'Netto / Нетто']).font = { bold: true }
+    for (const d of report.raw.dispatches) {
+      sheet.addRow([d.serial, d.plate, d.driver, d.requestDate, d.weightKg, d.boxMassKg, d.netKg])
+    }
+    sheet.addRow([])
+  }
 
   // ---- FINISHED ----
   sheet.addRow([t.finishedSection]).font = { bold: true, size: 12 }

@@ -32,8 +32,15 @@ export function TotalsStrip({ totals, dateBasisText }: { totals: ReportTotals; d
             {kg(totals.net)}
           </span>
         </span>
+        {/* Split in/out (2026-07-31, see DECISIONS.md "Raw dispatch"): KIRIM
+            tara (boxes in) and raw-dispatch tara (boxes out) are unrelated
+            figures that happen to share a column name — one merged "Tara"
+            would silently sum them on a "both directions" view. */}
         <span className="text-slate-700 dark:text-slate-300">
-          Tara: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.tara)}</span>
+          Tara (kirim): <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.taraIn)}</span>
+        </span>
+        <span className="text-slate-700 dark:text-slate-300">
+          Tara (chiqim): <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.taraOut)}</span>
         </span>
       </div>
       <span className="text-xs text-slate-400">{dateBasisText}</span>

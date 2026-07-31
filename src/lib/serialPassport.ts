@@ -121,6 +121,20 @@ export interface PassportDispatch {
   pallets: PassportDispatchPallet[]
 }
 
+// Raw dispatch (2026-07-31) — a distinct entry from PassportDispatch (which
+// is pallet-based), kept as its own array so a serial's passport shows both
+// exits without merging them into one list. See DECISIONS.md "Raw dispatch".
+export interface PassportRawDispatch {
+  requestId: string
+  requestDate: string
+  plate: string
+  driver: string
+  weightKg: number
+  boxMassKg: number
+  netKg: number
+  loadedAt: string
+}
+
 export interface PassportCurrentPosition {
   calibreId: string
   inStockKg: number
@@ -137,6 +151,7 @@ export interface SerialPassport {
   kirimLab: PassportKirimLab | null
   cycles: PassportCycle[]
   dispatches: PassportDispatch[]
+  rawDispatches: PassportRawDispatch[]
   currentPosition: PassportCurrentPosition[]
 }
 

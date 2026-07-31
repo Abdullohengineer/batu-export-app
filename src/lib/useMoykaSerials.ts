@@ -10,6 +10,18 @@ export interface MoykaSend {
   qty_kg: number
 }
 
+// Raw dispatch (2026-07-31) — a client collecting raw material directly,
+// the second exit from a serial's raw balance alongside moyka_sends. Shaped
+// like MoykaSend for the same reason: one row per real loading event,
+// summed by the caller, never re-derived.
+export interface RawDispatchEvent {
+  id: string
+  loaded_at: string
+  weight_kg: number
+  box_mass_kg: number
+  net_kg: number
+}
+
 export interface MoykaSerial {
   serial: string
   type_id: string
@@ -24,21 +36,30 @@ export interface MoykaSerial {
   truckVariance: QtyVariance | null // §5.1 amend: gate net vs the order's declared total
   provisionalVarianceFlag: boolean // §2.15.2 edge case: sent while provisional, later landed materially different
   sent: number // Σ moyka_sends.qty_kg for the serial -- derived, not stored (§2.15)
-  available: number // max(0, inputKg − sent) — floored: a serial can be over-consumed relative to a
-  // just-arrived, lower gate net (see DECISIONS.md "Weight authority & effective quantity"); never shown negative.
+  rawDispatched: number // Σ raw_dispatch_lines.net_kg for the serial -- the second exit (raw dispatch build)
+  available: number // max(0, inputKg − sent − rawDispatched) — floored: a serial can be over-consumed
+  // relative to a just-arrived, lower gate net (see DECISIONS.md "Weight authority & effective quantity");
+  // never shown negative. Generalized (raw dispatch build) to subtract BOTH exits, not moyka_sends alone --
+  // the single figure every consumer (Moyka send screen, CHIQIM raw picker, later Rezka) reads.
   sends: MoykaSend[] // full per-send history, chronological — for the detail view
+  rawDispatches: RawDispatchEvent[] // full per-raw-dispatch history, chronological — for the detail view
 }
 
 // §5.2 data: serials received into storage that have raw material to send to
-// Moyka. Available balance is DERIVED (input − Σ sends), never stored — same
-// "store events, derive numbers" reason wash_cycles has no sent_qty and
-// storage_intake has no sent_to_moyka_qty column.
+// Moyka. Available balance is DERIVED (input − Σ sends − Σ raw dispatches),
+// never stored — same "store events, derive numbers" reason wash_cycles has
+// no sent_qty and storage_intake has no sent_to_moyka_qty column.
 //
 // Wash-cycle re-send tracking removed (2026-07-28, Laborator v2 — see
 // DECISIONS.md "Lab moves inside Moyka, wash-cycle concept removed"):
 // re-washing now happens invisibly inside Moyka, so there is no second cycle
 // for this hook to scope sends/input against — every send for a serial
 // belongs to the same single balance, for the serial's whole life.
+//
+// Raw dispatch (2026-07-31, see DECISIONS.md "Raw dispatch") generalized
+// this hook's own `available` to a second exit — built once here so the
+// Moyka send screen and the new CHIQIM raw picker (ChiqimForm.tsx) can never
+// compute two different numbers for the same serial's raw balance.
 export function useMoykaSerials() {
   const [serials, setSerials] = useState<MoykaSerial[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,9 +73,10 @@ export function useMoykaSerials() {
     const requestId = ++requestIdRef.current
     setLoading(true)
     try {
-      const [{ data: intakes }, { data: sends }] = await Promise.all([
+      const [{ data: intakes }, { data: sends }, { data: rawDispatches }] = await Promise.all([
         supabase.from('storage_intake').select('serial, actual_qty, box_mass_kg'),
         supabase.from('moyka_sends').select('id, serial, sent_date, qty_kg'),
+        supabase.from('raw_dispatch_lines').select('id, serial, loaded_at, weight_kg, box_mass_kg, net_kg'),
       ])
 
       const serialList = (intakes ?? []).map((i) => i.serial)
@@ -94,6 +116,13 @@ export function useMoykaSerials() {
         sendsBySerial.set(s.serial, list)
       }
 
+      const rawDispatchesBySerial = new Map<string, RawDispatchEvent[]>()
+      for (const r of rawDispatches ?? []) {
+        const list = rawDispatchesBySerial.get(r.serial) ?? []
+        list.push({ id: r.id, loaded_at: r.loaded_at, weight_kg: r.weight_kg, box_mass_kg: r.box_mass_kg, net_kg: r.net_kg })
+        rawDispatchesBySerial.set(r.serial, list)
+      }
+
       const combined: MoykaSerial[] = (intakes ?? [])
         .map((intake): MoykaSerial | null => {
           const line = lineBySerial.get(intake.serial)
@@ -104,9 +133,13 @@ export function useMoykaSerials() {
           const serialSends = (sendsBySerial.get(intake.serial) ?? []).sort((a, b) =>
             a.sent_date.localeCompare(b.sent_date),
           )
+          const serialRawDispatches = (rawDispatchesBySerial.get(intake.serial) ?? []).sort((a, b) =>
+            a.loaded_at.localeCompare(b.loaded_at),
+          )
           const eq: EffectiveQtyInfo | undefined = effectiveQtyBySerial.get(intake.serial)
           const input = eq?.value ?? intake.actual_qty
           const sentTotal = serialSends.reduce((sum, s) => sum + s.qty_kg, 0)
+          const rawDispatchedTotal = serialRawDispatches.reduce((sum, r) => sum + r.net_kg, 0)
 
           return {
             serial: intake.serial,
@@ -121,8 +154,10 @@ export function useMoykaSerials() {
             truckVariance: eq?.truckVariance ?? null,
             provisionalVarianceFlag: eq?.provisionalVarianceFlag ?? false,
             sent: sentTotal,
-            available: Math.max(0, input - sentTotal),
+            rawDispatched: rawDispatchedTotal,
+            available: Math.max(0, input - sentTotal - rawDispatchedTotal),
             sends: serialSends,
+            rawDispatches: serialRawDispatches,
           }
         })
         .filter((s): s is MoykaSerial => s !== null)

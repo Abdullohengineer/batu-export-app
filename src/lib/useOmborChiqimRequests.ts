@@ -15,7 +15,11 @@ export interface ReservedPallet {
 export interface ChiqimLine {
   id: string
   type_id: string
-  calibre_id: string
+  // Raw dispatch (2026-07-31): a line is either finished (calibre_id set)
+  // or raw (raw_serial set) — mutually exclusive, mirrors chiqim_lines'
+  // own DB constraint (chiqim_lines_calibre_xor_raw).
+  calibre_id: string | null
+  raw_serial: string | null
   qty_kg: number
   reservedPallets: ReservedPallet[]
 }
@@ -63,7 +67,7 @@ export function useOmborChiqimRequests() {
           // actual data, not a re-derivation of qty_kg.
           .select(
             'id, request_date, plate, driver, owner_id, ombor_finished_at, ' +
-              'chiqim_lines(id, type_id, calibre_id, qty_kg, ' +
+              'chiqim_lines(id, type_id, calibre_id, raw_serial, qty_kg, ' +
               'chiqim_line_pallets(barcode2, finished_pallets(serial, weight_kg)))',
           )
           .is('voided_at', null),
@@ -77,7 +81,8 @@ export function useOmborChiqimRequests() {
       type RawLine = {
         id: string
         type_id: string
-        calibre_id: string
+        calibre_id: string | null
+        raw_serial: string | null
         qty_kg: number
         chiqim_line_pallets: { barcode2: string; finished_pallets: { serial: string; weight_kg: number } | null }[] | null
       }
@@ -105,6 +110,7 @@ export function useOmborChiqimRequests() {
             id: l.id,
             type_id: l.type_id,
             calibre_id: l.calibre_id,
+            raw_serial: l.raw_serial,
             qty_kg: l.qty_kg,
             reservedPallets: (l.chiqim_line_pallets ?? [])
               .filter((clp) => clp.finished_pallets !== null)

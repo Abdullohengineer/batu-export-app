@@ -163,3 +163,54 @@ test('mapDbRowToReportRow: CHIQIM missing request_id/barcode2/calibre_id fall ba
   assert.equal(row.barcode2, '')
   assert.equal(row.calibreId, '')
 })
+
+// Raw dispatch (2026-07-31) -- the third kind, no finished_pallets anchor.
+function rawDbRow(overrides: Partial<ReportDbRow> = {}): ReportDbRow {
+  return {
+    kind: 'chiqim_raw',
+    row_key: 'rdl-1',
+    serial: 's1',
+    barcode2: null,
+    order_id: 'o1',
+    request_id: 'r1',
+    owner_id: 'own1',
+    type_id: 't1',
+    calibre_id: null,
+    plate: 'P1',
+    driver: 'D1',
+    date_basis: '2026-07-31',
+    date_basis_source: null,
+    qty_kg: 400,
+    provisional: false,
+    declared_qty: null,
+    truck_variance_diff_kg: null,
+    truck_variance_diff_pct: null,
+    provisional_variance_flag: false,
+    wash_cycle: null,
+    pallet_status: 'jonatilgan',
+    lab_verdict: null,
+    target_moisture_pct: null,
+    target_so2_mg_kg: null,
+    moisture_pct: null,
+    so2_mg_kg: null,
+    void_successor_barcodes: null,
+    box_mass_kg: 20,
+    ...overrides,
+  }
+}
+
+test('mapDbRowToReportRow: CHIQIM_RAW row maps field-for-field, weightKg holds net_kg (qty_kg)', () => {
+  const row = mapDbRowToReportRow(rawDbRow())
+  if (row.kind !== 'chiqim_raw') throw new Error('expected chiqim_raw')
+  assert.equal(row.serial, 's1')
+  assert.equal(row.weightKg, 400)
+  assert.equal(row.boxMassKg, 20)
+  assert.equal(row.palletStatus, 'jonatilgan')
+  assert.equal(row.dateBasis, '2026-07-31')
+})
+
+test('mapDbRowToReportRow: CHIQIM_RAW missing request_id falls back to empty string, not null', () => {
+  const row = mapDbRowToReportRow(rawDbRow({ request_id: null }))
+  if (row.kind !== 'chiqim_raw') throw new Error('expected chiqim_raw')
+  assert.equal(row.requestId, '')
+})

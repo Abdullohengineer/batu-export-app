@@ -17,6 +17,8 @@ export interface ClientReportLabelSet {
   openingBalance: string
   received: string
   processed: string
+  rawDispatched: string
+  rawDispatches: string
   produced: string
   departed: string
   closingBalance: string
@@ -67,7 +69,9 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     finishedSection: 'TAYYOR MAHSULOT',
     openingBalance: 'Davr boshiga qoldiq',
     received: 'Davrda qabul qilingan',
-    processed: 'Davrda qayta ishlangan',
+    processed: 'Davrda qayta ishlangan (yuvishga)',
+    rawDispatched: 'Davrda xom holda olib ketilgan',
+    rawDispatches: "Xom jo'natmalar",
     produced: 'Davrda ishlab chiqarilgan',
     departed: 'Davrda olib ketilgan',
     closingBalance: 'Davr oxiriga qoldiq',
@@ -116,7 +120,9 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     finishedSection: 'ГОТОВАЯ ПРОДУКЦИЯ',
     openingBalance: 'Остаток на начало периода',
     received: 'Принято за период',
-    processed: 'Переработано за период',
+    processed: 'Переработано за период (на мойку)',
+    rawDispatched: 'Забрано сырым за период',
+    rawDispatches: 'Отгрузки сырья',
     produced: 'Произведено за период',
     departed: 'Отгружено за период',
     closingBalance: 'Остаток на конец периода',

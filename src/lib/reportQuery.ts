@@ -118,7 +118,30 @@ export interface ChiqimReportRow {
   boxMassKg: null // Tara — finished goods never carry their own box mass (already deducted upstream at the raw stage); always null, kept here so ReportTableRow can read row.boxMassKg without a kind check
 }
 
-export type ReportRow = KirimReportRow | ChiqimReportRow
+// Raw dispatch (2026-07-31) — one row per raw_dispatch_lines entry, the
+// third report_rows kind alongside kirim/chiqim (see DECISIONS.md "Raw
+// dispatch"). No calibre/barcode2/wash cycle/lab verdict — a raw exit was
+// never graded or lab-tested, it's a plain kg event like a KIRIM line, just
+// on the CHIQIM (out) side. weightKg deliberately named to match
+// ChiqimReportRow's own field (net_kg here) so the shared
+// `row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg` ternary used
+// across the report UI keeps working unchanged for both non-kirim kinds.
+export interface RawDispatchReportRow {
+  kind: 'chiqim_raw'
+  key: string // raw_dispatch_lines.id — stable row key
+  serial: string
+  typeId: string
+  ownerId: string
+  requestId: string
+  plate: string
+  driver: string
+  weightKg: number // net_kg (weight − box mass), Ombor's own entry, authoritative immediately
+  boxMassKg: number | null
+  dateBasis: string | null // §3.2.3: chiqim_requests.request_date, same basis as pallet rows
+  palletStatus: 'jonatilgan' // raw_dispatch_lines only exists once committed at Ombor's finish click — always departed
+}
+
+export type ReportRow = KirimReportRow | ChiqimReportRow | RawDispatchReportRow
 
 // §3.2.2 🔒 "a voided Barcode #2 must remain findable" — a voided pallet's
 // cycle was, by construction, the ACTIVE cycle at the moment it was voided
@@ -136,11 +159,18 @@ export interface VoidedBarcodeInfo {
   successorBarcodes: string[]
 }
 
+// taraIn/taraOut, not one merged `tara` (2026-07-31, see DECISIONS.md "Raw
+// dispatch"): KIRIM tara (boxes coming in) and raw-dispatch tara (boxes
+// going out) are unrelated quantities that happen to share a column name —
+// summing them into one figure on a "both directions" view would read as a
+// real number while meaning nothing. Split, so there is never an ambiguous
+// total regardless of which direction is selected.
 export interface ReportTotals {
   kgIn: number
   kgOut: number
   net: number
-  tara: number
+  taraIn: number
+  taraOut: number
 }
 
 // §3.2.3 🔒 date basis label, shown on screen and in exports — printed
@@ -161,7 +191,7 @@ export const WEIGHT_BASIS_LABEL = "Og'irlik asosi: effective_qty (darvoza netto 
 // avoids silently doing string concatenation instead of arithmetic if a
 // given code path happens to come back as text.
 export interface ReportDbRow {
-  kind: 'kirim' | 'chiqim'
+  kind: 'kirim' | 'chiqim' | 'chiqim_raw'
   row_key: string
   serial: string
   barcode2: string | null
@@ -219,6 +249,23 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       kirimMoisturePct: num(row.moisture_pct),
       kirimSo2MgKg: num(row.so2_mg_kg),
       boxMassKg: num(row.box_mass_kg),
+    }
+  }
+
+  if (row.kind === 'chiqim_raw') {
+    return {
+      kind: 'chiqim_raw',
+      key: row.row_key,
+      serial: row.serial,
+      typeId: row.type_id,
+      ownerId: row.owner_id,
+      requestId: row.request_id ?? '',
+      plate: row.plate,
+      driver: row.driver,
+      weightKg: Number(row.qty_kg),
+      boxMassKg: num(row.box_mass_kg),
+      dateBasis: row.date_basis,
+      palletStatus: 'jonatilgan',
     }
   }
 

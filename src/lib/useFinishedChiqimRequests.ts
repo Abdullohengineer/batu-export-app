@@ -4,7 +4,10 @@ import { sortByDateDesc } from './sortByDate'
 
 export interface FinishedChiqimLine {
   type_id: string
-  calibre_id: string
+  // Raw dispatch (2026-07-31): a line is either finished (calibre_id set)
+  // or raw (raw_serial set) — mirrors chiqim_lines' own DB constraint.
+  calibre_id: string | null
+  raw_serial: string | null
   qty_kg: number
 }
 
@@ -86,7 +89,7 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
             'id, request_date, plate, driver, owner_id, status, created_by, created_at, ' +
               'ombor_finished_at, ombor_finished_by, voided_at',
           ),
-        supabase.from('chiqim_lines').select('type_id, calibre_id, qty_kg, request_id'),
+        supabase.from('chiqim_lines').select('type_id, calibre_id, raw_serial, qty_kg, request_id'),
         supabase
           .from('gate_weighings')
           .select(

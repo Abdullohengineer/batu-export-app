@@ -1,6 +1,7 @@
 import type { ReportRow } from '../../lib/reportQuery'
 import { KirimRowDetail } from './KirimRowDetail'
 import { ChiqimRowDetail } from './ChiqimRowDetail'
+import { RawDispatchRowDetail } from './RawDispatchRowDetail'
 
 const STATUS_LABEL: Record<string, string> = {
   omborda: 'Omborda',
@@ -46,12 +47,12 @@ export function ReportTableRow({
       >
         <td className={td}>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {row.kind === 'kirim' ? 'KIRIM' : 'CHIQIM'}
+            {row.kind === 'kirim' ? 'KIRIM' : row.kind === 'chiqim_raw' ? 'CHIQIM (xom)' : 'CHIQIM'}
           </span>
         </td>
         <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{row.dateBasis ?? '—'}</td>
         <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
-          {row.kind === 'kirim' ? row.serial : row.barcode2}
+          {row.kind === 'chiqim' ? row.barcode2 : row.serial}
         </td>
         <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{ownerName(row.ownerId)}</td>
         <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{typeName(row.typeId)}</td>
@@ -84,6 +85,8 @@ export function ReportTableRow({
                 <span className="text-slate-400">—</span>
               )}
             </>
+          ) : row.kind === 'chiqim_raw' ? (
+            <span className="text-slate-400">Xom</span>
           ) : row.palletStatus === 'bekor_qilingan' ? (
             <span className="font-medium text-red-600 dark:text-red-400">Bekor qilingan</span>
           ) : row.palletStatus !== 'jonatilgan' ? (
@@ -116,6 +119,8 @@ export function ReportTableRow({
           <td colSpan={REPORT_TABLE_COLUMN_COUNT} className="bg-slate-50 px-3 py-3 dark:bg-slate-900/40">
             {row.kind === 'kirim' ? (
               <KirimRowDetail row={row} onOpenPassport={onOpenPassport} />
+            ) : row.kind === 'chiqim_raw' ? (
+              <RawDispatchRowDetail row={row} onOpenPassport={onOpenPassport} />
             ) : (
               <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
             )}

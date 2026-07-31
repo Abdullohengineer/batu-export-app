@@ -16,7 +16,14 @@ import { sortByDateDesc } from './sortByDate.ts'
 export interface ChiqimLineLike {
   id: string
   type_id: string
-  calibre_id: string
+  // Raw dispatch (2026-07-31): a line is either finished (calibre_id set)
+  // or raw (raw_serial set, calibre_id null) — mirrors chiqim_lines' own
+  // DB constraint. resolveScan's candidate matching (`l.calibre_id ===
+  // pallet.calibre_id`) stays correct unchanged: a raw line's calibre_id is
+  // null, which never equals a real pallet's calibre_id, so raw lines are
+  // naturally never a scan candidate — no branch needed there.
+  calibre_id: string | null
+  raw_serial: string | null
   qty_kg: number
 }
 

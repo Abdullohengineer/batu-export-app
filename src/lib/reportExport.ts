@@ -66,6 +66,20 @@ export async function buildReportWorkbook(
         row.boxMassKg ?? '',
         row.provisional ? 'tarozi kutilmoqda' : '',
       ])
+    } else if (row.kind === 'chiqim_raw') {
+      sheet.addRow([
+        'CHIQIM (xom)',
+        row.dateBasis ?? '',
+        row.serial,
+        lookups.ownerName(row.ownerId),
+        lookups.typeName(row.typeId),
+        '',
+        row.plate,
+        row.driver,
+        row.weightKg,
+        row.boxMassKg ?? '',
+        '',
+      ])
     } else {
       const note = row.voidInfo
         ? `bekor qilindi — sikl ${row.voidInfo.voidedCycle}, yangi: ${
@@ -94,7 +108,8 @@ export async function buildReportWorkbook(
   sheet.addRow(['Jami kirim (kg)', totals.kgIn])
   sheet.addRow(['Jami chiqim (kg)', totals.kgOut])
   sheet.addRow(['Neto (kg)', totals.net])
-  sheet.addRow(['Jami tara (kg)', totals.tara])
+  sheet.addRow(['Jami tara — kirim (kg)', totals.taraIn])
+  sheet.addRow(['Jami tara — chiqim (kg)', totals.taraOut])
 
   sheet.columns.forEach((col) => {
     col.width = 18

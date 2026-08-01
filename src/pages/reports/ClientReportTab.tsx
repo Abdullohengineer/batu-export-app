@@ -142,17 +142,22 @@ export function ClientReportTab() {
             <h2 className="mb-2 font-semibold text-slate-900 dark:text-slate-100">{t.rawSection}</h2>
             <BalanceLine label={t.openingBalance} value={report.raw.openingKg} />
             <BalanceLine label={`+ ${t.received}`} value={report.raw.receivedKg} />
-            <BalanceLine label={`- ${t.processed}`} value={report.raw.processedKg} />
+            <BalanceLine label={`- ${t.sentToMoyka}`} value={report.raw.sentToMoykaKg} />
             <BalanceLine label={`- ${t.rawDispatched}`} value={report.raw.rawDispatchedKg} />
-            <BalanceLine label={t.calibreOutput} value={report.raw.processedBreakdown.calibreKg} indent />
-            <BalanceLine label={t.konditirskiy} value={report.raw.processedBreakdown.konditirskiyKg} indent />
-            <BalanceLine
-              label={t.processLoss}
-              value={`${Math.round(report.raw.processedBreakdown.lossKg).toLocaleString()} kg (${report.raw.processedBreakdown.lossPct}%)`}
-              indent
-            />
             <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
             <BalanceLine label={`= ${t.closingBalance}`} value={report.raw.closingKg} bold />
+            <BalanceLine label={t.moykada} value={report.raw.moykadaKg} bold />
+
+            <div className="mt-3 border-t border-dashed border-slate-200 pt-2 dark:border-slate-700">
+              <BalanceLine label={t.processed} value={report.raw.processedKg} />
+              <BalanceLine label={t.calibreOutput} value={report.raw.processedBreakdown.calibreKg} indent />
+              <BalanceLine label={t.konditirskiy} value={report.raw.processedBreakdown.konditirskiyKg} indent />
+              <BalanceLine
+                label={t.processLoss}
+                value={`${Math.round(report.raw.processedBreakdown.lossKg).toLocaleString()} kg (${report.raw.processedBreakdown.lossPct}%)`}
+                indent
+              />
+            </div>
 
             {report.raw.processedOverageKg > 0 && (
               <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
@@ -181,9 +186,11 @@ export function ClientReportTab() {
                       <th className="px-2 py-1 text-left">{t.turi}</th>
                       <th className="px-2 py-1 text-right">{t.openingBalance}</th>
                       <th className="px-2 py-1 text-right">{t.received}</th>
-                      <th className="px-2 py-1 text-right">{t.processed}</th>
+                      <th className="px-2 py-1 text-right">{t.sentToMoyka}</th>
                       <th className="px-2 py-1 text-right">{t.rawDispatched}</th>
                       <th className="px-2 py-1 text-right">{t.closingBalance}</th>
+                      <th className="px-2 py-1 text-right">{t.moykada}</th>
+                      <th className="px-2 py-1 text-right">{t.processed}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -192,9 +199,11 @@ export function ClientReportTab() {
                         <td className="px-2 py-1">{typeName(bt.typeId)}</td>
                         <td className="px-2 py-1 text-right tabular-nums">{bt.openingKg.toLocaleString()}</td>
                         <td className="px-2 py-1 text-right tabular-nums">{bt.receivedKg.toLocaleString()}</td>
-                        <td className="px-2 py-1 text-right tabular-nums">{bt.processedKg.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{bt.sentToMoykaKg.toLocaleString()}</td>
                         <td className="px-2 py-1 text-right tabular-nums">{bt.rawDispatchedKg.toLocaleString()}</td>
                         <td className="px-2 py-1 text-right tabular-nums">{bt.closingKg.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{bt.moykadaKg.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{bt.processedKg.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>

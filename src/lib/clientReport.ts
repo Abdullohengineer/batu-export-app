@@ -14,9 +14,27 @@ export interface ClientReportRawByType {
   typeId: string
   openingKg: number
   receivedKg: number
+  sentToMoykaKg: number
   processedKg: number
   rawDispatchedKg: number
+  moykadaKg: number
   closingKg: number
+}
+
+// Three-bucket reconciliation self-check (2026-08-01, see DECISIONS.md
+// "Client report three-bucket raw balance") -- cumulative as-of period.to,
+// not period-scoped, so xomKg + moykadaKg + cumulativeOutputKg +
+// cumulativeLossKg + cumulativeRawDispatchedKg should equal totalReceivedKg;
+// balancesKg is that difference and should be 0 (a nonzero value flags a
+// real anomaly, e.g. a serial oversent beyond what it ever received).
+export interface ClientReportReconciliation {
+  totalReceivedKg: number
+  xomKg: number
+  moykadaKg: number
+  cumulativeOutputKg: number
+  cumulativeLossKg: number
+  cumulativeRawDispatchedKg: number
+  balancesKg: number
 }
 
 // Raw dispatch (2026-07-31, see DECISIONS.md "Raw dispatch") — one row per
@@ -37,12 +55,14 @@ export interface ClientReportRawDispatch {
 export interface ClientReportRaw {
   openingKg: number
   receivedKg: number
+  sentToMoykaKg: number // period flow, informational — closingKg subtracts the as-of-p_to cumulative send, not this
   processedKg: number
   processedActualSentKg: number
   processedOverageKg: number
-  rawDispatchedKg: number // the second raw exit — a client collecting raw directly, alongside processedKg (sent to Moyka)
+  rawDispatchedKg: number // the second raw exit — a client collecting raw directly, alongside sentToMoykaKg
+  moykadaKg: number // sent to Moyka but not yet packed, as of period.to — the in-processing bucket
   cappedSerials: ClientReportCappedSerial[]
-  closingKg: number // openingKg + receivedKg − processedKg − rawDispatchedKg
+  closingKg: number // openingKg + receivedKg − sentToMoyka(as-of-to) − rawDispatched(as-of-to), floored per line at 0
   processedBreakdown: {
     calibreKg: number
     konditirskiyKg: number
@@ -51,6 +71,7 @@ export interface ClientReportRaw {
   }
   byType: ClientReportRawByType[]
   dispatches: ClientReportRawDispatch[]
+  reconciliation: ClientReportReconciliation
 }
 
 export interface ClientReportFinishedByCalibre {

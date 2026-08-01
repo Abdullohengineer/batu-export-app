@@ -36,13 +36,18 @@ export async function buildClientReportWorkbook(
   sheet.addRow([t.rawSection]).font = { bold: true, size: 12 }
   sheet.addRow([t.openingBalance, report.raw.openingKg])
   sheet.addRow([`+ ${t.received}`, report.raw.receivedKg])
-  sheet.addRow([`- ${t.processed}`, report.raw.processedKg])
+  sheet.addRow([`- ${t.sentToMoyka}`, report.raw.sentToMoykaKg])
   sheet.addRow([`- ${t.rawDispatched}`, report.raw.rawDispatchedKg])
+  const closingRawRow = sheet.addRow([`= ${t.closingBalance}`, report.raw.closingKg])
+  closingRawRow.font = { bold: true }
+  const moykadaRow = sheet.addRow([t.moykada, report.raw.moykadaKg])
+  moykadaRow.font = { bold: true }
+
+  sheet.addRow([])
+  sheet.addRow([t.processed, report.raw.processedKg])
   sheet.addRow(['    ' + t.calibreOutput, report.raw.processedBreakdown.calibreKg])
   sheet.addRow(['    ' + t.konditirskiy, report.raw.processedBreakdown.konditirskiyKg])
   sheet.addRow(['    ' + t.processLoss, report.raw.processedBreakdown.lossKg, `${report.raw.processedBreakdown.lossPct}%`])
-  const closingRawRow = sheet.addRow([`= ${t.closingBalance}`, report.raw.closingKg])
-  closingRawRow.font = { bold: true }
 
   if (report.raw.processedOverageKg > 0) {
     sheet.addRow([])
@@ -56,9 +61,20 @@ export async function buildClientReportWorkbook(
   if (report.raw.byType.length > 0) {
     sheet.addRow([])
     sheet.addRow([t.byType]).font = { bold: true }
-    sheet.addRow([t.turi, t.openingBalance, t.received, t.processed, t.rawDispatched, t.closingBalance]).font = { bold: true }
+    sheet.addRow([t.turi, t.openingBalance, t.received, t.sentToMoyka, t.rawDispatched, t.closingBalance, t.moykada, t.processed]).font = {
+      bold: true,
+    }
     for (const bt of report.raw.byType) {
-      sheet.addRow([lookups.typeName(bt.typeId), bt.openingKg, bt.receivedKg, bt.processedKg, bt.rawDispatchedKg, bt.closingKg])
+      sheet.addRow([
+        lookups.typeName(bt.typeId),
+        bt.openingKg,
+        bt.receivedKg,
+        bt.sentToMoykaKg,
+        bt.rawDispatchedKg,
+        bt.closingKg,
+        bt.moykadaKg,
+        bt.processedKg,
+      ])
     }
   }
   sheet.addRow([])

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { IntakeLine, IntakeRecord } from '../../lib/useIntakeLines'
 import { Barcode1Display } from './Barcode1Display'
+import { Stat } from '../../components/ui/Stat'
 
 // §5.1 item 5: the on-demand full story for one serial — manager's
 // declared figures, the gate's weights (or "kutilmoqda" if stage 2 hasn't
@@ -32,18 +33,14 @@ export function IntakeDetailView({
       {/* Ombor card-polish pass: Aniq + arrival date moved to the top and made
           prominent -- the two figures the operator looks for first when
           opening this detail, previously buried inline in the Ombor/Menejer
-          paragraphs below. */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Aniq</div>
-          <div className="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
-            {line.intake.actual_qty.toLocaleString()} kg
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Sana</div>
-          <div className="text-base font-bold text-slate-900 dark:text-slate-100">{line.order_date}</div>
-        </div>
+          paragraphs below. `Stat` with tone="info" (this app's existing
+          "informational highlight" token, not a status/warning color) gives
+          both their own tinted panel, same component/tone already used for
+          every other "big glanceable figure" in the app -- not a one-off
+          background invented for this screen. */}
+      <div className="grid grid-cols-2 gap-2">
+        <Stat value={`${line.intake.actual_qty.toLocaleString()} kg`} label="Aniq" tone="info" valueSize="compact" />
+        <Stat value={line.order_date} label="Sana" tone="info" valueSize="compact" />
       </div>
 
       <div>

@@ -45,7 +45,18 @@ export function useKirimTrips() {
       const [{ data: orders }, { data: lines }, { data: weighings }] = await Promise.all([
         supabase
           .from('kirim_orders')
+          // origin='delivery' only (2026-08-02) — the gate weighs TRUCKS.
+          // A seeded opening-stock anchor (origin='opening_stock') or a
+          // minted re-processing serial (origin='internal_reprocess') never
+          // arrived by road, so it must never appear in Qorovul's queue.
+          // Without this filter all 5 seeded old-washed orders showed up as
+          // phantom trips awaiting weighing (they carry status='kutilmoqda'
+          // and no gate_weighings row, which is exactly this screen's
+          // "not started" predicate). A positive allowlist, not an
+          // exclusion list, so any future non-delivery origin is covered by
+          // construction — same reasoning as report_rows' own filter.
           .select('order_id, order_date, plate, driver, owner_id, declared_total, status')
+          .eq('origin', 'delivery')
           .order('created_at', { ascending: false }),
         supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id'),
         supabase

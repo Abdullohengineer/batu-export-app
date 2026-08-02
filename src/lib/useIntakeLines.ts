@@ -62,7 +62,18 @@ export function useIntakeLines() {
       const [{ data: orders }, { data: kLines }, { data: weighings }, { data: intakes }] = await Promise.all([
         supabase
           .from('kirim_orders')
+          // origin='delivery' only (2026-08-02) — this screen accepts
+          // material off an arriving truck. A seeded opening-stock anchor
+          // (origin='opening_stock') or a minted re-processing serial
+          // (origin='internal_reprocess') has no truck to accept from.
+          // Without this filter all 5 seeded old-washed serials appeared as
+          // phantom deliveries pending acceptance (they have no
+          // storage_intake row, which is exactly this screen's "pending"
+          // predicate) — and accepting one would have written a real
+          // storage_intake row, materialising ~52 t of phantom raw stock in
+          // qoldig'i. A positive allowlist, so future origins are covered.
           .select('order_id, order_date, plate, driver, owner_id, status')
+          .eq('origin', 'delivery')
           .order('created_at', { ascending: false }),
         supabase.from('kirim_lines').select('serial, order_id, type_id, declared_qty'),
         supabase

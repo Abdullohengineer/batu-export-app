@@ -7,6 +7,7 @@ import { useMoykaSerials, type MoykaSerial } from '../../lib/useMoykaSerials'
 import { useMoykaOutput, type OutputSerial } from '../../lib/useMoykaOutput'
 import { hasRawRemainder } from '../../lib/stageMembership'
 import { MoykaSendForm } from './MoykaSendForm'
+import { OldStockToMoykaForm } from './OldStockToMoykaForm'
 import { EntityNotes } from '../../components/EntityNotes'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
@@ -43,9 +44,15 @@ export function OmborMoykaTab() {
   const { productTypes } = useProductTypes(true)
   const { owners } = useOwners(true)
   const { serials, loading, refresh } = useMoykaSerials()
-  const { serials: processing, loading: processingLoading } = useMoykaOutput()
+  const { serials: processing, loading: processingLoading, refresh: refreshProcessing } = useMoykaOutput()
   const [activeSerial, setActiveSerial] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
+  // Opening stock, Stage 3 — the old-washed re-wash entry point. Lives in
+  // Window 1 because it is a "send to Moyka" action, but it is NOT a row
+  // action: it operates on finished pallets, which have no row in this
+  // window (that list is raw serials with a remainder). Hence a
+  // window-level button rather than a per-serial one.
+  const [oldStockOpen, setOldStockOpen] = useState(false)
 
   function typeName(id: string) {
     return productTypes.find((t) => t.id === id)?.name ?? id
@@ -199,7 +206,41 @@ export function OmborMoykaTab() {
     <div className="space-y-6">
       <div>
         <SectionHeading>1 · Yuborishga tayyor</SectionHeading>
+
+        {/* 🔒 The old-stock entry point lives INSIDE this same container,
+            not in a wrapper div of its own between the heading and the
+            list. full-chain.spec.ts locates this window's rows via
+            `heading -> following-sibling::div[1]`, so an extra sibling div
+            here silently displaces the serial list to div[2] and the spec
+            stops finding any row (caught by the suite, not by tsc). Keeping
+            one container also keeps `space-y-2`'s rhythm consistent between
+            the button and the rows. */}
         <div className="mt-2 space-y-2">
+          {/* Opening stock, Stage 3 — re-washing old washed pallets. The
+              minted serial does NOT come back into this window (it has no
+              storage_intake row and is sent in the same transaction, so it
+              has no raw remainder); it appears directly in Window 2 below. */}
+          {oldStockOpen ? (
+            <OldStockToMoykaForm
+              onCancel={() => setOldStockOpen(false)}
+              onSaved={() => {
+                setOldStockOpen(false)
+                refresh()
+                refreshProcessing()
+              }}
+            />
+          ) : (
+            <Button
+              variant="ghost"
+              size="md"
+              fullWidth
+              onClick={() => setOldStockOpen(true)}
+              className="border border-dashed !border-amber-400 !text-amber-800 hover:bg-amber-50 dark:!border-amber-700 dark:!text-amber-400 dark:hover:bg-amber-950/30"
+            >
+              + Eski zaxirani qayta yuvishga yuborish
+            </Button>
+          )}
+
           {toSend.length === 0 && <p className="text-sm text-slate-400">Yuboriladigan serial yo'q.</p>}
           {toSend.map((s) => row(s))}
         </div>

@@ -8,6 +8,7 @@ const STATUS_LABEL: Record<string, string> = {
   band_qilingan: 'Band qilingan',
   jonatilgan: "Jo'natilgan",
   bekor_qilingan: 'Bekor qilingan',
+  ishlatilgan: 'Ishlatilgan',
 }
 
 const td = 'px-3 py-2 align-top'

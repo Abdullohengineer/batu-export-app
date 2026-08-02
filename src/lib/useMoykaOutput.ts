@@ -21,8 +21,19 @@ export interface OutputSerial {
   owner_id: string
   labStatus: LabGateStatus // Laborator v2 (2026-07-28): hard gate on Barcode #2 assignment —
   // 'passed' required before this serial can be packed; OmborTayyorTab.tsx reads this to gate the receive action.
+  // Opening stock, Stage 3 (2026-08-02): origin='internal_reprocess' — this
+  // serial was minted from consumed old-stock pallets, not delivered. Read
+  // by OmborTayyorTab so every pallet packed out of it gets a note
+  // recording its old-stock lineage.
+  isMinted: boolean
   sent: number // Yuborilgan — Σ moyka_sends.qty_kg (derived)
-  received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void (derived)
+  received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void (derived).
+  // Deliberately still counts 'consumed' pallets (only 'bekor_qilindi' is skipped):
+  // status is a CURRENT-LOCATION field, not a did-this-happen field. A pallet later
+  // consumed into a re-wash was still genuinely produced by THIS serial, and its
+  // locked final_loss_pct must not move retroactively. Same reasoning as
+  // yield_rows.output, which likewise applies no status filter. See DECISIONS.md
+  // "Opening stock, Stage 3".
   inProcess: number // Jarayonda — max(0, sent − received); never negative (see DECISIONS)
   excess: number // Ortiqcha — max(0, received − sent); non-blocking overage flag
   pallets: FinishedPallet[] // this serial's pallets
@@ -171,7 +182,7 @@ export function useMoykaOutput() {
         .in('serial', serialList)
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
       const [{ data: orders }, { data: types }] = await Promise.all([
-        supabase.from('kirim_orders').select('order_id, owner_id').in('order_id', orderIds),
+        supabase.from('kirim_orders').select('order_id, owner_id, origin').in('order_id', orderIds),
         supabase.from('product_types').select('id, category_id'),
       ])
 
@@ -197,6 +208,7 @@ export function useMoykaOutput() {
           serial,
           type_id: line.type_id,
           owner_id: order.owner_id,
+          isMinted: order.origin === 'internal_reprocess',
           sent,
           received,
           pallets: serialPallets,
@@ -214,6 +226,7 @@ export function useMoykaOutput() {
             serial: base.serial,
             type_id: base.type_id,
             owner_id: base.owner_id,
+            isMinted: base.isMinted,
             labStatus: labStatusBySerial.get(serial) ?? 'untested',
             sent: base.sent,
             received: base.received,

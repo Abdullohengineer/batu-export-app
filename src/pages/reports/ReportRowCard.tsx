@@ -12,6 +12,7 @@ const STATUS_LABEL: Record<string, string> = {
   band_qilingan: 'Band qilingan',
   jonatilgan: "Jo'natilgan",
   bekor_qilingan: 'Bekor qilingan',
+  ishlatilgan: 'Ishlatilgan',
 }
 
 // Card rendering of a report row for narrow viewports (mockup's mobile

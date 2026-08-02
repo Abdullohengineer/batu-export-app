@@ -39,6 +39,38 @@ export interface PassportOrder {
   // named the passport alongside qoldig'i/client report for "reading as
   // distinct from current stock"; this is that wiring.
   isOldStock: boolean
+  // Stage 3 -- origin='internal_reprocess': this serial was MINTED from
+  // consumed pallets (or, later, a Rezka weight draw), not delivered. Its
+  // Buyurtma/Darvoza sections are near-empty by design; mintOrigin below
+  // is where its actual beginning is recorded.
+  isMinted: boolean
+}
+
+// Stage 3 -- what a minted serial was born from. Null for every ordinary
+// delivered serial.
+export interface PassportMintSourcePallet {
+  barcode2: string
+  bookWeightKg: number
+  calibreId: string
+  sourceSerial: string
+}
+
+export interface PassportMintOrigin {
+  palletCount: number
+  // Sum of the consumed pallets' BOOK weights -- year-old estimates.
+  bookTotalKg: number
+  // Weight-pool path (Rezka); always 0 for a Stage 3 old-stock re-wash.
+  poolDrawKg: number
+  // What actually went to Moyka, off a real scale.
+  sentWeighedKg: number
+  pallets: PassportMintSourcePallet[]
+}
+
+export interface PassportNote {
+  id: string
+  body: string
+  createdAt: string
+  authorName: string | null
 }
 
 export interface PassportEffectiveQty {
@@ -157,6 +189,11 @@ export interface SerialPassport {
   cycles: PassportCycle[]
   dispatches: PassportDispatch[]
   rawDispatches: PassportRawDispatch[]
+  // Stage 3: null unless this serial was minted from consumed sources.
+  mintOrigin: PassportMintOrigin | null
+  // Stage 3: entity_type='moyka' notes keyed by this serial -- includes the
+  // auto-note the mint writes recording old-stock lineage.
+  notes: PassportNote[]
   currentPosition: PassportCurrentPosition[]
 }
 

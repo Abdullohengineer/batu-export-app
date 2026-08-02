@@ -32,7 +32,19 @@ export type ReportDirection = 'kirim' | 'chiqim' | 'both'
 // still matches after all other filters — typically nothing, since a
 // non-dispatched pallet has no dispatch date to anchor a CHIQIM-direction
 // date-range filter on. That's expected, not a bug — see DECISIONS.md.
-export type PalletStatusFilter = '' | 'omborda' | 'band_qilingan' | 'jonatilgan' | 'bekor_qilingan'
+// 'ishlatilgan' added 2026-08-02 (opening stock Stage 3): a pallet consumed
+// into a re-wash mint. Structurally like 'bekor_qilingan' — a terminal state
+// with no dispatch event — but semantically its opposite: voided means "this
+// never really existed," consumed means "it existed, was produced, and has
+// moved on into another serial." Its lineage is on the minted serial's
+// passport (Kelib chiqishi).
+export type PalletStatusFilter =
+  | ''
+  | 'omborda'
+  | 'band_qilingan'
+  | 'jonatilgan'
+  | 'bekor_qilingan'
+  | 'ishlatilgan'
 
 export type LabVerdictFilter = '' | 'o_tdi' | 'qayta_yuvish' | 'tekshirilmagan'
 

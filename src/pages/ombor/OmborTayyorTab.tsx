@@ -162,6 +162,26 @@ export function OmborTayyorTab() {
     })
     if (error) throw error
 
+    // Opening stock, Stage 3 (2026-08-02) — output packed out of a MINTED
+    // serial carries a note recording its old-stock lineage, so the fact
+    // survives on the goods themselves and not only in the mint record.
+    // Written against the serial (entity_type='moyka'), not a new
+    // per-pallet entity_type, deliberately: that key is already rendered in
+    // three places (Ombor's Moyka tab, Laborator's CHIQIM card, the
+    // passport's Qaydlar section), so this note is readable the moment it
+    // is written rather than being an orphan nobody displays. The barcode2
+    // is named in the body to keep it pallet-precise; the passport's
+    // Kelib chiqishi section carries the full source-pallet breakdown.
+    if (serial.isMinted) {
+      const { error: noteErr } = await supabase.from('notes').insert({
+        entity_type: 'moyka',
+        entity_id: serial.serial,
+        author: profile?.id,
+        body: `${values.barcode2} — eski zaxiradan qayta yuvilgan mahsulot (${values.weightKg.toLocaleString()} kg).`,
+      })
+      if (noteErr) throw noteErr
+    }
+
     setLastBarcode((m) => ({ ...m, [serial.serial]: values.barcode2 }))
     setActiveForm(null)
     refresh()

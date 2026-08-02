@@ -23,6 +23,7 @@ const STATUS_OPTIONS: { value: Exclude<PalletStatusFilter, ''>; label: string }[
   { value: 'band_qilingan', label: 'Band qilingan' },
   { value: 'jonatilgan', label: "Jo'natilgan" },
   { value: 'bekor_qilingan', label: 'Bekor qilingan' },
+  { value: 'ishlatilgan', label: 'Ishlatilgan (qayta ishlashga)' },
 ]
 
 // §3.2 HISOBOT (Reporting) — the shared query engine + results table +

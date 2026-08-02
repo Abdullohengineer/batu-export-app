@@ -199,7 +199,8 @@ function PassportBody({
   calibreLabel: (id: string) => string
   onOpenPhoto: OpenPhoto
 }) {
-  const { order, effectiveQty, gate, intake, kirimLab, cycles, dispatches, rawDispatches, currentPosition } = passport
+  const { order, effectiveQty, gate, intake, kirimLab, cycles, dispatches, rawDispatches, mintOrigin, notes, currentPosition } =
+    passport
 
   const effectiveQtyValue = effectiveQty && (
     <>
@@ -224,6 +225,97 @@ function PassportBody({
 
   return (
     <div className="space-y-6">
+      {/* Kelib chiqishi (Mint origin) — Stage 3. Rendered FIRST for a minted
+          serial: it is this serial's actual beginning, and the Buyurtma /
+          Darvoza sections below are near-empty for it by design (no truck
+          ever arrived). Omitted entirely for an ordinary delivered serial,
+          matching this passport's "missing shows nothing" rule. */}
+      {mintOrigin && (
+        <section>
+          <h3 className={`${sectionTitle} flex items-center gap-1.5`}>
+            Kelib chiqishi — qayta ishlangan
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-800 dark:bg-amber-900/50 dark:text-amber-400">
+              Eski zaxiradan
+            </span>
+          </h3>
+          <div className="mt-2">
+            <FieldTable
+              rows={[
+                ...(mintOrigin.palletCount > 0
+                  ? [
+                      {
+                        label: 'Manba',
+                        value: `${mintOrigin.palletCount} ta eski pallet ishlatildi`,
+                      },
+                      {
+                        label: "Kitob bo'yicha",
+                        value: (
+                          <>
+                            ~{Math.round(mintOrigin.bookTotalKg).toLocaleString()} kg
+                            <span className={`${label} font-normal`}> — taxminiy, bir yildan oshgan o'lchov</span>
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
+                ...(mintOrigin.poolDrawKg > 0
+                  ? [{ label: 'Havzadan', value: `${mintOrigin.poolDrawKg.toLocaleString()} kg` }]
+                  : []),
+                {
+                  label: 'Tarozida yuborilgan',
+                  value: (
+                    <span className="font-medium">{mintOrigin.sentWeighedKg.toLocaleString()} kg</span>
+                  ),
+                },
+                // The whole point of keeping the two figures apart: this gap
+                // is storage/dehydration loss, NOT wash loss. Wash loss is
+                // computed from the weighed figure against real output.
+                ...(mintOrigin.palletCount > 0
+                  ? [
+                      {
+                        label: "Saqlash farqi",
+                        value: (
+                          <>
+                            {mintOrigin.sentWeighedKg - mintOrigin.bookTotalKg >= 0 ? '+' : ''}
+                            {Math.round(mintOrigin.sentWeighedKg - mintOrigin.bookTotalKg).toLocaleString()} kg
+                            <span className={`${label} font-normal`}> — saqlash yo'qotishi, yuvish yo'qotishiga kirmaydi</span>
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+            {mintOrigin.pallets.length > 0 && (
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className={label}>
+                      <th className="px-1 py-1 text-left">Ishlatilgan Barcode #2</th>
+                      <th className="px-1 py-1 text-left">Kalibr</th>
+                      <th className="px-1 py-1 text-left">Manba seriya</th>
+                      <th className="px-1 py-1 text-right">Kitob kg</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mintOrigin.pallets.map((p) => (
+                      <tr key={p.barcode2} className="border-t border-slate-100 dark:border-slate-800">
+                        <td className="px-1 py-1 font-mono text-slate-900 dark:text-slate-100">{p.barcode2}</td>
+                        <td className="px-1 py-1 text-slate-700 dark:text-slate-300">{calibreLabel(p.calibreId)}</td>
+                        <td className="px-1 py-1 font-mono text-slate-600 dark:text-slate-400">{p.sourceSerial}</td>
+                        <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">
+                          ~{Math.round(p.bookWeightKg).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Buyurtma (Order) */}
       <section>
         <h3 className={`${sectionTitle} flex items-center gap-1.5`}>
@@ -231,6 +323,11 @@ function PassportBody({
           {order?.isOldStock && (
             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-800 dark:bg-amber-900/50 dark:text-amber-400">
               Eski zaxira
+            </span>
+          )}
+          {order?.isMinted && (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-800 dark:bg-amber-900/50 dark:text-amber-400">
+              Qayta ishlangan
             </span>
           )}
         </h3>
@@ -532,6 +629,29 @@ function PassportBody({
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Qaydlar (2026-08-02, Stage 3) — the passport rendered no notes at
+          all before. Read-only here by design: the passport is a record,
+          not a workspace, so this shows the notes (including the mint's own
+          auto-note recording old-stock lineage) without EntityNotes' add
+          form. Adding stays where the work happens — Ombor's Moyka tab and
+          Laborator's CHIQIM card. */}
+      {notes.length > 0 && (
+        <section>
+          <h3 className={sectionTitle}>Qaydlar</h3>
+          <ul className="mt-2 space-y-1">
+            {notes.map((n) => (
+              <li key={n.id} className="text-sm text-slate-700 dark:text-slate-300">
+                {n.body}
+                <span className={`ml-2 ${label}`}>
+                  {n.authorName ? `${n.authorName} · ` : ''}
+                  {new Date(n.createdAt).toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

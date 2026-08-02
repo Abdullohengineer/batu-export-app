@@ -5,6 +5,7 @@ import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useLaboratorChiqim, type AwaitingSerial, type ChiqimLabResultRow } from '../../lib/useLaboratorChiqim'
 import { ChiqimTahlilForm, type ChiqimTahlilValues } from './ChiqimTahlilForm'
+import { EntityNotes } from '../../components/EntityNotes'
 import { GatePhoto } from '../../components/GatePhoto'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
@@ -160,6 +161,22 @@ export function LaboratorChiqimTab() {
                     onSubmit={(v) => handleTahlil(item, v)}
                   />
                 )}
+                {/* Qaydlar (2026-08-02, opening stock Stage 3) — this tab
+                    rendered no notes at all before. It matters now because
+                    a re-washed old-stock serial carries an auto-note from
+                    the mint ("Eski zaxiradan qayta yuvish: N ta eski
+                    pallet, kitob bo'yicha ~X kg, tarozida Y kg") and the
+                    lab is explicitly meant to see that this material is old
+                    stock before judging it. Same generic EntityNotes /
+                    entity_type='moyka' keyed by serial that OmborMoykaTab
+                    already writes and reads, so the note the mint wrote is
+                    the note shown here — no second mechanism. */}
+                <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Qaydlar</div>
+                  <div className="mt-1">
+                    <EntityNotes entityType="moyka" entityId={item.serial} />
+                  </div>
+                </div>
               </Card>
             )
           })}

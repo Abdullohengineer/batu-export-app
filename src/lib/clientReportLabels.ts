@@ -16,6 +16,7 @@ export interface ClientReportLabelSet {
   finishedSection: string
   openingBalance: string
   received: string
+  sentToMoyka: string
   processed: string
   rawDispatched: string
   rawDispatches: string
@@ -23,6 +24,7 @@ export interface ClientReportLabelSet {
   departed: string
   closingBalance: string
   closingBalanceHeld: string
+  moykada: string
   calibreOutput: string
   konditirskiy: string
   processLoss: string
@@ -63,12 +65,13 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     period: 'Davr',
     weightBasis: "Og'irlik asosi: effective_qty (darvoza netto / oraliq qiymat, §2.16)",
     dateBasisRaw:
-      "Sana asosi (xom ashyo): qabul qilingan — kelish (darvoza 1-bosqich); qayta ishlangan — yuvish sikli tugagan sana (§3.2.3 istisnosi)",
+      "Sana asosi (xom ashyo): qabul qilingan — kelish (darvoza 1-bosqich); yopilgan qoldiq (Xom) — Moykaga yuborilgan sana; qayta ishlangan — yuvish sikli tugagan sana (§3.2.3 istisnosi)",
     dateBasisFinished: "Sana asosi (tayyor mahsulot): ishlab chiqarilgan — qabul sanasi; olib ketilgan — jo'natish (darvoza 2-bosqich)",
     rawSection: 'XOM ASHYO',
     finishedSection: 'TAYYOR MAHSULOT',
     openingBalance: 'Davr boshiga qoldiq',
     received: 'Davrda qabul qilingan',
+    sentToMoyka: 'Davrda Moykaga yuborilgan',
     processed: 'Davrda qayta ishlangan (yuvishga)',
     rawDispatched: 'Davrda xom holda olib ketilgan',
     rawDispatches: "Xom jo'natmalar",
@@ -76,6 +79,7 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     departed: 'Davrda olib ketilgan',
     closingBalance: 'Davr oxiriga qoldiq',
     closingBalanceHeld: 'Davr oxiriga qoldiq (saqlanmoqda)',
+    moykada: 'Moykada (jarayonda)',
     calibreOutput: 'Kalibrlar',
     konditirskiy: 'Konditirskiy',
     processLoss: "Ishlov yo'qotishi",
@@ -114,12 +118,13 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     period: 'Период',
     weightBasis: 'Основа веса: effective_qty (нетто на воротах / промежуточное значение, §2.16)',
     dateBasisRaw:
-      'Основа даты (сырьё): принято — прибытие (ворота, этап 1); переработано — дата завершения цикла мойки (исключение §3.2.3)',
+      'Основа даты (сырьё): принято — прибытие (ворота, этап 1); остаток на конец (Сырьё) — дата отправки на мойку; переработано — дата завершения цикла мойки (исключение §3.2.3)',
     dateBasisFinished: 'Основа даты (готовая продукция): произведено — дата приёмки; отгружено — отгрузка (ворота, этап 2)',
     rawSection: 'СЫРЬЁ',
     finishedSection: 'ГОТОВАЯ ПРОДУКЦИЯ',
     openingBalance: 'Остаток на начало периода',
     received: 'Принято за период',
+    sentToMoyka: 'Отправлено на мойку за период',
     processed: 'Переработано за период (на мойку)',
     rawDispatched: 'Забрано сырым за период',
     rawDispatches: 'Отгрузки сырья',
@@ -127,6 +132,7 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     departed: 'Отгружено за период',
     closingBalance: 'Остаток на конец периода',
     closingBalanceHeld: 'Остаток на конец периода (на хранении)',
+    moykada: 'В мойке (в процессе)',
     calibreOutput: 'Калибры',
     konditirskiy: 'Кондитерский',
     processLoss: 'Технологические потери',

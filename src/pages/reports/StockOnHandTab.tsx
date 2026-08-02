@@ -60,6 +60,37 @@ export function StockOnHandTab() {
 
   return (
     <div className="space-y-4">
+      {/* Opening stock toggle (Stage 2) -- an exclusive mode switch, not an
+          extra filter row inside ReportFilterBar (a shared component with
+          Hisobot; scoped here instead of touching it globally, same call as
+          the card-polish task's own precedent). Current stock (default) and
+          old stock never render together -- see stockOnHand.ts's own
+          filterStockOnHandRows comment for why. */}
+      <div className="inline-flex rounded-full border border-slate-300 p-0.5 dark:border-slate-700">
+        <button
+          type="button"
+          onClick={() => setFilters({ ...filters, oldStockOnly: false })}
+          className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+            !filters.oldStockOnly
+              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+          }`}
+        >
+          Joriy zaxira
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilters({ ...filters, oldStockOnly: true })}
+          className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+            filters.oldStockOnly
+              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+          }`}
+        >
+          Eski zaxira
+        </button>
+      </div>
+
       <ReportFilterBar
         from={filters.from}
         to={filters.to}

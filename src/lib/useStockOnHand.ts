@@ -5,17 +5,19 @@ import type { StockOnHandRow, StockBucket } from './stockOnHand'
 interface StockOnHandDbRow {
   bucket: StockBucket
   row_key: string
-  serial: string
+  serial: string | null
   barcode2: string | null
   owner_id: string
   type_id: string
   calibre_id: string | null
   qty_kg: number | string
-  anchor_date: string
-  days_held: number | string
+  anchor_date: string | null
+  days_held: number | string | null
   aged_90: boolean
   moisture_pct: number | string | null
   box_mass_kg: number | string | null
+  is_old_stock: boolean
+  weight_is_estimate: boolean | null
 }
 
 function mapRow(r: StockOnHandDbRow): StockOnHandRow {
@@ -29,10 +31,12 @@ function mapRow(r: StockOnHandDbRow): StockOnHandRow {
     calibreId: r.calibre_id,
     qtyKg: Number(r.qty_kg),
     anchorDate: r.anchor_date,
-    daysHeld: Number(r.days_held),
+    daysHeld: r.days_held === null ? null : Number(r.days_held),
     aged90: r.aged_90,
     moisturePct: r.moisture_pct === null ? null : Number(r.moisture_pct),
     boxMassKg: r.box_mass_kg === null ? null : Number(r.box_mass_kg),
+    isOldStock: r.is_old_stock,
+    weightIsEstimate: r.weight_is_estimate,
   }
 }
 

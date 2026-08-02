@@ -28,6 +28,12 @@ export interface MoykaSerial {
   owner_id: string
   order_date: string
   plate: string
+  // Opening stock (Stage 2, see DECISIONS.md "Opening stock") -- true for
+  // the seeded old-raw serial(s). Splits this same pool between the regular
+  // Xom raw picker (excludes old stock) and the new Eski zaxira raw
+  // sub-picker (includes only old stock) -- one balance, two entry points,
+  // never both at once for the same serial.
+  isOldStock: boolean
   actual_qty: number // measured raw received at storage (§5.1)
   inputKg: number // §2.16 effective_qty -- the serial's raw input to Moyka. Was "cycleInputKg"
   // before wash cycles were removed (2026-07-28, Laborator v2) -- there is no cycle to scope it to anymore.
@@ -103,7 +109,7 @@ export function useMoykaSerials() {
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
       const { data: orders } = await supabase
         .from('kirim_orders')
-        .select('order_id, order_date, plate, owner_id')
+        .select('order_id, order_date, plate, owner_id, origin')
         .in('order_id', orderIds)
 
       const lineBySerial = new Map((kLines ?? []).map((l) => [l.serial, l]))
@@ -147,6 +153,7 @@ export function useMoykaSerials() {
             owner_id: order.owner_id,
             order_date: order.order_date,
             plate: order.plate,
+            isOldStock: order.origin === 'opening_stock',
             actual_qty: intake.actual_qty,
             inputKg: input,
             provisional: eq?.provisional ?? false,

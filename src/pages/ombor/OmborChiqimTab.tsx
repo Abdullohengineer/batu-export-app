@@ -7,10 +7,14 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useOmborChiqimRequests, type ChiqimRequest, type ChiqimLine } from '../../lib/useOmborChiqimRequests'
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { useRawDispatchLinesByRequest } from '../../lib/useRawDispatchLinesByRequest'
+import { useOldKnCollectionsByRequest } from '../../lib/useOldKnCollectionsByRequest'
 import { useMoykaSerials } from '../../lib/useMoykaSerials'
+import { useStockOnHand } from '../../lib/useStockOnHand'
 import { resolveScan, lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimScan'
 import { currentLabStatus } from '../../lib/labVerdict'
 import { BarcodeCameraScanner, type ScanFeedback } from '../../components/BarcodeCameraScanner'
+import { Barcode2Display } from './Barcode2Display'
+import { PrintAllButton } from './PrintAllButton'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { IconButton } from '../../components/ui/IconButton'
@@ -20,6 +24,25 @@ import { Stat } from '../../components/ui/Stat'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { TextInput } from '../../components/ui/FormField'
 import type { Tone } from '../../components/ui/tokens'
+
+// Opening stock, Stage 2 (2026-08-02, see DECISIONS.md "Opening stock") —
+// old-stock lines get a shared amber treatment wherever they render
+// (requirement: "All old-stock lines colour-coded"), layered onto the
+// existing finished/raw rendering rather than a parallel set of sections
+// for every kind — old_washed folds into the prep-list (same reservedPallets
+// mechanism as finished), old_raw folds into the raw-draw composer (same
+// pool/draw mechanism as raw); only old_kn has no existing shape to fold
+// into and gets its own section below. Each site below checks its own
+// line_kind directly (no shared kind-set constant — every call site's
+// "old" flag is already scoped to the one kind it cares about).
+// Reuses the design system's own 'pending' tone (amber) for the card
+// border/background rather than inventing a new color — toneStyles.ts's own
+// header comment: "Colors are NAMED, not invented."
+const oldStockBadge = (
+  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900/50 dark:text-amber-400">
+    Eski zaxira
+  </span>
+)
 
 interface ScannedPallet {
   barcode2: string
@@ -106,6 +129,12 @@ export function OmborChiqimTab() {
   const [undoingId, setUndoingId] = useState<string | null>(null)
   const { lines: manifestLines, loading: manifestLoading, refresh: refreshManifest } = useDispatchManifestLines(expandedFinished)
   const { lines: rawDispatchLines, loading: rawDispatchLoading } = useRawDispatchLinesByRequest(expandedFinished)
+  const { collections: oldKnPastCollections, loading: oldKnPastLoading } = useOldKnCollectionsByRequest(expandedFinished)
+  // Opening stock, Stage 2 — old_kn's own balance source, the SAME
+  // stock_on_hand_rows old_kn bucket qoldig'i itself reads (never a second
+  // source of truth for "how much is left"). rowKey on that bucket IS the
+  // pool's own id (old_kn_pools.id), used directly as old_kn_collections.pool_id.
+  const { rows: stockRows } = useStockOnHand()
   // Over-collection warning (2026-07-31, see DECISIONS.md "Raw dispatch") —
   // the SAME hook the picker/available-balance figure already reads
   // everywhere else, so this warning can never disagree with what the
@@ -128,6 +157,13 @@ export function OmborChiqimTab() {
   // entry (e.g. serial picked, weight not yet typed) doesn't pollute the
   // committed list.
   const [rawComposerByRequest, setRawComposerByRequest] = useState<Record<string, Record<string, RawComposerDraft>>>({})
+  // Opening stock, Stage 2 — old_kn's own added-draws state, same deferred-
+  // commit shape as rawDrawsByRequest/rawComposerByRequest above (committed
+  // only at "Yuklashni yakunlash") but simpler: one number per draw, no
+  // serial to pick (there's exactly one pool per type per owner) and no box
+  // mass (a weight pool, not a per-item weigh-in).
+  const [oldKnDrawsByRequest, setOldKnDrawsByRequest] = useState<Record<string, Record<string, { key: string; kg: string }[]>>>({})
+  const [oldKnComposerByRequest, setOldKnComposerByRequest] = useState<Record<string, Record<string, string>>>({})
 
   useEffect(() => {
     return () => {
@@ -157,9 +193,22 @@ export function OmborChiqimTab() {
   // so it also works on shortfallLines' returned {line, missingKg} pairs
   // (typed ChiqimLineLike). A raw line no longer names one pinned serial —
   // the dedicated raw section below shows the full pool with live detail,
-  // so this terse label just says "Xom".
-  function lineLabel(line: { calibre_id: string | null; line_kind: 'finished' | 'raw' }) {
-    return line.line_kind === 'raw' ? 'Xom' : calibreLabel(line.calibre_id ?? '')
+  // so this terse label just says "Xom". Opening stock, Stage 2 — three
+  // more kinds, same terse-label reasoning (each kind's own section below
+  // shows the real detail).
+  function lineLabel(line: { calibre_id: string | null; line_kind: ChiqimLine['line_kind'] }) {
+    switch (line.line_kind) {
+      case 'raw':
+        return 'Xom'
+      case 'old_washed':
+        return `Eski (yuvilgan) ${calibreLabel(line.calibre_id ?? '')}`
+      case 'old_kn':
+        return 'Eski KN'
+      case 'old_raw':
+        return 'Eski xom'
+      default:
+        return calibreLabel(line.calibre_id ?? '')
+    }
   }
 
   function lineTotal(requestId: string, lineId: string): number {
@@ -247,13 +296,47 @@ export function OmborChiqimTab() {
     }))
   }
 
+  // Opening stock, Stage 2 — old_kn's own added-draws helpers, mirroring
+  // rawDrawsFor/addRawDraw/removeRawDraw above but simpler (one number, no
+  // serial, no note).
+  function oldKnDrawsFor(requestId: string, lineId: string): { key: string; kg: string }[] {
+    return oldKnDrawsByRequest[requestId]?.[lineId] ?? []
+  }
+  function oldKnDrawsNetKg(requestId: string, lineId: string): number {
+    return oldKnDrawsFor(requestId, lineId).reduce((sum, d) => sum + (parseFloat(d.kg) || 0), 0)
+  }
+  function oldKnComposerFor(requestId: string, lineId: string): string {
+    return oldKnComposerByRequest[requestId]?.[lineId] ?? ''
+  }
+  function setOldKnComposer(requestId: string, lineId: string, kg: string) {
+    setOldKnComposerByRequest((m) => ({ ...m, [requestId]: { ...m[requestId], [lineId]: kg } }))
+  }
+  function addOldKnDraw(requestId: string, lineId: string) {
+    const kg = oldKnComposerFor(requestId, lineId)
+    if (!(parseFloat(kg) > 0)) return
+    setOldKnDrawsByRequest((m) => ({
+      ...m,
+      [requestId]: { ...m[requestId], [lineId]: [...oldKnDrawsFor(requestId, lineId), { key: crypto.randomUUID(), kg }] },
+    }))
+    setOldKnComposer(requestId, lineId, '')
+  }
+  function removeOldKnDraw(requestId: string, lineId: string, key: string) {
+    setOldKnDrawsByRequest((m) => ({
+      ...m,
+      [requestId]: { ...m[requestId], [lineId]: oldKnDrawsFor(requestId, lineId).filter((d) => d.key !== key) },
+    }))
+  }
+
   // The progress figure a line shows, whichever kind it is — scanned
-  // pallet sum for a finished line, sum of added draws for a raw line.
-  // Used everywhere a per-line "how much so far" number is needed
-  // (progress bars, shortfall, the aggregate tone) so those never need
-  // their own kind branch.
+  // pallet sum for a finished/old_washed line, sum of added draws for a
+  // raw/old_raw line, sum of added draws for an old_kn line. Used
+  // everywhere a per-line "how much so far" number is needed (progress
+  // bars, shortfall, the aggregate tone) so those never need their own
+  // kind branch.
   function lineProgressKg(request: ChiqimRequest, line: ChiqimLine): number {
-    return line.line_kind === 'raw' ? rawDrawsNetKg(request.id, line.id) : lineTotal(request.id, line.id)
+    if (line.line_kind === 'raw' || line.line_kind === 'old_raw') return rawDrawsNetKg(request.id, line.id)
+    if (line.line_kind === 'old_kn') return oldKnDrawsNetKg(request.id, line.id)
+    return lineTotal(request.id, line.id)
   }
 
   function combinedTotalsByLine(request: ChiqimRequest): Record<string, number> {
@@ -415,16 +498,17 @@ export function OmborChiqimTab() {
         }
       }
 
-      // Raw dispatch pool rework (2026-08-01) — committed here, not at
-      // entry (see rawDrawsByRequest's own comment): only lines with real,
-      // ADDED draws contribute rows. A line the operator left with zero
-      // draws is simply not dispatched this trip, same as an un-scanned
-      // finished line. Inserted SEQUENTIALLY, not batched — mirrors
+      // Raw dispatch pool rework (2026-08-01, widened to old_raw in Stage 2
+      // — same mechanism, same rawDrawsByRequest state) — committed here,
+      // not at entry (see rawDrawsByRequest's own comment): only lines with
+      // real, ADDED draws contribute rows. A line the operator left with
+      // zero draws is simply not dispatched this trip, same as an un-
+      // scanned finished line. Inserted SEQUENTIALLY, not batched — mirrors
       // ChiqimForm.tsx's own established discipline against trusting
       // batch-insert RETURNING order (see that file's line-insert loop):
       // each draw's own returned id is what correctly ties an out-of-pool
       // note to the right raw_dispatch_lines row below.
-      for (const line of request.lines.filter((l) => l.line_kind === 'raw')) {
+      for (const line of request.lines.filter((l) => l.line_kind === 'raw' || l.line_kind === 'old_raw')) {
         for (const draw of rawDrawsFor(request.id, line.id)) {
           const weight = parseFloat(draw.weightKg)
           const boxMass = parseFloat(draw.boxMassKg)
@@ -450,6 +534,27 @@ export function OmborChiqimTab() {
         }
       }
 
+      // Opening stock, Stage 2 — old_kn's own commit, same "only lines with
+      // real added draws" rule. pool_id is resolved here from stockRows'
+      // own old_kn bucket (rowKey === old_kn_pools.id) — the same balance
+      // source the composer's own available-kg hint reads, so a resolved
+      // pool can never disagree with what the UI showed. A line whose
+      // pool has since gone to zero (raced by another request) has no
+      // matching stockRows entry — its draws are skipped rather than
+      // inserted against a stale/nonexistent pool.
+      for (const line of request.lines.filter((l) => l.line_kind === 'old_kn')) {
+        const pool = stockRows.find((r) => r.bucket === 'old_kn' && r.ownerId === request.owner_id && r.typeId === line.type_id)
+        if (!pool) continue
+        for (const draw of oldKnDrawsFor(request.id, line.id)) {
+          const kg = parseFloat(draw.kg)
+          if (!(kg > 0)) continue
+          const { error: knErr } = await supabase
+            .from('old_kn_collections')
+            .insert({ chiqim_line_id: line.id, pool_id: pool.rowKey, collected_kg: kg, created_by: profile?.id })
+          if (knErr) throw knErr
+        }
+      }
+
       const { error: reqErr } = await supabase
         .from('chiqim_requests')
         .update({ ombor_finished_at: new Date().toISOString(), ombor_finished_by: profile?.id })
@@ -467,6 +572,16 @@ export function OmborChiqimTab() {
         return next
       })
       setRawComposerByRequest((m) => {
+        const next = { ...m }
+        delete next[request.id]
+        return next
+      })
+      setOldKnDrawsByRequest((m) => {
+        const next = { ...m }
+        delete next[request.id]
+        return next
+      })
+      setOldKnComposerByRequest((m) => {
         const next = { ...m }
         delete next[request.id]
         return next
@@ -661,42 +776,87 @@ export function OmborChiqimTab() {
                       </div>
                       <div className="space-y-3">
                         {request.lines
-                          .filter((line) => line.line_kind === 'finished')
-                          .map((line) => (
-                          <div key={line.id}>
-                            <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                              {typeName(line.type_id)} · {lineLabel(line)}
-                            </div>
-                            {line.reservedPallets.length === 0 ? (
-                              <p className="text-xs text-slate-400">Bu qator uchun pallet belgilanmagan.</p>
+                          // Opening stock, Stage 2 — old_washed folds into
+                          // this same prep-list (it's the same
+                          // reservedPallets/chiqim_line_pallets mechanism as
+                          // finished), badged + print-enabled per row below.
+                          .filter((line) => line.line_kind === 'finished' || line.line_kind === 'old_washed')
+                          .map((line) => {
+                            const isOld = line.line_kind === 'old_washed'
+                            // Never labelled at seed time (Stage 1 design) —
+                            // Barcode2LabelData built from this line/request's
+                            // own context, no extra fetch needed.
+                            const oldWashedLabels = isOld
+                              ? line.reservedPallets.map((p) => ({
+                                  barcode2: p.barcode2,
+                                  serial: p.serial,
+                                  type: typeName(line.type_id),
+                                  calibre: calibreLabel(line.calibre_id ?? ''),
+                                  weightKg: p.weight_kg,
+                                  owner: ownerName(request.owner_id),
+                                }))
+                              : []
+                            const body = (
+                              <>
+                                <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                  {typeName(line.type_id)} · {lineLabel(line)}
+                                  {isOld && oldStockBadge}
+                                </div>
+                                {line.reservedPallets.length === 0 ? (
+                                  <p className="text-xs text-slate-400">Bu qator uchun pallet belgilanmagan.</p>
+                                ) : (
+                                  <>
+                                    <ul className="space-y-0.5">
+                                      {line.reservedPallets.map((p) => {
+                                        const isScanned = (scannedByRequest[request.id] ?? []).some(
+                                          (s) => s.barcode2 === p.barcode2,
+                                        )
+                                        return (
+                                          <li
+                                            key={p.barcode2}
+                                            className={`flex items-center justify-between gap-2 text-xs ${
+                                              isScanned
+                                                ? 'text-slate-400 line-through dark:text-slate-600'
+                                                : 'text-slate-700 dark:text-slate-300'
+                                            }`}
+                                          >
+                                            <span className="min-w-0 flex-1 truncate font-mono">
+                                              {isScanned ? '✓ ' : ''}
+                                              {p.barcode2}
+                                            </span>
+                                            <span className="shrink-0">{p.serial}</span>
+                                            <span className="shrink-0 font-medium">{p.weight_kg.toLocaleString()} kg</span>
+                                          </li>
+                                        )
+                                      })}
+                                    </ul>
+                                    {/* Print-per-row + print-all (requirement:
+                                        "a print button per row plus a 'print
+                                        all' for the line") — old_washed only,
+                                        never labelled at seed time; a regular
+                                        finished pallet was already printed
+                                        once at receipt and needs no reprint
+                                        path here. */}
+                                    {isOld && (
+                                      <div className="mt-1.5 space-y-1">
+                                        <PrintAllButton pallets={oldWashedLabels} />
+                                        {line.reservedPallets.map((p, i) => (
+                                          <Barcode2Display key={p.barcode2} data={oldWashedLabels[i]} />
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </>
+                            )
+                            return isOld ? (
+                              <Card key={line.id} padding="compact" tone="pending">
+                                {body}
+                              </Card>
                             ) : (
-                              <ul className="space-y-0.5">
-                                {line.reservedPallets.map((p) => {
-                                  const isScanned = (scannedByRequest[request.id] ?? []).some(
-                                    (s) => s.barcode2 === p.barcode2,
-                                  )
-                                  return (
-                                    <li
-                                      key={p.barcode2}
-                                      className={`flex items-center justify-between gap-2 text-xs ${
-                                        isScanned
-                                          ? 'text-slate-400 line-through dark:text-slate-600'
-                                          : 'text-slate-700 dark:text-slate-300'
-                                      }`}
-                                    >
-                                      <span className="min-w-0 flex-1 truncate font-mono">
-                                        {isScanned ? '✓ ' : ''}
-                                        {p.barcode2}
-                                      </span>
-                                      <span className="shrink-0">{p.serial}</span>
-                                      <span className="shrink-0 font-medium">{p.weight_kg.toLocaleString()} kg</span>
-                                    </li>
-                                  )
-                                })}
-                              </ul>
-                            )}
-                          </div>
-                        ))}
+                              <div key={line.id}>{body}</div>
+                            )
+                          })}
                       </div>
                     </div>
 
@@ -713,15 +873,16 @@ export function OmborChiqimTab() {
                         6), even against the same serial twice. Nothing is
                         written until "Yuklashni yakunlash" (see
                         rawDrawsByRequest's own comment for why). */}
-                    {request.lines.some((l) => l.line_kind === 'raw') && (
+                    {request.lines.some((l) => l.line_kind === 'raw' || l.line_kind === 'old_raw') && (
                       <div>
                         <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                           Xom yuklash — manba seriyadan tanlab, vazn kiritish (skanerlanmaydi)
                         </div>
                         <div className="space-y-2">
                           {request.lines
-                            .filter((line) => line.line_kind === 'raw')
+                            .filter((line) => line.line_kind === 'raw' || line.line_kind === 'old_raw')
                             .map((line) => {
+                              const isOld = line.line_kind === 'old_raw'
                               const draws = rawDrawsFor(request.id, line.id)
                               const composer = rawComposerFor(request.id, line.id)
                               const composerNet = netKgOf(composer.weightKg, composer.boxMassKg)
@@ -732,9 +893,12 @@ export function OmborChiqimTab() {
                               const composerOutOfPool = composer.serial !== '' && !line.rawSerialPool.includes(composer.serial)
                               const canAdd = composer.serial !== '' && composerNet > 0 && (!composerOutOfPool || composer.note.trim() !== '')
                               return (
-                                <Card key={line.id} padding="compact">
+                                <Card key={line.id} padding="compact" tone={isOld ? 'pending' : 'neutral'}>
                                   <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                                    <span>{typeName(line.type_id)} · Xom</span>
+                                    <span className="flex items-center gap-1.5">
+                                      {typeName(line.type_id)} · {lineLabel(line)}
+                                      {isOld && oldStockBadge}
+                                    </span>
                                     <span>{line.qty_kg === null ? 'taxminiy miqdor kiritilmagan' : `taxminiy ${line.qty_kg.toLocaleString()} kg`}</span>
                                   </div>
 
@@ -848,6 +1012,92 @@ export function OmborChiqimTab() {
                                   )}
                                   <div className="mt-1 text-xs font-medium text-slate-700 dark:text-slate-300">
                                     Jami: {rawDrawsNetKg(request.id, line.id).toLocaleString()} kg
+                                  </div>
+                                </Card>
+                              )
+                            })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Opening stock, Stage 2 — old_kn has no existing
+                        shape to fold into (no calibre, no serial pool, no
+                        scan): Ombor enters the real measured kg collected
+                        against the one pool this type/owner has, possibly
+                        in several draws. Nothing written until "Yuklashni
+                        yakunlash" — same deferred-commit shape as raw. */}
+                    {request.lines.some((l) => l.line_kind === 'old_kn') && (
+                      <div>
+                        <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Eski KN yig'ish — o'lchangan og'irlikni kiriting (skanerlanmaydi)
+                        </div>
+                        <div className="space-y-2">
+                          {request.lines
+                            .filter((line) => line.line_kind === 'old_kn')
+                            .map((line) => {
+                              const pool = stockRows.find(
+                                (r) => r.bucket === 'old_kn' && r.ownerId === request.owner_id && r.typeId === line.type_id,
+                              )
+                              const draws = oldKnDrawsFor(request.id, line.id)
+                              const composerKg = oldKnComposerFor(request.id, line.id)
+                              const composerVal = parseFloat(composerKg)
+                              const composerOverCollected = pool !== undefined && composerVal > pool.qtyKg
+                              const canAdd = composerVal > 0
+                              return (
+                                <Card key={line.id} padding="compact" tone="pending">
+                                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                                    <span className="flex items-center gap-1.5">
+                                      {typeName(line.type_id)} · Eski KN
+                                      {oldStockBadge}
+                                    </span>
+                                    <span>{line.qty_kg === null ? 'taxminiy miqdor kiritilmagan' : `taxminiy ${line.qty_kg.toLocaleString()} kg`}</span>
+                                  </div>
+                                  <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-400">
+                                    {pool ? `Havzada mavjud: ${Math.round(pool.qtyKg).toLocaleString()} kg` : "Bu turda eski KN havzasi qolmagan."}
+                                  </p>
+
+                                  <div className="mt-1.5 flex items-center gap-2">
+                                    <TextInput
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      placeholder="O'lchangan og'irlik (kg)"
+                                      value={composerKg}
+                                      onChange={(e) => setOldKnComposer(request.id, line.id, e.target.value)}
+                                      className="flex-1"
+                                    />
+                                    <Button
+                                      variant="secondary"
+                                      size="md"
+                                      disabled={!canAdd}
+                                      onClick={() => addOldKnDraw(request.id, line.id)}
+                                    >
+                                      + Qo'shish
+                                    </Button>
+                                  </div>
+                                  {composerOverCollected && pool && (
+                                    <div className="mt-1">
+                                      <StatusNote tone="pending">
+                                        Diqqat: havzada faqat {Math.round(pool.qtyKg).toLocaleString()} kg qolgan — siz{' '}
+                                        {composerVal.toLocaleString()} kg kiritmoqdasiz.
+                                      </StatusNote>
+                                    </div>
+                                  )}
+
+                                  {draws.length > 0 && (
+                                    <ul className="mt-2 space-y-1 border-t border-amber-200 pt-2 dark:border-amber-900">
+                                      {draws.map((d) => (
+                                        <li key={d.key} className="flex items-center justify-between gap-2 text-xs">
+                                          <span className="text-slate-700 dark:text-slate-300">{parseFloat(d.kg).toLocaleString()} kg</span>
+                                          <IconButton label="O'chirish" tone="danger" onClick={() => removeOldKnDraw(request.id, line.id, d.key)}>
+                                            ✕
+                                          </IconButton>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                  <div className="mt-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+                                    Jami: {oldKnDrawsNetKg(request.id, line.id).toLocaleString()} kg
                                   </div>
                                 </Card>
                               )
@@ -1079,6 +1329,28 @@ export function OmborChiqimTab() {
                             <span className="text-slate-600 dark:text-slate-400">
                               {r.weight_kg.toLocaleString()} kg − {r.box_mass_kg.toLocaleString()} kg tara = {r.net_kg.toLocaleString()} kg
                             </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Opening stock, Stage 2 — old_kn's own W2 record, same
+                      append-only/no-undo reasoning as raw dispatch above:
+                      committed only at the finish click. No serial to show
+                      (a pool draw, not an item), just the measured kg. */}
+                  {oldKnPastCollections.length > 0 && (
+                    <div className="mt-2 border-t border-amber-200 pt-2 dark:border-amber-900">
+                      <div className="flex items-center justify-between text-xs font-medium text-amber-800 dark:text-amber-400">
+                        <span>Eski KN yig'ildi</span>
+                        <span>{oldKnPastCollections.reduce((sum, c) => sum + c.collected_kg, 0).toLocaleString()} kg</span>
+                      </div>
+                      {oldKnPastLoading && <p className="mt-1 text-xs text-slate-400">Yuklanmoqda…</p>}
+                      <ul className="mt-1 space-y-0.5">
+                        {oldKnPastCollections.map((c) => (
+                          <li key={c.id} className="flex items-center justify-between text-xs">
+                            <span className="text-slate-600 dark:text-slate-400">{new Date(c.collected_at).toLocaleString()}</span>
+                            <span className="text-slate-600 dark:text-slate-400">{c.collected_kg.toLocaleString()} kg</span>
                           </li>
                         ))}
                       </ul>

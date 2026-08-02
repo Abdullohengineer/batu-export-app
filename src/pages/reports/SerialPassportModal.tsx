@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { fetchSerialPassport, type SerialPassport, type PassportGate } from '../../lib/serialPassport'
 import { GatePhoto } from '../../components/GatePhoto'
+import { formatStockDate } from '../../lib/oldStock'
 
 type OpenPhoto = (url: string, label: string) => void
 
@@ -225,7 +226,14 @@ function PassportBody({
     <div className="space-y-6">
       {/* Buyurtma (Order) */}
       <section>
-        <h3 className={sectionTitle}>Buyurtma</h3>
+        <h3 className={`${sectionTitle} flex items-center gap-1.5`}>
+          Buyurtma
+          {order?.isOldStock && (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-800 dark:bg-amber-900/50 dark:text-amber-400">
+              Eski zaxira
+            </span>
+          )}
+        </h3>
         {order ? (
           <div className="mt-2">
             <FieldTable
@@ -234,7 +242,11 @@ function PassportBody({
                 { label: 'Mahsulot turi', value: typeName(order.typeId) },
                 { label: 'Moshina raqami', value: order.plate },
                 { label: 'Haydovchi', value: order.driver },
-                { label: 'Sana', value: order.orderDate },
+                // Opening stock, Stage 2 -- the order date is the seed's
+                // backdated anchor for an old-stock serial, not a real
+                // arrival (same reasoning as qoldig'i's own date column,
+                // shared helper).
+                { label: 'Sana', value: formatStockDate(order.isOldStock, order.orderDate) },
                 {
                   label: "E'lon qilingan",
                   value: (

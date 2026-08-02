@@ -32,8 +32,9 @@ import type { Tone } from '../../components/ui/tokens'
 // for every kind — old_washed folds into the prep-list (same reservedPallets
 // mechanism as finished), old_raw folds into the raw-draw composer (same
 // pool/draw mechanism as raw); only old_kn has no existing shape to fold
-// into and gets its own section below.
-const OLD_STOCK_KINDS: ChiqimLine['line_kind'][] = ['old_washed', 'old_kn', 'old_raw']
+// into and gets its own section below. Each site below checks its own
+// line_kind directly (no shared kind-set constant — every call site's
+// "old" flag is already scoped to the one kind it cares about).
 // Reuses the design system's own 'pending' tone (amber) for the card
 // border/background rather than inventing a new color — toneStyles.ts's own
 // header comment: "Colors are NAMED, not invented."

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { P1Printer, isP1PrinterAvailable, printFailureMessage, pluginErrorMessage } from '../../lib/p1Printer'
 import type { Barcode2LabelData } from '../../lib/barcodeLabel'
 import { Button } from '../../components/ui/Button'
-import { StatusNote } from '../../components/ui/StatusNote'
 
 // Opening stock, Stage 2 (2026-08-02) — old-washed pallets were never
 // labelled at seed time (no barcode2 sticker exists yet, unlike a normal
@@ -58,7 +57,7 @@ export function PrintAllButton({ pallets }: { pallets: Barcode2LabelData[] }) {
 
   return (
     <div className="mt-1">
-      <Button type="button" variant="secondary" size="sm" disabled={busy || done} onClick={handlePrintAll}>
+      <Button type="button" variant="secondary" size="md" disabled={busy || done} onClick={handlePrintAll}>
         {busy
           ? `Chop etilmoqda… (${printed}/${pallets.length})`
           : done

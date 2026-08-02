@@ -4,11 +4,16 @@ import { sortByDateDesc } from './sortByDate'
 
 export interface FinishedChiqimLine {
   type_id: string
-  // Raw dispatch (2026-07-31): a line is either finished (calibre_id set)
-  // or raw (raw_serial set) — mirrors chiqim_lines' own DB constraint.
+  // Raw dispatch pool rework (2026-08-01, see DECISIONS.md "Raw dispatch
+  // serial pool"): line_kind replaces the old raw_serial-is-not-null
+  // marker; a raw line's serials now live in the pool table, shown via
+  // rawSerialPool — this is a receipt/history view, so it shows the full
+  // pool rather than degrading to a bare "Xom" with no detail, matching
+  // how a finished line's reservedPallets are already shown elsewhere.
   calibre_id: string | null
-  raw_serial: string | null
-  qty_kg: number
+  line_kind: 'finished' | 'raw'
+  qty_kg: number | null
+  rawSerialPool: string[]
 }
 
 export interface FinishedChiqimWeighing {
@@ -89,7 +94,9 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
             'id, request_date, plate, driver, owner_id, status, created_by, created_at, ' +
               'ombor_finished_at, ombor_finished_by, voided_at',
           ),
-        supabase.from('chiqim_lines').select('type_id, calibre_id, raw_serial, qty_kg, request_id'),
+        supabase
+          .from('chiqim_lines')
+          .select('type_id, calibre_id, line_kind, qty_kg, request_id, chiqim_line_raw_serials(serial)'),
         supabase
           .from('gate_weighings')
           .select(
@@ -107,12 +114,29 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
       // concatenation for the first time.
       const weighingRows = (weighings ?? []) as unknown as (FinishedChiqimWeighing & { request_id: string })[]
       const reqRows = (reqs ?? []) as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing'>[]
+      type RawLine = {
+        type_id: string
+        calibre_id: string | null
+        line_kind: 'finished' | 'raw'
+        qty_kg: number | null
+        request_id: string
+        chiqim_line_raw_serials: { serial: string }[] | null
+      }
+      const lineRows = (lines ?? []) as unknown as RawLine[]
 
       const combined: FinishedChiqimRequest[] = reqRows
         .filter((r) => !r.plate.startsWith('TEST-'))
         .map((r) => ({
           ...r,
-          lines: (lines ?? []).filter((l) => l.request_id === r.id),
+          lines: lineRows
+            .filter((l) => l.request_id === r.id)
+            .map((l) => ({
+              type_id: l.type_id,
+              calibre_id: l.calibre_id,
+              line_kind: l.line_kind,
+              qty_kg: l.qty_kg,
+              rawSerialPool: (l.chiqim_line_raw_serials ?? []).map((s) => s.serial),
+            })),
           weighing: weighingRows.find((w) => w.request_id === r.id) ?? null,
         }))
 

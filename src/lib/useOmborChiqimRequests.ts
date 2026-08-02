@@ -15,13 +15,23 @@ export interface ReservedPallet {
 export interface ChiqimLine {
   id: string
   type_id: string
-  // Raw dispatch (2026-07-31): a line is either finished (calibre_id set)
-  // or raw (raw_serial set) — mutually exclusive, mirrors chiqim_lines'
-  // own DB constraint (chiqim_lines_calibre_xor_raw).
+  // Raw dispatch pool rework (2026-08-01, see DECISIONS.md "Raw dispatch
+  // serial pool"): line_kind replaces the old calibre_id/raw_serial XOR --
+  // a raw line now points at a POOL of candidate serials
+  // (chiqim_line_raw_serials, Menejer's selection), not one pinned column.
+  // qty_kg is optional for a raw line (Menejer may not know how much will
+  // actually be drawn).
   calibre_id: string | null
-  raw_serial: string | null
-  qty_kg: number
+  // Kept snake_case (unlike this interface's other derived fields) to stay
+  // structurally compatible with chiqimScan.ts's ChiqimLineLike, which
+  // request.lines is passed into as-is for resolveScan/shortfallLines.
+  line_kind: 'finished' | 'raw'
+  qty_kg: number | null
   reservedPallets: ReservedPallet[]
+  // Raw dispatch pool -- every serial Menejer pooled for this line. Ombor's
+  // draw UI reads this to offer per-serial draws; a draw against a serial
+  // NOT in this list is the "out of pool" warning path (requirement 7).
+  rawSerialPool: string[]
 }
 
 export interface ChiqimRequest {
@@ -67,8 +77,9 @@ export function useOmborChiqimRequests() {
           // actual data, not a re-derivation of qty_kg.
           .select(
             'id, request_date, plate, driver, owner_id, ombor_finished_at, ' +
-              'chiqim_lines(id, type_id, calibre_id, raw_serial, qty_kg, ' +
-              'chiqim_line_pallets(barcode2, finished_pallets(serial, weight_kg)))',
+              'chiqim_lines(id, type_id, calibre_id, line_kind, qty_kg, ' +
+              'chiqim_line_pallets(barcode2, finished_pallets(serial, weight_kg)), ' +
+              'chiqim_line_raw_serials(serial))',
           )
           .is('voided_at', null),
         supabase.from('gate_weighings').select('request_id, pustoy_kg, stage1_completed_at').eq('dir', 'chiqim'),
@@ -82,9 +93,10 @@ export function useOmborChiqimRequests() {
         id: string
         type_id: string
         calibre_id: string | null
-        raw_serial: string | null
-        qty_kg: number
+        line_kind: 'finished' | 'raw'
+        qty_kg: number | null
         chiqim_line_pallets: { barcode2: string; finished_pallets: { serial: string; weight_kg: number } | null }[] | null
+        chiqim_line_raw_serials: { serial: string }[] | null
       }
       type RawRequest = {
         id: string
@@ -110,7 +122,7 @@ export function useOmborChiqimRequests() {
             id: l.id,
             type_id: l.type_id,
             calibre_id: l.calibre_id,
-            raw_serial: l.raw_serial,
+            line_kind: l.line_kind,
             qty_kg: l.qty_kg,
             reservedPallets: (l.chiqim_line_pallets ?? [])
               .filter((clp) => clp.finished_pallets !== null)
@@ -119,6 +131,7 @@ export function useOmborChiqimRequests() {
                 serial: clp.finished_pallets!.serial,
                 weight_kg: clp.finished_pallets!.weight_kg,
               })),
+            rawSerialPool: (l.chiqim_line_raw_serials ?? []).map((s) => s.serial),
           })),
           gateStage1CompletedAt: weighing?.stage1_completed_at ?? null,
           gatePustoyKg: weighing?.pustoy_kg ?? null,

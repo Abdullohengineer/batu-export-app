@@ -3,14 +3,16 @@ import { supabase } from './supabase'
 
 export interface ChiqimLine {
   type_id: string
-  // Raw dispatch (2026-07-31): a line is either finished (calibre_id set)
-  // or raw (raw_serial set) — mirrors chiqim_lines' own DB constraint.
-  // Neither is read by name here today (only type_id, via typeName in
-  // QorovulChiqimTab.tsx) — widened to keep this type honest about the
-  // actual DB shape, not because a consumer branches on it.
+  // Raw dispatch pool rework (2026-08-01): line_kind replaces the old
+  // raw_serial-is-not-null marker (see DECISIONS.md "Raw dispatch serial
+  // pool") — a raw line now points at a POOL of candidate serials
+  // (chiqim_line_raw_serials), not one column here. Neither field is read
+  // by name here today (only type_id, via typeName in QorovulChiqimTab.tsx)
+  // — widened to keep this type honest about the actual DB shape, not
+  // because a consumer branches on it.
   calibre_id: string | null
-  raw_serial: string | null
-  qty_kg: number
+  line_kind: 'finished' | 'raw'
+  qty_kg: number | null
 }
 
 export interface ChiqimRequestRow {
@@ -54,7 +56,7 @@ export function useChiqimTrips() {
           .from('chiqim_requests')
           .select('id, request_date, plate, driver, owner_id, status')
           .order('created_at', { ascending: false }),
-        supabase.from('chiqim_lines').select('type_id, calibre_id, raw_serial, qty_kg, request_id'),
+        supabase.from('chiqim_lines').select('type_id, calibre_id, line_kind, qty_kg, request_id'),
         supabase
           .from('gate_weighings')
           .select('id, request_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')

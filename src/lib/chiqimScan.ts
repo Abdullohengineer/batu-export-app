@@ -16,15 +16,17 @@ import { sortByDateDesc } from './sortByDate.ts'
 export interface ChiqimLineLike {
   id: string
   type_id: string
-  // Raw dispatch (2026-07-31): a line is either finished (calibre_id set)
-  // or raw (raw_serial set, calibre_id null) — mirrors chiqim_lines' own
-  // DB constraint. resolveScan's candidate matching (`l.calibre_id ===
-  // pallet.calibre_id`) stays correct unchanged: a raw line's calibre_id is
-  // null, which never equals a real pallet's calibre_id, so raw lines are
-  // naturally never a scan candidate — no branch needed there.
+  // Raw dispatch pool rework (2026-08-01): line_kind replaces the old
+  // raw_serial-is-not-null marker (see DECISIONS.md "Raw dispatch serial
+  // pool") — a raw line's serials now live in a separate pool table, not a
+  // column here. resolveScan's candidate matching (`l.calibre_id ===
+  // pallet.calibre_id`) stays correct UNCHANGED by this rework: a raw
+  // line's calibre_id is still always null, which never equals a real
+  // pallet's calibre_id, so raw lines are naturally never a scan candidate
+  // — no branch needed there, then or now.
   calibre_id: string | null
-  raw_serial: string | null
-  qty_kg: number
+  line_kind: 'finished' | 'raw'
+  qty_kg: number | null
 }
 
 export type ScanResult =
@@ -88,8 +90,12 @@ export function resolveScan(input: {
   )
   if (candidates.length === 0) return { ok: false, reason: 'not_reserved' }
 
+  // candidates are always finished lines here (calibre_id matched a real
+  // pallet's calibre_id, which a raw line's null calibre_id never does),
+  // so qty_kg is never actually null in practice — the ?? 0 is only to
+  // satisfy the now-nullable type, not a real fallback path.
   const best = candidates
-    .map((l) => ({ line: l, gap: l.qty_kg - (input.scannedTotalsByLineId[l.id] ?? 0) }))
+    .map((l) => ({ line: l, gap: (l.qty_kg ?? 0) - (input.scannedTotalsByLineId[l.id] ?? 0) }))
     .sort((a, b) => b.gap - a.gap)[0]
   return { ok: true, lineId: best.line.id }
 }
@@ -103,12 +109,16 @@ export function lineStatus(targetKg: number, scannedKg: number): LineStatus {
 
 // §5.4/§3.1 "never blocks": the finish click always proceeds — this just
 // reports which lines fell short so the confirm step can show it, non-
-// blocking, same philosophy as Kam chiqdi/Tugallash's warnings.
+// blocking, same philosophy as Kam chiqdi/Tugallash's warnings. A raw line
+// with no Menejer estimate (qty_kg null, 2026-08-01 pool rework — see
+// DECISIONS.md "Raw dispatch serial pool") has no target to fall short
+// of, so it's excluded outright rather than treated as a 0 kg target.
 export function shortfallLines(
   lines: ChiqimLineLike[],
   scannedTotalsByLineId: Record<string, number>,
 ): { line: ChiqimLineLike; missingKg: number }[] {
   return lines
+    .filter((line): line is ChiqimLineLike & { qty_kg: number } => line.qty_kg !== null)
     .map((line) => ({ line, missingKg: line.qty_kg - (scannedTotalsByLineId[line.id] ?? 0) }))
     .filter((x) => x.missingKg > 0)
 }

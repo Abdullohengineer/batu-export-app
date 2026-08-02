@@ -25,7 +25,8 @@ export interface ChiqimLine {
   // Kept snake_case (unlike this interface's other derived fields) to stay
   // structurally compatible with chiqimScan.ts's ChiqimLineLike, which
   // request.lines is passed into as-is for resolveScan/shortfallLines.
-  line_kind: 'finished' | 'raw'
+  // Opening stock, Stage 2 (2026-08-02): widened to five kinds.
+  line_kind: 'finished' | 'raw' | 'old_washed' | 'old_kn' | 'old_raw'
   qty_kg: number | null
   reservedPallets: ReservedPallet[]
   // Raw dispatch pool -- every serial Menejer pooled for this line. Ombor's
@@ -93,7 +94,7 @@ export function useOmborChiqimRequests() {
         id: string
         type_id: string
         calibre_id: string | null
-        line_kind: 'finished' | 'raw'
+        line_kind: 'finished' | 'raw' | 'old_washed' | 'old_kn' | 'old_raw'
         qty_kg: number | null
         chiqim_line_pallets: { barcode2: string; finished_pallets: { serial: string; weight_kg: number } | null }[] | null
         chiqim_line_raw_serials: { serial: string }[] | null

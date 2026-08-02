@@ -24,8 +24,14 @@ export interface ChiqimLineLike {
   // line's calibre_id is still always null, which never equals a real
   // pallet's calibre_id, so raw lines are naturally never a scan candidate
   // — no branch needed there, then or now.
+  //
+  // Opening stock, Stage 2 (2026-08-02): widened to five kinds, same reason
+  // this stays correct with no new branches — old_washed's calibre_id is
+  // set (real pallets, scanned exactly like finished), old_kn/old_raw's is
+  // always null (pool kinds, never a scan candidate), matching the exact
+  // shape the comment above already covers.
   calibre_id: string | null
-  line_kind: 'finished' | 'raw'
+  line_kind: 'finished' | 'raw' | 'old_washed' | 'old_kn' | 'old_raw'
   qty_kg: number | null
 }
 

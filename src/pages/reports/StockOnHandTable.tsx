@@ -1,5 +1,6 @@
 import type { StockOnHandRow } from '../../lib/stockOnHand'
 import { STOCK_BUCKET_LABEL, STOCK_BUCKET_BADGE_CLASS } from '../../lib/stockOnHand'
+import { formatStockDate } from '../../lib/oldStock'
 
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top'
@@ -49,7 +50,7 @@ export function StockOnHandTable({
               className="border-b border-slate-200 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/60"
             >
               <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
-                {row.barcode2 ?? row.serial}
+                {row.barcode2 ?? row.serial ?? '—'}
               </td>
               <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{ownerName(row.ownerId)}</td>
               <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{typeName(row.typeId)}</td>
@@ -57,6 +58,7 @@ export function StockOnHandTable({
                 {row.calibreId ? calibreLabel(row.calibreId) : '—'}
               </td>
               <td className={`${td} whitespace-nowrap text-right tabular-nums font-medium text-slate-900 dark:text-slate-100`}>
+                {row.weightIsEstimate && <span className="mr-0.5 text-slate-400" title="Taxminiy vazn">~</span>}
                 {Math.round(row.qtyKg).toLocaleString()} kg
               </td>
               <td className={`${td} whitespace-nowrap text-right tabular-nums text-slate-700 dark:text-slate-300`}>
@@ -70,22 +72,36 @@ export function StockOnHandTable({
                   {STOCK_BUCKET_LABEL[row.bucket]}
                 </span>
               </td>
-              <td className={`${td} whitespace-nowrap text-slate-600 dark:text-slate-300`}>{row.anchorDate}</td>
+              <td className={`${td} whitespace-nowrap text-slate-600 dark:text-slate-300`}>
+                {formatStockDate(row.isOldStock, row.anchorDate)}
+              </td>
               <td className={`${td} whitespace-nowrap text-right tabular-nums`}>
-                {row.aged90 ? (
+                {/* Old stock: daysHeld is derived from the same fabricated
+                    seed anchor the date column already hides (see
+                    formatStockDate) -- "578 kun" would be exactly as
+                    misleading as the raw date was. */}
+                {row.isOldStock || row.daysHeld === null ? (
+                  <span className="text-slate-400">—</span>
+                ) : row.aged90 ? (
                   <span className="font-medium text-red-600 dark:text-red-400">{row.daysHeld} kun</span>
                 ) : (
                   <span className="text-slate-600 dark:text-slate-300">{row.daysHeld} kun</span>
                 )}
               </td>
               <td className={`${td} text-right`}>
-                <button
-                  type="button"
-                  onClick={() => onOpenPassport(row.serial)}
-                  className="text-slate-400 underline decoration-dotted hover:text-slate-700 dark:hover:text-slate-200"
-                >
-                  Pasport →
-                </button>
+                {/* old_kn rows have no serial -- a weight pool, not a single
+                    item with its own passport (Stage 1 design). */}
+                {row.serial ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPassport(row.serial!)}
+                    className="text-slate-400 underline decoration-dotted hover:text-slate-700 dark:hover:text-slate-200"
+                  >
+                    Pasport →
+                  </button>
+                ) : (
+                  <span className="text-slate-300 dark:text-slate-600">—</span>
+                )}
               </td>
             </tr>
           ))}

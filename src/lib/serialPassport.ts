@@ -34,6 +34,11 @@ export interface PassportOrder {
   // passport improvements task) once confirmed the passport was the one
   // place not showing it.
   docPhoto: string | null
+  // Opening stock, Stage 2 (2026-08-02) -- true for a seeded old-washed/
+  // old-raw serial's own order row. The original inspect-and-plan task
+  // named the passport alongside qoldig'i/client report for "reading as
+  // distinct from current stock"; this is that wiring.
+  isOldStock: boolean
 }
 
 export interface PassportEffectiveQty {

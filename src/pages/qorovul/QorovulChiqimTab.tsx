@@ -68,7 +68,10 @@ export function QorovulChiqimTab() {
   // in full by useChiqimTrips, same as the qty_kg total shown when the
   // request was created.
   function requestedSummary(trip: ChiqimTrip) {
-    const totalKg = trip.lines.reduce((sum, l) => sum + l.qty_kg, 0)
+    // A raw line's qty_kg is optional (2026-08-01 pool rework, see
+    // DECISIONS.md "Raw dispatch serial pool") — contributes 0 here, same
+    // treatment as OmborChiqimTab.tsx's own requestTarget.
+    const totalKg = trip.lines.reduce((sum, l) => sum + (l.qty_kg ?? 0), 0)
     return `${totalKg.toLocaleString()} kg · ${trip.lines.length} qator`
   }
 

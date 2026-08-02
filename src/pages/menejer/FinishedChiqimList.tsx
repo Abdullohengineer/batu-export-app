@@ -79,10 +79,13 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   function calibreLabel(id: string) {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
-  // Raw dispatch (2026-07-31) — a line's own display label, whichever kind
-  // it is; mirrors OmborChiqimTab.tsx's identical helper.
-  function lineLabel(line: { calibre_id: string | null; raw_serial: string | null }) {
-    return line.raw_serial !== null ? `Xom · ${line.raw_serial}` : calibreLabel(line.calibre_id ?? '')
+  // Raw dispatch pool rework (2026-08-01) — a line's own display label,
+  // whichever kind it is; mirrors OmborChiqimTab.tsx's identical helper.
+  // A raw line now names its whole pool (possibly several serials), not
+  // one pinned serial — shown in full since this is a receipt/history
+  // view, matching how a finished line's reservedPallets are shown here.
+  function lineLabel(line: { calibre_id: string | null; line_kind: 'finished' | 'raw'; rawSerialPool: string[] }) {
+    return line.line_kind === 'raw' ? `Xom · ${line.rawSerialPool.join(', ') || '—'}` : calibreLabel(line.calibre_id ?? '')
   }
   function actorName(id: string | null) {
     return id ? (names[id] ?? id) : '—'
@@ -263,7 +266,7 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
                         <span>
                           {typeName(line.type_id)} · {lineLabel(line)}
                         </span>
-                        <span>{line.qty_kg.toLocaleString()} kg (so'rov)</span>
+                        <span>{line.qty_kg === null ? '—' : `${line.qty_kg.toLocaleString()} kg (so'rov)`}</span>
                       </div>
                     ))}
                     {manifestLoading && <p className="mt-1 text-xs text-slate-400">Yuklanmoqda…</p>}

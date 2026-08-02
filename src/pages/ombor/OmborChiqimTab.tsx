@@ -27,6 +27,33 @@ interface ScannedPallet {
   weight_kg: number
 }
 
+// Raw dispatch pool rework (2026-08-01, see DECISIONS.md "Raw dispatch
+// serial pool") — a committed (added, not-yet-persisted-to-DB) draw
+// against one specific serial. Multiple draws per line now hold real data
+// (requirement 6: one raw_dispatch_lines row per serial drawn), replacing
+// the old one-draft-per-line shape. `outOfPool`/`note` implement
+// requirement 7 — a draw against a serial Menejer didn't pool needs a
+// note, recorded via the existing generic `notes` table at commit time.
+interface RawDraw {
+  key: string
+  serial: string
+  weightKg: string
+  boxMassKg: string
+  outOfPool: boolean
+  note: string
+}
+
+// The in-progress entry being composed for one line, before "Qo'shish"
+// commits it into that line's RawDraw[] above.
+interface RawComposerDraft {
+  serial: string
+  weightKg: string
+  boxMassKg: string
+  note: string
+}
+
+const EMPTY_COMPOSER: RawComposerDraft = { serial: '', weightKg: '', boxMassKg: '', note: '' }
+
 // §5.4 Ombor CHIQIM: scan-to-load + finish. Two windows, same collapsed-by-
 // default / toggle-to-expand shape already established for S3W1/S3W2
 // (OmborTayyorTab) — collapsed shows request_date · plate · driver · owner
@@ -87,15 +114,20 @@ export function OmborChiqimTab() {
   // is still savable (Ombor may be correcting a stale balance), it's just
   // flagged rather than lost silently to the DB's floor-at-zero elsewhere.
   const { serials: rawSerials } = useMoykaSerials()
-  // Raw dispatch (2026-07-31) — a raw line's weight+box-mass entry, held
+  // Raw dispatch pool rework (2026-08-01) — every ADDED draw per line, held
   // client-side until "Yuklashni yakunlash" (same deferred-commit shape as
   // scannedByRequest above, for the same reason: append-only
-  // raw_dispatch_lines needs a pre-commit undo path, and removing/editing an
-  // uncommitted draft here IS that undo — see DECISIONS.md "Raw dispatch").
-  // Keyed by request id, then by chiqim_line_id.
-  const [rawDraftByRequest, setRawDraftByRequest] = useState<
-    Record<string, Record<string, { weightKg: string; boxMassKg: string }>>
-  >({})
+  // raw_dispatch_lines needs a pre-commit undo path, and removing an added
+  // draw here IS that undo — see DECISIONS.md "Raw dispatch serial pool").
+  // Keyed by request id, then by chiqim_line_id, to an ARRAY (was a single
+  // draft per line before this rework — a line can now draw from several
+  // pooled serials, or the same serial more than once).
+  const [rawDrawsByRequest, setRawDrawsByRequest] = useState<Record<string, Record<string, RawDraw[]>>>({})
+  // The one entry currently being composed per line, before it's added to
+  // the array above — separate state so an in-progress, not-yet-valid
+  // entry (e.g. serial picked, weight not yet typed) doesn't pollute the
+  // committed list.
+  const [rawComposerByRequest, setRawComposerByRequest] = useState<Record<string, Record<string, RawComposerDraft>>>({})
 
   useEffect(() => {
     return () => {
@@ -118,13 +150,16 @@ export function OmborChiqimTab() {
   function calibreLabel(id: string) {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
-  // Raw dispatch — a line's own display label, whichever kind it is. Kept
-  // separate from calibreLabel (which stays finished-only, never called
-  // with null) rather than making calibreLabel itself null-tolerant. Takes
-  // the minimal shape (not the full ChiqimLine) so it also works on
-  // shortfallLines' returned {line, missingKg} pairs (typed ChiqimLineLike).
-  function lineLabel(line: { calibre_id: string | null; raw_serial: string | null }) {
-    return line.raw_serial !== null ? `Xom · ${line.raw_serial}` : calibreLabel(line.calibre_id ?? '')
+  // Raw dispatch pool rework (2026-08-01) — a line's own display label,
+  // whichever kind it is. Kept separate from calibreLabel (which stays
+  // finished-only, never called with null) rather than making calibreLabel
+  // itself null-tolerant. Takes the minimal shape (not the full ChiqimLine)
+  // so it also works on shortfallLines' returned {line, missingKg} pairs
+  // (typed ChiqimLineLike). A raw line no longer names one pinned serial —
+  // the dedicated raw section below shows the full pool with live detail,
+  // so this terse label just says "Xom".
+  function lineLabel(line: { calibre_id: string | null; line_kind: 'finished' | 'raw' }) {
+    return line.line_kind === 'raw' ? 'Xom' : calibreLabel(line.calibre_id ?? '')
   }
 
   function lineTotal(requestId: string, lineId: string): number {
@@ -132,8 +167,12 @@ export function OmborChiqimTab() {
       .filter((s) => s.lineId === lineId)
       .reduce((sum, s) => sum + s.weight_kg, 0)
   }
+  // A raw line's qty_kg is optional (2026-08-01 pool rework) — an
+  // un-estimated raw line contributes 0 to "target," the least-wrong
+  // choice now that qty_kg is fundamentally undefined for it, not a real
+  // shortfall waiting to happen.
   function requestTarget(request: ChiqimRequest): number {
-    return request.lines.reduce((sum, l) => sum + l.qty_kg, 0)
+    return request.lines.reduce((sum, l) => sum + (l.qty_kg ?? 0), 0)
   }
 
   function lineTotalsFor(requestId: string): Record<string, number> {
@@ -142,34 +181,79 @@ export function OmborChiqimTab() {
     return totals
   }
 
-  // Raw dispatch — a raw line's own draft net (weight − box mass), 0 until
-  // both fields hold a valid number. Never negative-displayed (floored),
-  // matching every other "not there yet" figure in this app.
-  function rawDraftNetKg(requestId: string, lineId: string): number {
-    const draft = rawDraftByRequest[requestId]?.[lineId]
-    if (!draft) return 0
-    const weight = parseFloat(draft.weightKg)
-    const boxMass = parseFloat(draft.boxMassKg)
+  // A weight/box-mass pair's net, 0 until both hold a valid number — never
+  // negative-displayed (floored), matching every other "not there yet"
+  // figure in this app. Shared by the composer draft and by summing added
+  // draws below.
+  function netKgOf(weightKg: string, boxMassKg: string): number {
+    const weight = parseFloat(weightKg)
+    const boxMass = parseFloat(boxMassKg)
     if (!(weight > 0) || !(boxMass >= 0)) return 0
     return Math.max(0, weight - boxMass)
   }
 
-  function setRawDraftField(requestId: string, lineId: string, patch: Partial<{ weightKg: string; boxMassKg: string }>) {
-    setRawDraftByRequest((m) => {
-      const existing = m[requestId]?.[lineId] ?? { weightKg: '', boxMassKg: '' }
-      return {
-        ...m,
-        [requestId]: { ...m[requestId], [lineId]: { ...existing, ...patch } },
-      }
+  function rawDrawsFor(requestId: string, lineId: string): RawDraw[] {
+    return rawDrawsByRequest[requestId]?.[lineId] ?? []
+  }
+
+  // A line's total net across every ADDED draw (requirement 6: multiple
+  // draws per line, possibly the same serial twice) — replaces the old
+  // single-draft net now that a raw line can draw from several serials.
+  function rawDrawsNetKg(requestId: string, lineId: string): number {
+    return rawDrawsFor(requestId, lineId).reduce((sum, d) => sum + netKgOf(d.weightKg, d.boxMassKg), 0)
+  }
+
+  function rawComposerFor(requestId: string, lineId: string): RawComposerDraft {
+    return rawComposerByRequest[requestId]?.[lineId] ?? EMPTY_COMPOSER
+  }
+
+  function setRawComposerField(requestId: string, lineId: string, patch: Partial<RawComposerDraft>) {
+    setRawComposerByRequest((m) => {
+      const existing = rawComposerFor(requestId, lineId)
+      return { ...m, [requestId]: { ...m[requestId], [lineId]: { ...existing, ...patch } } }
     })
   }
 
-  // The progress figure a line shows, whichever kind it is — scanned pallet
-  // sum for a finished line, draft net for a raw line. Used everywhere a
-  // per-line "how much so far" number is needed (progress bars, shortfall,
-  // the aggregate tone) so those never need their own kind branch.
+  // Commits the in-progress composer entry into the line's draw list, then
+  // resets the composer for that line. Requires a serial, a positive net,
+  // and — out-of-pool only (requirement 7) — a non-empty note; the "Qo'shish"
+  // button's own disabled condition mirrors this exactly, so reaching here
+  // with an invalid composer shouldn't normally happen, but the guard stays
+  // as the real gate, not just a UI nicety.
+  function addRawDraw(request: ChiqimRequest, line: ChiqimLine) {
+    const composer = rawComposerFor(request.id, line.id)
+    const net = netKgOf(composer.weightKg, composer.boxMassKg)
+    const outOfPool = composer.serial !== '' && !line.rawSerialPool.includes(composer.serial)
+    if (!composer.serial || net <= 0 || (outOfPool && !composer.note.trim())) return
+    const draw: RawDraw = {
+      key: crypto.randomUUID(),
+      serial: composer.serial,
+      weightKg: composer.weightKg,
+      boxMassKg: composer.boxMassKg,
+      outOfPool,
+      note: outOfPool ? composer.note.trim() : '',
+    }
+    setRawDrawsByRequest((m) => ({
+      ...m,
+      [request.id]: { ...m[request.id], [line.id]: [...rawDrawsFor(request.id, line.id), draw] },
+    }))
+    setRawComposerByRequest((m) => ({ ...m, [request.id]: { ...m[request.id], [line.id]: EMPTY_COMPOSER } }))
+  }
+
+  function removeRawDraw(requestId: string, lineId: string, key: string) {
+    setRawDrawsByRequest((m) => ({
+      ...m,
+      [requestId]: { ...m[requestId], [lineId]: rawDrawsFor(requestId, lineId).filter((d) => d.key !== key) },
+    }))
+  }
+
+  // The progress figure a line shows, whichever kind it is — scanned
+  // pallet sum for a finished line, sum of added draws for a raw line.
+  // Used everywhere a per-line "how much so far" number is needed
+  // (progress bars, shortfall, the aggregate tone) so those never need
+  // their own kind branch.
   function lineProgressKg(request: ChiqimRequest, line: ChiqimLine): number {
-    return line.raw_serial !== null ? rawDraftNetKg(request.id, line.id) : lineTotal(request.id, line.id)
+    return line.line_kind === 'raw' ? rawDrawsNetKg(request.id, line.id) : lineTotal(request.id, line.id)
   }
 
   function combinedTotalsByLine(request: ChiqimRequest): Record<string, number> {
@@ -331,25 +415,39 @@ export function OmborChiqimTab() {
         }
       }
 
-      // Raw dispatch — committed here, not at entry (see rawDraftByRequest's
-      // own comment): only lines with a real, valid draft (weight > 0,
-      // box mass >= 0) become a row. A line the operator left blank is
-      // simply not dispatched this trip, same as an un-scanned finished line.
-      const rawEntries = Object.entries(rawDraftByRequest[request.id] ?? {}).filter(([lineId]) =>
-        request.lines.some((l) => l.id === lineId && l.raw_serial !== null),
-      )
-      const rawInserts = rawEntries
-        .map(([lineId, draft]) => {
-          const line = request.lines.find((l) => l.id === lineId)
-          const weight = parseFloat(draft.weightKg)
-          const boxMass = parseFloat(draft.boxMassKg)
-          if (!line?.raw_serial || !(weight > 0) || !(boxMass >= 0)) return null
-          return { chiqim_line_id: lineId, serial: line.raw_serial, weight_kg: weight, box_mass_kg: boxMass, created_by: profile?.id }
-        })
-        .filter((r): r is NonNullable<typeof r> => r !== null)
-      if (rawInserts.length > 0) {
-        const { error: rawErr } = await supabase.from('raw_dispatch_lines').insert(rawInserts)
-        if (rawErr) throw rawErr
+      // Raw dispatch pool rework (2026-08-01) — committed here, not at
+      // entry (see rawDrawsByRequest's own comment): only lines with real,
+      // ADDED draws contribute rows. A line the operator left with zero
+      // draws is simply not dispatched this trip, same as an un-scanned
+      // finished line. Inserted SEQUENTIALLY, not batched — mirrors
+      // ChiqimForm.tsx's own established discipline against trusting
+      // batch-insert RETURNING order (see that file's line-insert loop):
+      // each draw's own returned id is what correctly ties an out-of-pool
+      // note to the right raw_dispatch_lines row below.
+      for (const line of request.lines.filter((l) => l.line_kind === 'raw')) {
+        for (const draw of rawDrawsFor(request.id, line.id)) {
+          const weight = parseFloat(draw.weightKg)
+          const boxMass = parseFloat(draw.boxMassKg)
+          if (!(weight > 0) || !(boxMass >= 0)) continue
+          const { data: inserted, error: rawErr } = await supabase
+            .from('raw_dispatch_lines')
+            .insert({ chiqim_line_id: line.id, serial: draw.serial, weight_kg: weight, box_mass_kg: boxMass, created_by: profile?.id })
+            .select('id')
+            .single()
+          if (rawErr) throw rawErr
+          // Requirement 7 — an out-of-pool draw's note, via the existing
+          // generic notes mechanism (reused as instructed, not a new
+          // feature): entity_type/entity_id point at the draw's own row.
+          if (draw.outOfPool && draw.note) {
+            const { error: noteErr } = await supabase.from('notes').insert({
+              entity_type: 'raw_dispatch_lines',
+              entity_id: inserted.id,
+              author: profile?.id,
+              body: `Pool tashqarisidagi xom olish (${draw.serial}): ${draw.note}`,
+            })
+            if (noteErr) throw noteErr
+          }
+        }
       }
 
       const { error: reqErr } = await supabase
@@ -363,7 +461,12 @@ export function OmborChiqimTab() {
         delete next[request.id]
         return next
       })
-      setRawDraftByRequest((m) => {
+      setRawDrawsByRequest((m) => {
+        const next = { ...m }
+        delete next[request.id]
+        return next
+      })
+      setRawComposerByRequest((m) => {
         const next = { ...m }
         delete next[request.id]
         return next
@@ -402,7 +505,15 @@ export function OmborChiqimTab() {
             // neutral (still in progress, never a problem on its own),
             // overage on ANY line is the pending/amber signal, and emerald
             // only once every line is exact.
-            const lineStatuses = request.lines.map((l) => lineStatus(l.qty_kg, lineProgressKg(request, l)))
+            // A raw line with no Menejer estimate (qty_kg null) has no
+            // target to compare against — excluded here rather than
+            // treated as a 0 kg target (an empty lineStatuses is fine:
+            // .every() on [] is vacuously true, so an all-un-estimated-raw
+            // request reads as "ok" the moment anything is drawn, which is
+            // the right read — nothing to fall short of or exceed).
+            const lineStatuses = request.lines
+              .filter((l) => l.qty_kg !== null)
+              .map((l) => lineStatus(l.qty_kg!, lineProgressKg(request, l)))
             const aggregateTone: Tone =
               scanned === 0
                 ? 'neutral'
@@ -427,7 +538,9 @@ export function OmborChiqimTab() {
                 </div>
 
                 <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
-                  {request.lines.map((l) => `${typeName(l.type_id)} ${lineLabel(l)} · ${l.qty_kg.toLocaleString()}`).join('   ')}
+                  {request.lines
+                    .map((l) => `${typeName(l.type_id)} ${lineLabel(l)} · ${l.qty_kg === null ? '—' : l.qty_kg.toLocaleString()}`)
+                    .join('   ')}
                 </div>
 
                 {/* Gate-weighing status (flagged item #2 of this task's inspect-
@@ -489,8 +602,13 @@ export function OmborChiqimTab() {
                       <div className="space-y-2">
                         {request.lines.map((line) => {
                           const lineScanned = lineProgressKg(request, line)
-                          const status = lineStatus(line.qty_kg, lineScanned)
-                          const pct = line.qty_kg > 0 ? Math.min(100, (lineScanned / line.qty_kg) * 100) : 0
+                          // A raw line's qty_kg is optional (2026-08-01) —
+                          // with no target, there's nothing to compare
+                          // against: show the running total alone, no
+                          // status color, no bar.
+                          const hasTarget = line.qty_kg !== null
+                          const status = hasTarget ? lineStatus(line.qty_kg!, lineScanned) : null
+                          const pct = hasTarget && line.qty_kg! > 0 ? Math.min(100, (lineScanned / line.qty_kg!) * 100) : 0
                           return (
                             <div key={line.id}>
                               <div className="flex items-center justify-between text-sm">
@@ -506,22 +624,24 @@ export function OmborChiqimTab() {
                                         : 'text-slate-500 dark:text-slate-400'
                                   }
                                 >
-                                  {lineScanned.toLocaleString()} / {line.qty_kg.toLocaleString()}
+                                  {hasTarget ? `${lineScanned.toLocaleString()} / ${line.qty_kg!.toLocaleString()}` : `${lineScanned.toLocaleString()} kg`}
                                   {status === 'exact' ? ' ✓' : ''}
                                 </span>
                               </div>
-                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                                <div
-                                  className={`h-full rounded-full ${
-                                    status === 'exact'
-                                      ? 'bg-emerald-500'
-                                      : status === 'overage'
-                                        ? 'bg-amber-500'
-                                        : 'bg-slate-900 dark:bg-slate-100'
-                                  }`}
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
+                              {hasTarget && (
+                                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      status === 'exact'
+                                        ? 'bg-emerald-500'
+                                        : status === 'overage'
+                                          ? 'bg-amber-500'
+                                          : 'bg-slate-900 dark:bg-slate-100'
+                                    }`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              )}
                             </div>
                           )
                         })}
@@ -541,7 +661,7 @@ export function OmborChiqimTab() {
                       </div>
                       <div className="space-y-3">
                         {request.lines
-                          .filter((line) => line.raw_serial === null)
+                          .filter((line) => line.line_kind === 'finished')
                           .map((line) => (
                           <div key={line.id}>
                             <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -580,44 +700,102 @@ export function OmborChiqimTab() {
                       </div>
                     </div>
 
-                    {/* Raw dispatch (2026-07-31) — a structurally different
+                    {/* Raw dispatch pool rework (2026-08-01, see DECISIONS.md
+                        "Raw dispatch serial pool") — a structurally different
                         branch from the scan zone below, not a forced-generic
-                        line renderer: weight + box-mass inputs, no scan zone,
-                        no dispatch_manifest row. Only rendered when this
-                        request actually has a raw line. Net (weight − box
-                        mass) is shown live; nothing is written until
-                        "Yuklashni yakunlash" (see rawDraftByRequest's own
-                        comment for why). */}
-                    {request.lines.some((l) => l.raw_serial !== null) && (
+                        line renderer: per-serial weight + box-mass draws, no
+                        scan zone, no dispatch_manifest row. Only rendered
+                        when this request actually has a raw line. Ombor picks
+                        ONE serial per draw — from the pool Menejer named, or
+                        types any other real serial (out-of-pool, requirement
+                        7, warned + requires a note) — enters weight+box mass,
+                        and adds it; a line can hold several draws (requirement
+                        6), even against the same serial twice. Nothing is
+                        written until "Yuklashni yakunlash" (see
+                        rawDrawsByRequest's own comment for why). */}
+                    {request.lines.some((l) => l.line_kind === 'raw') && (
                       <div>
                         <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Xom yuklash — vazn kiritish (skanerlanmaydi)
+                          Xom yuklash — manba seriyadan tanlab, vazn kiritish (skanerlanmaydi)
                         </div>
                         <div className="space-y-2">
                           {request.lines
-                            .filter((line) => line.raw_serial !== null)
+                            .filter((line) => line.line_kind === 'raw')
                             .map((line) => {
-                              const draft = rawDraftByRequest[request.id]?.[line.id] ?? { weightKg: '', boxMassKg: '' }
-                              const net = rawDraftNetKg(request.id, line.id)
-                              const available = rawSerials.find((s) => s.serial === line.raw_serial)?.available ?? null
-                              const overCollected = available !== null && net > available
+                              const draws = rawDrawsFor(request.id, line.id)
+                              const composer = rawComposerFor(request.id, line.id)
+                              const composerNet = netKgOf(composer.weightKg, composer.boxMassKg)
+                              const composerAvailable = composer.serial
+                                ? (rawSerials.find((s) => s.serial === composer.serial)?.available ?? null)
+                                : null
+                              const composerOverCollected = composerAvailable !== null && composerNet > composerAvailable
+                              const composerOutOfPool = composer.serial !== '' && !line.rawSerialPool.includes(composer.serial)
+                              const canAdd = composer.serial !== '' && composerNet > 0 && (!composerOutOfPool || composer.note.trim() !== '')
                               return (
                                 <Card key={line.id} padding="compact">
                                   <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                                    <span>{typeName(line.type_id)} · {lineLabel(line)}</span>
-                                    <span>maqsad {line.qty_kg.toLocaleString()} kg</span>
+                                    <span>{typeName(line.type_id)} · Xom</span>
+                                    <span>{line.qty_kg === null ? 'taxminiy miqdor kiritilmagan' : `taxminiy ${line.qty_kg.toLocaleString()} kg`}</span>
                                   </div>
-                                  {available !== null && (
-                                    <div className="mt-0.5 text-xs text-slate-400">Bu seriyada qolgan: {available.toLocaleString()} kg</div>
+
+                                  {/* The pool -- Menejer's named sources, each with its live available balance. */}
+                                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                    {line.rawSerialPool.length === 0 ? (
+                                      <p className="text-xs text-slate-400">Manba seriya belgilanmagan.</p>
+                                    ) : (
+                                      line.rawSerialPool.map((serial) => {
+                                        const available = rawSerials.find((s) => s.serial === serial)?.available ?? null
+                                        const selected = composer.serial === serial
+                                        return (
+                                          <button
+                                            key={serial}
+                                            type="button"
+                                            onClick={() => setRawComposerField(request.id, line.id, { serial, note: '' })}
+                                            className={`rounded-md border px-2 py-1 text-left text-xs ${
+                                              selected
+                                                ? 'border-blue-400 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                                            }`}
+                                          >
+                                            <span className="font-mono">{selected ? '✓ ' : ''}{serial}</span>
+                                            <span className="ml-1.5">{available === null ? '—' : `${Math.round(available).toLocaleString()} kg mavjud`}</span>
+                                          </button>
+                                        )
+                                      })
+                                    )}
+                                  </div>
+
+                                  {/* Out-of-pool entry (requirement 7) -- any other real serial. */}
+                                  <div className="mt-1.5">
+                                    <TextInput
+                                      placeholder="...yoki boshqa seriya (pool tashqarisida)"
+                                      value={composer.serial}
+                                      onChange={(e) => setRawComposerField(request.id, line.id, { serial: e.target.value.trim(), note: '' })}
+                                      className="w-full"
+                                    />
+                                  </div>
+                                  {composerOutOfPool && (
+                                    <div className="mt-1.5 space-y-1">
+                                      <StatusNote tone="pending">
+                                        Diqqat: {composer.serial} bu qator uchun belgilangan manbalar orasida yo'q.
+                                      </StatusNote>
+                                      <TextInput
+                                        placeholder="Sabab (majburiy)"
+                                        value={composer.note}
+                                        onChange={(e) => setRawComposerField(request.id, line.id, { note: e.target.value })}
+                                        className="w-full"
+                                      />
+                                    </div>
                                   )}
+
                                   <div className="mt-1.5 flex items-center gap-2">
                                     <TextInput
                                       type="number"
                                       min="0"
                                       step="0.1"
                                       placeholder="Vazn (kg)"
-                                      value={draft.weightKg}
-                                      onChange={(e) => setRawDraftField(request.id, line.id, { weightKg: e.target.value })}
+                                      value={composer.weightKg}
+                                      onChange={(e) => setRawComposerField(request.id, line.id, { weightKg: e.target.value })}
                                       className="flex-1"
                                     />
                                     <TextInput
@@ -625,33 +803,52 @@ export function OmborChiqimTab() {
                                       min="0"
                                       step="0.1"
                                       placeholder="Quti massasi (kg)"
-                                      value={draft.boxMassKg}
-                                      onChange={(e) => setRawDraftField(request.id, line.id, { boxMassKg: e.target.value })}
+                                      value={composer.boxMassKg}
+                                      onChange={(e) => setRawComposerField(request.id, line.id, { boxMassKg: e.target.value })}
                                       className="flex-1"
                                     />
-                                    {(draft.weightKg || draft.boxMassKg) && (
-                                      <IconButton
-                                        label="Tozalash"
-                                        tone="danger"
-                                        onClick={() => setRawDraftField(request.id, line.id, { weightKg: '', boxMassKg: '' })}
-                                      >
-                                        ✕
-                                      </IconButton>
-                                    )}
+                                    <Button variant="secondary" size="md" disabled={!canAdd} onClick={() => addRawDraw(request, line)}>
+                                      + Qo'shish
+                                    </Button>
                                   </div>
-                                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Net: {net.toLocaleString()} kg</div>
-                                  {/* Warn-never-block (2026-07-31 feedback, see DECISIONS.md "Raw
+                                  {/* Warn-never-block (established convention, see DECISIONS.md "Raw
                                       dispatch"): entering more than the serial has left is still
-                                      savable (Ombor may be correcting a stale balance) -- just
+                                      addable (Ombor may be correcting a stale balance) -- just
                                       flagged, not silently floored away downstream. */}
-                                  {overCollected && (
+                                  {composerOverCollected && (
                                     <div className="mt-1">
                                       <StatusNote tone="pending">
-                                        Diqqat: bu seriyada faqat {available!.toLocaleString()} kg qolgan — siz{' '}
-                                        {net.toLocaleString()} kg kiritmoqdasiz.
+                                        Diqqat: bu seriyada faqat {composerAvailable!.toLocaleString()} kg qolgan — siz{' '}
+                                        {composerNet.toLocaleString()} kg kiritmoqdasiz.
                                       </StatusNote>
                                     </div>
                                   )}
+
+                                  {/* Added draws for this line. */}
+                                  {draws.length > 0 && (
+                                    <ul className="mt-2 space-y-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+                                      {draws.map((d) => (
+                                        <li key={d.key} className="flex items-center justify-between gap-2 text-xs">
+                                          <span className="min-w-0 flex-1 truncate">
+                                            <span className="font-mono text-slate-700 dark:text-slate-300">{d.serial}</span>
+                                            {d.outOfPool && (
+                                              <span className="ml-1 font-medium text-amber-600 dark:text-amber-400">⚠ pool tashqarisida</span>
+                                            )}
+                                            <span className="ml-1.5 text-slate-500 dark:text-slate-400">
+                                              {parseFloat(d.weightKg).toLocaleString()} kg − {parseFloat(d.boxMassKg).toLocaleString()} kg tara
+                                            </span>
+                                            {d.note && <span className="ml-1.5 italic text-slate-400">"{d.note}"</span>}
+                                          </span>
+                                          <IconButton label="O'chirish" tone="danger" onClick={() => removeRawDraw(request.id, line.id, d.key)}>
+                                            ✕
+                                          </IconButton>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                  <div className="mt-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+                                    Jami: {rawDrawsNetKg(request.id, line.id).toLocaleString()} kg
+                                  </div>
                                 </Card>
                               )
                             })}
@@ -818,7 +1015,7 @@ export function OmborChiqimTab() {
                       <span className="text-slate-600 dark:text-slate-400">
                         {typeName(line.type_id)} · {lineLabel(line)}
                       </span>
-                      <span className="text-slate-600 dark:text-slate-400">{line.qty_kg.toLocaleString()} kg</span>
+                      <span className="text-slate-600 dark:text-slate-400">{line.qty_kg === null ? '—' : `${line.qty_kg.toLocaleString()} kg`}</span>
                     </div>
                   ))}
 
@@ -864,7 +1061,10 @@ export function OmborChiqimTab() {
                       scanned pallets): raw_dispatch_lines is append-only,
                       committed only at the finish click that put this
                       request in Window 2 to begin with (see
-                      rawDraftByRequest's own comment). */}
+                      rawDrawsByRequest's own comment). Each row is one
+                      committed draw against one serial — unaffected by the
+                      pool rework, since raw_dispatch_lines.serial was
+                      always the actual draw, never the pool. */}
                   {rawDispatchLines.length > 0 && (
                     <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
                       <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">

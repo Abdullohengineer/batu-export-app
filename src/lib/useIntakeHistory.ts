@@ -66,8 +66,15 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
         const [{ data: orders }, { data: weighings }] = await Promise.all([
           supabase
             .from('kirim_orders')
-            .select('order_id, order_date, plate, driver, owner_id, status')
-            .in('order_id', orderIds),
+            .select('order_id, order_date, plate, driver, owner_id, status, origin')
+            .in('order_id', orderIds)
+            // Opening stock (Stage 1) and internal_reprocess (Stage 3) never
+            // arrived by a real truck -- neither has a real storage_intake
+            // event for this history view to report. Same positive allowlist
+            // as useKirimTrips/useIntakeLines/useLaboratorKirim; without it,
+            // widening the date filter back to 2025-01-01 would render the
+            // opening-stock seed's fabricated intake as a real receipt.
+            .eq('origin', 'delivery'),
           supabase
             .from('gate_weighings')
             .select('order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')

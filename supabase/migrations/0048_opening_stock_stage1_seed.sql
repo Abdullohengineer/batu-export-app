@@ -759,8 +759,8 @@ begin
         when 'subxon' then 30 + 1040 + 11540 + 6260
         when 'isfara' then 1400 + 24120
         when 'natural' then 6550
-        when 'qand' then 1040 + 50
-        when 'qandqizil' then 180
+        when 'qand' then 50
+        when 'qandqizil' then 1040 + 180
       end
     )
     returning serial into v_serial;
@@ -784,8 +784,8 @@ begin
       ('subxon', v_cal6, 11540::numeric), ('subxon', v_cal8, 6260::numeric),
       ('isfara', v_cal1, 1400::numeric), ('isfara', v_cal8, 24120::numeric),
       ('natural', v_cal1, 6550::numeric),
-      ('qand', v_cal6, 1040::numeric), ('qand', v_cal8, 50::numeric),
-      ('qandqizil', v_cal8, 180::numeric)
+      ('qand', v_cal8, 50::numeric),
+      ('qandqizil', v_cal6, 1040::numeric), ('qandqizil', v_cal8, 180::numeric)
     ) as t(type_key, calibre_id, total_kg)
   loop
     v_serial := v_serial_by_type ->> rec.type_key;

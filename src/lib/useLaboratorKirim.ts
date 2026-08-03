@@ -81,8 +81,17 @@ export function useLaboratorKirim() {
       const orderIds = [...new Set((lines ?? []).map((l) => l.order_id))]
       const { data: orders } = await supabase
         .from('kirim_orders')
-        .select('order_id, order_date, plate, owner_id')
+        .select('order_id, order_date, plate, owner_id, origin')
         .in('order_id', orderIds)
+        // Opening stock (Stage 1) and internal_reprocess (Stage 3) never had
+        // a real arrival for Laborator to sample — opening_stock has no gate
+        // event at all (most lines sit forever behind the "awaiting gate"
+        // note below), and the one line that does (old raw's synthetic
+        // gate_weighings row, added purely so effective_qty resolves final —
+        // see migration 0048) would otherwise show up fully actionable here
+        // with a live "Tahlil" button on fabricated stock. Same positive
+        // allowlist as useKirimTrips/useIntakeLines.
+        .eq('origin', 'delivery')
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
 
       const awaitingRows: AwaitingLine[] = []

@@ -54,6 +54,20 @@ Read both, relevant sections only, before every task.
   diff — verify, then revert.
 
 ## Testing workflow
+- 🚩 **Live/destructive verification must never touch real seeded stock —
+  hand-verification included, not just automated tests.** Any operation
+  that's irreversible by design (consuming, voiding, dispatching,
+  re-minting) needs its own `TEST-`-prefixed fixtures or purpose-seeded
+  disposable rows, removed afterward — even when the task instruction says
+  "verify on real data." That phrase means "against the real schema and
+  real surrounding rows," not "consume the smallest real row you can find."
+  Added after this agent re-washed two real seeded pallets during Stage 3
+  hand-verification instead of seeding disposable ones; see DECISIONS.md
+  "Opening stock data correction ... + Stage 3 test-pollution revert"
+  (2026-08-03) for the full incident and revert. Reversible operations
+  (e.g. a voidable CHIQIM test request) remain fine against real data —
+  this rule is specifically for the irreversible ones.
+
 Automated (Playwright) end-to-end tests exist from Step 7 onward. See
 `docs/DECISIONS.md` "Step 7 testing infra" for the full history, including
 why this section reads the way it does.

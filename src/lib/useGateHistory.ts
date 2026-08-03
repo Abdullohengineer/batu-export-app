@@ -50,6 +50,7 @@ interface KirimParent {
   driver: string
   owner_id: string
   declared_total: number | null
+  origin: string
 }
 interface ChiqimParent {
   request_date: string
@@ -87,12 +88,24 @@ export function useGateHistory(filters: GateHistoryFilters) {
           .from('gate_weighings')
           .select(
             'id, dir, gruzheny_kg, pustoy_kg, net_kg, completed_at, ' +
-              'kirim_orders(order_date, plate, driver, owner_id, declared_total), ' +
+              'kirim_orders(order_date, plate, driver, owner_id, declared_total, origin), ' +
               'chiqim_requests(request_date, plate, driver, owner_id)',
           )
           .limit(FETCH_CAP)
 
-        const mapped: GateHistoryRow[] = ((data ?? []) as unknown as RawGateRow[]).map((w) => {
+        // Opening stock (Stage 1) and internal_reprocess (Stage 3) never
+        // arrived by a real truck -- neither has a real gate event for this
+        // history view to report. Same positive allowlist as
+        // useKirimTrips/useIntakeLines/useLaboratorKirim/useIntakeHistory;
+        // without it, widening the date filter back to 2025-01-01 would
+        // render the opening-stock seed's fabricated gate row as a real
+        // completed trip. CHIQIM-direction rows have no kirim_orders parent
+        // and are unaffected (dispatch is origin-agnostic by design).
+        const gateRows = ((data ?? []) as unknown as RawGateRow[]).filter(
+          (w) => w.dir !== 'kirim' || w.kirim_orders?.origin === 'delivery',
+        )
+
+        const mapped: GateHistoryRow[] = gateRows.map((w) => {
           const kirim = w.kirim_orders
           const chiqim = w.chiqim_requests
           const parent = kirim ?? chiqim

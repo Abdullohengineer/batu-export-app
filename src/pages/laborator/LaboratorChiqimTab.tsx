@@ -5,6 +5,7 @@ import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useLaboratorChiqim, type AwaitingSerial, type ChiqimLabResultRow } from '../../lib/useLaboratorChiqim'
 import { ChiqimTahlilForm, type ChiqimTahlilValues } from './ChiqimTahlilForm'
+import { ChiqimTahlilEditForm, type ChiqimTahlilEditValues } from './ChiqimTahlilEditForm'
 import { EntityNotes } from '../../components/EntityNotes'
 import { GatePhoto } from '../../components/GatePhoto'
 import { Card } from '../../components/ui/Card'
@@ -41,6 +42,8 @@ export function LaboratorChiqimTab() {
   const [seraSaving, setSeraSaving] = useState<string | null>(null)
   const [seraError, setSeraError] = useState<string | null>(null)
   const [expandedFinished, setExpandedFinished] = useState<string | null>(null)
+  const [editingFinished, setEditingFinished] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -108,6 +111,44 @@ export function LaboratorChiqimTab() {
     } finally {
       setSeraSaving(null)
     }
+  }
+
+  // Lab edit action (2026-08-03) — corrects an already-Yakunlangan CHIQIM
+  // record, same superseding-insert as the KIRIM tab: never overwrites, the
+  // original row stays queryable as history. Verdict is always required on
+  // save (ChiqimTahlilEditForm's own explicit-click buttons), even when
+  // only correcting an unrelated field like the sample date — matching
+  // §5.5.3's "explicit click, never auto-derived" invariant. Does not
+  // retroactively affect pallets already packed under the prior verdict;
+  // the hard gate only ever checks the CURRENT latest verdict, at the
+  // instant a new pallet is created.
+  async function handleTahlilEdit(row: ChiqimLabResultRow, values: ChiqimTahlilEditValues) {
+    setEditError(null)
+    let photoPath = row.sample_photo
+    if (values.photoFile) {
+      const path = `${crypto.randomUUID()}.jpg`
+      const { error: uploadErr } = await supabase.storage.from('lab-photos').upload(path, values.photoFile)
+      if (uploadErr) throw uploadErr
+      photoPath = path
+    }
+
+    const { error } = await supabase.from('lab_results').insert({
+      scope: 'chiqim',
+      wash_cycle_id: row.wash_cycle_id,
+      sampled_pallet: values.sampledPallet || null,
+      sample_date: values.sampleDate,
+      moisture_pct: values.moisturePct,
+      so2_mg_kg: values.so2MgKg,
+      sample_photo: photoPath,
+      note: values.note || null,
+      tested_by: profile?.id,
+      status: 'complete',
+      verdict: values.verdict,
+    })
+    if (error) throw error
+
+    setEditingFinished(null)
+    refresh()
   }
 
   if (loading) return null
@@ -216,6 +257,18 @@ export function LaboratorChiqimTab() {
                     className="flex-1"
                   />
                 </div>
+                {/* The target is a ceiling, not an exact spec -- any reading
+                    under it is acceptable. Informational only, never blocks
+                    saving, same treatment as this form's own moisture
+                    soft-warn (ChiqimTahlilForm). */}
+                {(() => {
+                  const v = parseFloat(seraValue[row.id] ?? '')
+                  return !isNaN(v) && v > row.target_so2_mg_kg! ? (
+                    <div className="mt-1">
+                      <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} mg/kg) — baribir saqlash mumkin.</StatusNote>
+                    </div>
+                  ) : null
+                })()}
                 <div className="mt-2 flex gap-2">
                   <Button variant="success" size="md" className="flex-1" disabled={seraSaving === row.id} onClick={() => handleSera(row, 'o_tdi')}>
                     {seraSaving === row.id ? '…' : "O'tdi"}
@@ -275,6 +328,27 @@ export function LaboratorChiqimTab() {
                   </div>
                   {row.note && <div>Qayd: {row.note}</div>}
                   <GatePhoto path={row.sample_photo} label="Namuna rasmi" bucket="lab-photos" />
+                  {editingFinished !== row.id && (
+                    <div className="pt-1">
+                      <Button variant="secondary" size="md" onClick={() => setEditingFinished(row.id)}>
+                        Tahrirlash
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {editingFinished === row.id && (
+                <ChiqimTahlilEditForm
+                  row={row}
+                  ownerName={ownerName(row.owner_id)}
+                  typeName={typeName(row.type_id)}
+                  onCancel={() => setEditingFinished(null)}
+                  onSubmit={(v) => handleTahlilEdit(row, v)}
+                />
+              )}
+              {editError && editingFinished === row.id && (
+                <div className="mt-2">
+                  <StatusNote tone="problem">{editError}</StatusNote>
                 </div>
               )}
             </Card>

@@ -27,6 +27,18 @@ export interface AwaitingLine {
   target_so2_mg_kg: number | null
 }
 
+interface RawLabResult {
+  id: string
+  parent_serial: string
+  sample_date: string
+  moisture_pct: number
+  so2_mg_kg: number | null
+  sample_photo: string | null
+  note: string | null
+  status: 'moisture_in' | 'complete'
+  created_at: string
+}
+
 export interface LabResultRow {
   id: string
   parent_serial: string
@@ -71,11 +83,23 @@ export function useLaboratorKirim() {
         supabase
           .from('lab_results')
           .select('id, parent_serial, sample_date, moisture_pct, so2_mg_kg, sample_photo, note, status, created_at')
-          .eq('scope', 'kirim'),
+          .eq('scope', 'kirim')
+          // Newest first, first-kept-per-serial wins -- same latest-wins
+          // pattern as labVerdict.ts's currentLabStatus and
+          // useLaboratorChiqim.ts's own resultByCycleId (2026-08-03, lab
+          // edit action). Editing a Yakunlangan record inserts a
+          // superseding row rather than overwriting (traceability for
+          // quality records that feed client reports) -- without this
+          // ordering, a plain last-in-array Map build would resolve
+          // non-deterministically between the original and the correction.
+          .order('created_at', { ascending: false }),
       ])
 
       const intakeBySerial = new Map((intakes ?? []).map((i) => [i.serial, i]))
-      const resultBySerial = new Map((results ?? []).map((r) => [r.parent_serial, r]))
+      const resultBySerial = new Map<string, RawLabResult>()
+      for (const r of (results ?? []) as RawLabResult[]) {
+        if (!resultBySerial.has(r.parent_serial)) resultBySerial.set(r.parent_serial, r)
+      }
       const gruzhenyByOrder = new Map((weighings ?? []).map((w) => [w.order_id, w.gruzheny_kg]))
 
       const orderIds = [...new Set((lines ?? []).map((l) => l.order_id))]

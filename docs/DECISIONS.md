@@ -2342,3 +2342,40 @@ Loss reads **9.2%** from the weighed 980, not the 14.4% the book 1,040 would hav
 **Verification.** `npm run build` (`tsc -b && vite build`) clean — using the build-mode invocation, per the process gap recorded in the Stage 2 entry. Unit suite 82/82. Playwright: 4/5, the one failure proven pre-existing on `main` as above. Full end-to-end hand-verification on real data through four roles (Ombor mint+send → Laborator verdict → Ombor pack → Tugallash), plus the report table above.
 
 **Out of scope, not touched:** Rezka itself, the dehydration-reconciliation UI, KN origin/state tracking, old-KN dispatch reporting (deferred in Stage 2), and the closed-period client-report defect logged above.
+
+## 2026-08-02 — Client reports stopped mutating retroactively (as-of-date reconstruction, finished side)
+
+**Context.** Logged as a known defect at the end of Stage 3 and picked up immediately as its own task. `get_client_report` answered *historical* questions by reading *current* status, so re-running a closed period returned different numbers depending on what happened afterwards — hand a client their June statement, re-run it in September, get different figures. Pre-existing (voided pallets always behaved this way) but Stage 3's re-wash consumption made it routine rather than rare, on a client-facing document. Third rewrite of this function; the raw three-bucket arithmetic is unchanged — only *which pallets are counted* changed. `supabase/migrations/0057_finished_pallets_voided_at.sql`, `0058_get_client_report_as_of_date_stability.sql`.
+
+**🚩 Finding asked for first: there is no void timestamp, anywhere.** `finished_pallets` carries `barcode2, serial, type_id, calibre_id, weight_kg, received_date, status, created_by, is_old_stock, weight_is_estimate` — no `voided_at`, no `created_at`, no `updated_at`, and no triggers on the table. A void leaves no trace of *when*, so voided pallets genuinely cannot be reconstructed. **Added `voided_at` now precisely because the table is clean**: zero rows have ever been `bekor_qilindi`, and nothing in the app writes that status (the void UI was removed in the Laborator v2 rework; only two read sites remain, and `report_chiqim_rows.void_successor_barcodes` still references a `wash_cycle` column that no longer exists). There is no backfill ambiguity today and now there never will be. Convention: a `bekor_qilindi` row with NULL `voided_at` means "date unknown" and stays excluded from every period — identical to today's behaviour, so the column is future-proofing rather than a behaviour change.
+
+**🚩 Second finding, which narrowed the bug: `status='dispatched'` is dead.** Migration 0026 says so in its own comment, and the data agrees — 78 `in_stock`, 2 `consumed`, 0 `dispatched`, 0 `bekor_qilindi`. Dispatch is tracked entirely through `dispatch_manifest` + `gate_weighings.completed_at`; dispatched pallets keep `status='in_stock'`. So `client_pallets`' filter was excluding exactly two things — voided (none) and consumed (the two Stage 3 ate) — which is why the entire live blast radius was 1,040 kg.
+
+**Four as-of defects, not one.** Fixing only `client_pallets` would have left the report half-stable:
+
+| # | Site | Read current | Retroactive effect |
+|---|---|---|---|
+| 1 | `client_pallets` `status='in_stock'` | pallet status | the known bug — consumed/voided pallets vanish from closed periods |
+| 2 | `client_pallets.departure_date` | gate completion, no `<= p_to` | a gate completing after `p_to` back-dates a departure into a closed period |
+| 3 | `loss_totals` / `loss_output` | wash-cycle status; pallets packed after `p_to` | a Tugallash after `p_to` retroactively adds loss to a closed period |
+| 4 | `period_dispatch_ids` | gate completion, no `<= p_to` | a dispatch's pallet list appears retroactively |
+
+#3 was an *internal inconsistency*: `moykada_total` and `cumulative_loss_total` already applied the `finalized_at <= p_to` guard correctly, and `loss_totals` simply didn't. All 6 existing final cycles carry a `finalized_at`, so requiring it is a no-op on current data. #2 and #4 were latent (zero dispatch rows existed) but are the same class on the same document.
+
+**Membership is now reconstructed from events**: produced (`received_date <= p_to`), not consumed (`serial_mint_sources.created_at <= p_to`), not voided (`voided_at <= p_to`, NULL = unknown = excluded). Departed pallets deliberately *stay* in `client_pallets` — `finished_dispatched_total` needs them, and `finished_opening_total` already tested `departure_date is null or departure_date >= p_from`, which now reads correctly as "hadn't departed before `p_from`" because `departure_date` itself became as-of.
+
+**Checked and deliberately not touched:** `report_chiqim_rows.pallet_status` (a present-tense "Holat" column on an event row; row existence and qty aren't gated by it — by design, not a balance defect); `stock_on_hand_rows`, `get_serial_passport.current_position`, `useMoykaOutput` (all answer "right now" questions, so current status is correct); `yield_rows.output` (applies no status filter at all, so immune — and deliberately so per the Stage 3 current-location rule).
+
+**Verification — real data, before/after, with cleanup.**
+- **The bug, measured live before the fix:** `get_client_report(Global Export, 2025-01-01 → 2026-08-01)->finished.closingKg` read **51,170 kg**. The same query run a day earlier would have read **52,210** — a closed period that had moved by 1,040 kg because two pallets in it were consumed afterwards.
+- **After the fix:** that period reads **52,210** again, while the current period (2026-08-02) stays at **52,060**, unchanged. The fix moves the closed period and leaves the open one alone, which is exactly the discriminating result.
+- **Primary regression test (the whole point):** snapshot the entire closed-period JSON, consume another pallet produced inside that window (`PLT-020826-034-01-1`, 30 kg), re-run → **`whole_report_identical = true`**, byte-for-byte. Meanwhile the *current* period correctly dropped 52,060 → 52,030, proving the function still reacts to real events rather than having been frozen.
+- **Dispatch test (exercising #2 and #4, which had no data at all):** created a CHIQIM request dated **2026-07-15** — inside the closed window — whose gate completed **today**, i.e. after `p_to`. The closed period's md5 stayed identical (`13fae514…`), `dispatchedKg` 0 and the `dispatches` array empty; a period extended to 2026-08-31 (which *does* contain the gate completion) correctly showed **720 kg dispatched and 1 dispatch entry**. Frozen where it should be, live where it should be.
+- **No regression on the prior fixes:** current-period report still agrees exactly with Ombor qoldig'i (**52,060 = 52,060**, the three-bucket agreement from the earlier rewrite), and `reconciliation.balancesKg` still lands on **0.0** for both periods.
+- All test fixtures removed afterwards and the restoration verified (0 leftover requests, 0 manifest rows, pallet back to `in_stock`, `serial_mint_sources` back to Stage 3's real 2 rows, all figures back to the correct post-fix baseline).
+
+**Verification.** `npm run build` clean, unit suite 82/82, Playwright 4/5 — the one failure is the long-standing `full-chain.spec.ts` one proven pre-existing on a clean `main` checkout earlier this session, and this task changed no frontend code at all.
+
+**🐛 KNOWN DEFECT REMAINING — the raw side has the same flaw, and it fires daily.** `client_lines` derives `has_intake` from the mere existence of a `storage_intake` row and `effective_qty` from `report_kirim_rows.qty_kg`, whose value climbs a three-stage ladder over time (declared → intake actual → gate net minus box mass). Both are read as-of-now, so every intake Ombor accepts and every gate Qorovul completes shifts closed-period *raw* balances. Unlike the finished-side defect this one triggers in normal daily operation, not only on re-wash. Scoped as the immediate next task; see that entry when it lands.
+
+**Out of scope:** old-KN dispatch reporting, Rezka, the e2e suite, and the three-bucket arithmetic itself.

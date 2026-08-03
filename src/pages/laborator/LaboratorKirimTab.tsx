@@ -5,6 +5,7 @@ import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useLaboratorKirim, type AwaitingLine, type LabResultRow } from '../../lib/useLaboratorKirim'
 import { KirimTahlilForm, type TahlilValues } from './KirimTahlilForm'
+import { KirimTahlilEditForm, type TahlilEditValues } from './KirimTahlilEditForm'
 import { GatePhoto } from '../../components/GatePhoto'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
@@ -36,6 +37,8 @@ export function LaboratorKirimTab() {
   const [seraSaving, setSeraSaving] = useState<string | null>(null)
   const [seraError, setSeraError] = useState<string | null>(null)
   const [expandedFinished, setExpandedFinished] = useState<string | null>(null)
+  const [editingFinished, setEditingFinished] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -103,6 +106,41 @@ export function LaboratorKirimTab() {
     } finally {
       setSeraSaving(null)
     }
+  }
+
+  // Lab edit action (2026-08-03) — corrects an already-Yakunlangan record.
+  // Inserts a superseding lab_results row rather than updating in place:
+  // these are quality records that flow into client reports, and a changed
+  // value must stay traceable against the original (the original row is
+  // never touched). status is always 'complete' — editing only ever applies
+  // to Window 3 rows; Window 2 (moisture_in, sulfur still pending) already
+  // has its own entry point via Sera kiritish above. A left-blank photo
+  // keeps the previous sample photo rather than dropping it.
+  async function handleTahlilEdit(row: LabResultRow, values: TahlilEditValues) {
+    setEditError(null)
+    let photoPath = row.sample_photo
+    if (values.photoFile) {
+      const path = `${crypto.randomUUID()}.jpg`
+      const { error: uploadErr } = await supabase.storage.from('lab-photos').upload(path, values.photoFile)
+      if (uploadErr) throw uploadErr
+      photoPath = path
+    }
+
+    const { error } = await supabase.from('lab_results').insert({
+      scope: 'kirim',
+      parent_serial: row.parent_serial,
+      sample_date: values.sampleDate,
+      moisture_pct: values.moisturePct,
+      so2_mg_kg: values.so2MgKg,
+      sample_photo: photoPath,
+      note: values.note || null,
+      tested_by: profile?.id,
+      status: 'complete',
+    })
+    if (error) throw error
+
+    setEditingFinished(null)
+    refresh()
   }
 
   if (loading) return null
@@ -203,6 +241,18 @@ export function LaboratorKirimTab() {
                     {seraSaving === row.id ? 'Saqlanmoqda…' : 'Sera kiritish'}
                   </Button>
                 </div>
+                {/* The target is a ceiling, not an exact spec -- any reading
+                    under it is acceptable. Informational only, never blocks
+                    saving, same treatment as ChiqimTahlilForm's moisture
+                    soft-warn. */}
+                {(() => {
+                  const v = parseFloat(seraValue[row.id] ?? '')
+                  return !isNaN(v) && v > row.target_so2_mg_kg! ? (
+                    <div className="mt-1">
+                      <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} mg/kg) — baribir saqlash mumkin.</StatusNote>
+                    </div>
+                  ) : null
+                })()}
               </div>
               {seraError && (
                 <div className="mt-1">
@@ -251,6 +301,27 @@ export function LaboratorKirimTab() {
                   <div>{row.sample_date} · tahlil to'liq</div>
                   {row.note && <div>Qayd: {row.note}</div>}
                   <GatePhoto path={row.sample_photo} label="Namuna rasmi" bucket="lab-photos" />
+                  {editingFinished !== row.id && (
+                    <div className="pt-1">
+                      <Button variant="secondary" size="md" onClick={() => setEditingFinished(row.id)}>
+                        Tahrirlash
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {editingFinished === row.id && (
+                <KirimTahlilEditForm
+                  row={row}
+                  ownerName={ownerName(row.owner_id)}
+                  typeName={typeName(row.type_id)}
+                  onCancel={() => setEditingFinished(null)}
+                  onSubmit={(v) => handleTahlilEdit(row, v)}
+                />
+              )}
+              {editError && editingFinished === row.id && (
+                <div className="mt-2">
+                  <StatusNote tone="problem">{editError}</StatusNote>
                 </div>
               )}
             </Card>

@@ -2485,3 +2485,15 @@ Loss reads **9.2%** from the weighed 980, not the 14.4% the book 1,040 would hav
 **Verification.** `npx tsc -b --noEmit` clean. Unit suite 82/82. Playwright 4/5 — the same long-standing `full-chain.spec.ts` flake, unrelated to this change (fails at the identical locator).
 
 **Out of scope:** Menejer-side target editing (separate follow-up, per the original task).
+
+## 2026-08-04 — Origin-filtering standing rule + `lab_turnaround_avg` made explicit
+
+**Context.** Eight separate origin/timestamp leaks were found reactively across this session — each caught only after it was already live, most recently the raw-side `get_client_report` fix immediately above. Documentation task: write the convention into `CLAUDE.md` so the class stops recurring, evidenced by the eight-leak list (`yield_rows`, `rahbar_monthly_trends`, `wip_rows`, `get_client_report`, Qorovul's gate queue, Ombor's intake queue, `useLaboratorKirim`, `useIntakeHistory`/`useGateHistory`). New "Origin filtering" section, `CLAUDE.md`, with five categories: arrival/throughput aggregates (`origin = 'delivery'` allowlist), processing aggregates (`origin != 'opening_stock'`), operational queues (`origin = 'delivery'`), balance/stock views (usually unfiltered), history screens (same rule as their live counterpart — three of the eight leaks were history hooks reading the identical join as an already-fixed screen).
+
+**`lab_turnaround_avg()` made explicit, not left emergent — the one known live instance of exactly what the new rule forbids.** It excluded opening stock only because opening stock's fabricated wash rows have no `moyka_sends` counterpart, so `lr.sample_date - ms_first.sent_date` silently evaluated to `NULL` and `avg()` dropped it — an accident of the current data, not a filter. Flagged as latent fragility in the 2026-08-03 connectivity-audit entry; closed now rather than left, specifically because Rezka (next up) mints serials with real `moyka_sends` rows and could make the accident stop holding — better explicit now than a ninth leak found reactively. Fixed with `and ko.origin != 'opening_stock'`, matching the "processing aggregate" category exactly. `supabase/migrations/0062_lab_turnaround_avg_explicit_origin_filter.sql`.
+
+**Verified no-op on current data, both before and after applying:** 0 `opening_stock`-origin wash cycles have any `moyka_sends` row today, and `lab_turnaround_avg()` returned `NULL` before the fix and `NULL` after — nothing moved, the exclusion just stopped being an accident.
+
+**Verification.** Documentation + a single-function, signature-preserving SQL change; no frontend code touched. `tsc`/unit/Playwright not re-run for this entry (no code path affected — see the raw-side as-of fix immediately above for the current suite state).
+
+**Out of scope:** any further sweep of the codebase for un-audited origin reads (the eight leaks listed are the ones already found and fixed across this session; this task documented the pattern, it did not re-audit for more instances).

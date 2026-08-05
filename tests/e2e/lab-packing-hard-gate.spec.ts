@@ -136,8 +136,20 @@ async function sendToMoyka(page: Page, serial: string) {
   await expect(card).toBeVisible()
   await card.getByRole('button', { name: '+ Moykaga yuborish' }).click()
   await serialCard(page, serial).locator('input[type="number"]').fill('1000')
-  await serialCard(page, serial).getByRole('button', { name: 'Moykaga yuborish' }).click()
-  await expect(serialCard(page, serial).getByRole('button', { name: '+ Moykaga yuborish' })).toHaveCount(0)
+  // '+ Moykaga yuborish' vanishes on the click above (it's the toggle that
+  // opens the form, not the submit) -- the old toHaveCount(0) check here
+  // asserted something already true before the submit click even happened
+  // and gave zero synchronization on the actual moyka_sends write. Same
+  // defect already found and fixed in lab-relocation-loss-verification.spec.ts
+  // (DECISIONS.md "Lab moves inside Moyka, wash-cycle concept removed",
+  // 2026-07-28) and confirmed live via trace on full-chain.spec.ts's
+  // identical send action -- just never ported to this spec. Wait on the
+  // actual response instead.
+  const [sendResponse] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/moyka_sends') && r.request().method() === 'POST'),
+    serialCard(page, serial).getByRole('button', { name: 'Moykaga yuborish' }).click(),
+  ])
+  expect(sendResponse.ok(), `moyka_sends insert must succeed, got HTTP ${sendResponse.status()}: ${await sendResponse.text()}`).toBe(true)
 }
 
 let kirimPlates: string[] = []

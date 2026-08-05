@@ -264,8 +264,23 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     const qtyInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
     await qtyInput.fill('5000')
     await expect(qtyInput).toHaveValue('5000')
-    await row.getByRole('button', { name: 'Moykaga yuborish' }).click()
-    await expect(row.getByRole('button', { name: 'Moykaga yuborish' })).toHaveCount(0)
+    // The button relabels to "Yuborilmoqda…" the instant React sets
+    // submitting=true, synchronously and before the moyka_sends insert has
+    // reached the network -- toHaveCount(0) on the OLD label was satisfied
+    // immediately and proved nothing about the write. Confirmed via a
+    // captured trace: the very next step (Chiqish/logout) is a real browser
+    // navigation, and it aborted this exact POST -- net::ERR_ABORTED,
+    // recorded at the same monotonic instant as the navigation completing.
+    // useMoykaOutput was reading the database correctly the whole time; the
+    // row was genuinely never written. Same defect already found and fixed
+    // this same way in lab-relocation-loss-verification.spec.ts (DECISIONS.md
+    // "Lab moves inside Moyka, wash-cycle concept removed", 2026-07-28) --
+    // just never ported to this spec. Wait on the actual response instead.
+    const [sendResponse] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/moyka_sends') && r.request().method() === 'POST'),
+      row.getByRole('button', { name: 'Moykaga yuborish' }).click(),
+    ])
+    expect(sendResponse.ok(), `moyka_sends insert must succeed, got HTTP ${sendResponse.status()}: ${await sendResponse.text()}`).toBe(true)
   }
 
   // --- Laborator CHIQIM: decisive check. Laborator v2 (2026-07-28 -- see

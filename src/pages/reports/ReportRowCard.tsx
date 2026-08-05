@@ -2,6 +2,7 @@ import type { ReportRow } from '../../lib/reportQuery'
 import { KirimRowDetail } from './KirimRowDetail'
 import { ChiqimRowDetail } from './ChiqimRowDetail'
 import { RawDispatchRowDetail } from './RawDispatchRowDetail'
+import { OldKnRowDetail } from './OldKnRowDetail'
 import { Card } from '../../components/ui/Card'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { StatusPill } from '../../components/ui/StatusPill'
@@ -52,7 +53,7 @@ export function ReportRowCard({
       tone = 'ok'
       label = `${qty.toLocaleString()} kg`
     }
-  } else if (row.kind === 'chiqim_raw') {
+  } else if (row.kind === 'chiqim_raw' || row.kind === 'chiqim_old_kn') {
     tone = 'ok'
     label = `${qty.toLocaleString()} kg`
   } else if (row.palletStatus === 'bekor_qilingan') {
@@ -75,7 +76,7 @@ export function ReportRowCard({
   return (
     <Card padding="compact">
       <button type="button" onClick={onToggle} className="flex min-h-12 w-full items-center gap-3 text-left">
-        <SerialChip>{row.kind === 'chiqim' ? row.barcode2 : row.serial}</SerialChip>
+        <SerialChip>{row.kind === 'chiqim' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}</SerialChip>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-slate-900 dark:text-slate-100">
             {ownerName(row.ownerId)} · {typeName(row.typeId)}
@@ -94,6 +95,8 @@ export function ReportRowCard({
             <KirimRowDetail row={row} onOpenPassport={onOpenPassport} />
           ) : row.kind === 'chiqim_raw' ? (
             <RawDispatchRowDetail row={row} onOpenPassport={onOpenPassport} />
+          ) : row.kind === 'chiqim_old_kn' ? (
+            <OldKnRowDetail row={row} />
           ) : (
             <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
           )}

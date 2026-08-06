@@ -153,7 +153,27 @@ export interface RawDispatchReportRow {
   palletStatus: 'jonatilgan' // raw_dispatch_lines only exists once committed at Ombor's finish click — always departed
 }
 
-export type ReportRow = KirimReportRow | ChiqimReportRow | RawDispatchReportRow
+// Old-KN collections (2026-08-05) -- the fourth report_rows kind, mirroring
+// RawDispatchReportRow's shape exactly: no serial (old-KN has none), no
+// calibre/barcode2/wash cycle/lab verdict, no box mass. weightKg named to
+// match the other non-kirim kinds so the shared
+// `row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg` ternary keeps
+// working unchanged for all three.
+export interface OldKnReportRow {
+  kind: 'chiqim_old_kn'
+  key: string // old_kn_collections.id -- stable row key
+  typeId: string
+  ownerId: string // sourced from old_kn_pools, not chiqim_requests -- see DECISIONS.md "Old-KN reporting"
+  requestId: string
+  plate: string
+  driver: string
+  weightKg: number // old_kn_collections.collected_kg
+  boxMassKg: null // old-KN has no box mass concept
+  dateBasis: string | null // §3.2.3: chiqim_requests.request_date, same basis as raw dispatch
+  palletStatus: 'jonatilgan' // a collection row only exists once committed -- always departed
+}
+
+export type ReportRow = KirimReportRow | ChiqimReportRow | RawDispatchReportRow | OldKnReportRow
 
 // §3.2.2 🔒 "a voided Barcode #2 must remain findable" — a voided pallet's
 // cycle was, by construction, the ACTIVE cycle at the moment it was voided
@@ -203,7 +223,7 @@ export const WEIGHT_BASIS_LABEL = "Og'irlik asosi: effective_qty (darvoza netto 
 // avoids silently doing string concatenation instead of arithmetic if a
 // given code path happens to come back as text.
 export interface ReportDbRow {
-  kind: 'kirim' | 'chiqim' | 'chiqim_raw'
+  kind: 'kirim' | 'chiqim' | 'chiqim_raw' | 'chiqim_old_kn'
   row_key: string
   serial: string
   barcode2: string | null
@@ -276,6 +296,22 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       driver: row.driver,
       weightKg: Number(row.qty_kg),
       boxMassKg: num(row.box_mass_kg),
+      dateBasis: row.date_basis,
+      palletStatus: 'jonatilgan',
+    }
+  }
+
+  if (row.kind === 'chiqim_old_kn') {
+    return {
+      kind: 'chiqim_old_kn',
+      key: row.row_key,
+      typeId: row.type_id,
+      ownerId: row.owner_id,
+      requestId: row.request_id ?? '',
+      plate: row.plate,
+      driver: row.driver,
+      weightKg: Number(row.qty_kg),
+      boxMassKg: null,
       dateBasis: row.date_basis,
       palletStatus: 'jonatilgan',
     }

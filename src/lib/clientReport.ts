@@ -74,6 +74,26 @@ export interface ClientReportRaw {
   reconciliation: ClientReportReconciliation
 }
 
+// Old-KN collections (2026-08-05) -- kept as its own top-level section, not
+// nested inside `raw` (old-KN is a distinct product, not raw material) and
+// never merged into the raw three-bucket reconciliation. Mirrors how raw
+// dispatch's own section was added -- a period total plus a flat events
+// list, no opening/closing balance here (old_kn_pools tracks that balance
+// separately, out of scope for this report).
+export interface ClientReportOldKnCollection {
+  requestId: string
+  requestDate: string
+  plate: string
+  driver: string
+  typeId: string
+  collectedKg: number
+}
+
+export interface ClientReportOldKn {
+  collectedKg: number
+  collections: ClientReportOldKnCollection[]
+}
+
 export interface ClientReportFinishedByCalibre {
   calibreId: string
   openingKg: number
@@ -132,6 +152,7 @@ export interface ClientReport {
   owner: { id: string; name: string }
   period: { from: string; to: string }
   raw: ClientReportRaw
+  oldKn: ClientReportOldKn
   finished: ClientReportFinished
   qualityRecord: ClientReportQualityRow[]
   dispatches: ClientReportDispatch[]

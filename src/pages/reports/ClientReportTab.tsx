@@ -43,6 +43,7 @@ export function ClientReportTab() {
   const [locale, setLocale] = useState<ReportLocale>('uz')
   const [detailOpen, setDetailOpen] = useState(false)
   const [rawDetailOpen, setRawDetailOpen] = useState(false)
+  const [oldKnDetailOpen, setOldKnDetailOpen] = useState(false)
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
@@ -334,6 +335,49 @@ export function ClientReportTab() {
                       <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                         {d.weightKg.toLocaleString()} kg − {d.boxMassKg.toLocaleString()} kg tara = {d.netKg.toLocaleString()} kg
                       </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Old-KN collections (2026-08-05) -- own top-level section, own
+              collapsed-by-default shape, never merged with raw dispatch or
+              the finished-goods dispatches list -- old-KN is a distinct
+              product, not raw material. No opening/closing balance here
+              (old_kn_pools tracks that separately) -- just the period total,
+              always visible, plus the collapsible events list, mirroring the
+              raw-dispatch block above. */}
+          <div>
+            <h2 className="mb-2 font-semibold text-slate-900 dark:text-slate-100">{t.oldKnSection}</h2>
+            <BalanceLine label={t.oldKnCollected} value={report.oldKn.collectedKg} bold />
+          </div>
+          <div className="rounded-md border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setOldKnDetailOpen(!oldKnDetailOpen)}
+              className="flex w-full items-center justify-between px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60"
+            >
+              <span>
+                {t.oldKnCollections} ({report.oldKn.collections.length})
+              </span>
+              <span>{oldKnDetailOpen ? '▲' : '▼'}</span>
+            </button>
+            {oldKnDetailOpen && (
+              <div className="space-y-2 border-t border-slate-200 p-4 dark:border-slate-700">
+                {report.oldKn.collections.length === 0 ? (
+                  <p className="text-sm text-slate-400">{t.noData}</p>
+                ) : (
+                  report.oldKn.collections.map((c, i) => (
+                    <div key={`${c.requestId}-${i}`} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-700 dark:text-slate-300">
+                        <span className="font-medium">{typeName(c.typeId)}</span>
+                        <span>{c.plate}</span>
+                        <span>{c.driver}</span>
+                        <span className="text-slate-400">{c.requestDate}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">{c.collectedKg.toLocaleString()} kg</div>
                     </div>
                   ))
                 )}

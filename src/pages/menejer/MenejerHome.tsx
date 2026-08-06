@@ -22,6 +22,7 @@ export function MenejerHome() {
         { to: '/menejer/kutilmoqda', label: 'Kutilayotgan ishlar' },
         { to: '/menejer/mijoz-hisoboti', label: 'Mijoz hisoboti' },
         { to: '/menejer/hosildorlik', label: 'Hosildorlik' },
+        { to: '/menejer/eski-zaxira', label: 'Eski zaxira hisob-kitobi' },
         { to: '/menejer/mijozlar', label: 'Mijozlar' },
         { to: '/menejer/diqqat-talab', label: 'Diqqat talab' },
         { to: '/menejer/sozlamalar', label: 'Sozlamalar' },

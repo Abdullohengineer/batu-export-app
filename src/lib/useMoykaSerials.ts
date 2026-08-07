@@ -79,11 +79,19 @@ export function useMoykaSerials() {
     const requestId = ++requestIdRef.current
     setLoading(true)
     try {
-      const [{ data: intakes }, { data: sends }, { data: rawDispatches }] = await Promise.all([
+      const [{ data: intakes }, { data: sends }, { data: rawDispatches }, { data: closeouts }] = await Promise.all([
         supabase.from('storage_intake').select('serial, actual_qty, box_mass_kg'),
         supabase.from('moyka_sends').select('id, serial, sent_date, qty_kg'),
         supabase.from('raw_dispatch_lines').select('id, serial, loaded_at, weight_kg, box_mass_kg, net_kg'),
+        // Old-stock closeout (2026-08-05, see DECISIONS.md "Old-stock
+        // reconciliation"): this hook computes raw balance independently of
+        // stock_on_hand_rows (does not read it at all) -- a real, standing
+        // two-implementations hazard, not something this fix removes. Once
+        // an old-raw owner+type is closed, every serial under it reads 0
+        // available here, matching stock_on_hand_rows' own full exclusion.
+        supabase.from('old_stock_closeouts').select('owner_id, type_id').eq('kind', 'old_raw'),
       ])
+      const closedOldRawKeys = new Set((closeouts ?? []).map((c) => `${c.owner_id}:${c.type_id}`))
 
       const serialList = (intakes ?? []).map((i) => i.serial)
       if (serialList.length === 0) {
@@ -146,6 +154,14 @@ export function useMoykaSerials() {
           const input = eq?.value ?? intake.actual_qty
           const sentTotal = serialSends.reduce((sum, s) => sum + s.qty_kg, 0)
           const rawDispatchedTotal = serialRawDispatches.reduce((sum, r) => sum + r.net_kg, 0)
+          const isOldStock = order.origin === 'opening_stock'
+          // Old-stock closeout: an all-or-nothing exclusion, not a partial
+          // subtraction, matching stock_on_hand_rows' own raw_rows CTE --
+          // once closed, the whole owner+type line is done. Guarded on
+          // isOldStock so a closed old-raw line can never zero out an
+          // unrelated regular (non-opening-stock) serial for the same
+          // owner+type.
+          const closedOut = isOldStock && closedOldRawKeys.has(`${order.owner_id}:${line.type_id}`)
 
           return {
             serial: intake.serial,
@@ -153,7 +169,7 @@ export function useMoykaSerials() {
             owner_id: order.owner_id,
             order_date: order.order_date,
             plate: order.plate,
-            isOldStock: order.origin === 'opening_stock',
+            isOldStock,
             actual_qty: intake.actual_qty,
             inputKg: input,
             provisional: eq?.provisional ?? false,
@@ -162,7 +178,7 @@ export function useMoykaSerials() {
             provisionalVarianceFlag: eq?.provisionalVarianceFlag ?? false,
             sent: sentTotal,
             rawDispatched: rawDispatchedTotal,
-            available: Math.max(0, input - sentTotal - rawDispatchedTotal),
+            available: closedOut ? 0 : Math.max(0, input - sentTotal - rawDispatchedTotal),
             sends: serialSends,
             rawDispatches: serialRawDispatches,
           }

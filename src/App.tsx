@@ -16,6 +16,7 @@ import { YieldTab } from './pages/reports/YieldTab'
 import { MenejerExceptionsTab } from './pages/menejer/MenejerExceptionsTab'
 import { MenejerSettingsTab } from './pages/menejer/MenejerSettingsTab'
 import { MenejerClientsTab } from './pages/menejer/MenejerClientsTab'
+import { OldStockCloseoutTab } from './pages/menejer/OldStockCloseoutTab'
 import { QorovulHome } from './pages/qorovul/QorovulHome'
 import { QorovulKirimTab } from './pages/qorovul/QorovulKirimTab'
 import { QorovulChiqimTab } from './pages/qorovul/QorovulChiqimTab'
@@ -83,6 +84,7 @@ function AppRoutes() {
         <Route path="kutilmoqda" element={<WipTab />} />
         <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
         <Route path="hosildorlik" element={<YieldTab />} />
+        <Route path="eski-zaxira" element={<OldStockCloseoutTab />} />
         <Route path="mijozlar" element={<MenejerClientsTab />} />
         <Route path="diqqat-talab" element={<MenejerExceptionsTab />} />
         <Route path="sozlamalar" element={<MenejerSettingsTab />} />

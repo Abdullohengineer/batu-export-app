@@ -20,6 +20,9 @@ export interface ClientReportLabelSet {
   processed: string
   rawDispatched: string
   rawDispatches: string
+  oldKnSection: string
+  oldKnCollected: string
+  oldKnCollections: string
   produced: string
   departed: string
   closingBalance: string
@@ -75,6 +78,9 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     processed: 'Davrda qayta ishlangan (yuvishga)',
     rawDispatched: 'Davrda xom holda olib ketilgan',
     rawDispatches: "Xom jo'natmalar",
+    oldKnSection: 'ESKI KONDITIRSKIY',
+    oldKnCollected: 'Davrda yig\'ib olingan',
+    oldKnCollections: "Eski KN yig'ib olishlar",
     produced: 'Davrda ishlab chiqarilgan',
     departed: 'Davrda olib ketilgan',
     closingBalance: 'Davr oxiriga qoldiq',
@@ -128,6 +134,9 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     processed: 'Переработано за период (на мойку)',
     rawDispatched: 'Забрано сырым за период',
     rawDispatches: 'Отгрузки сырья',
+    oldKnSection: 'СТАРЫЙ КОНДИТЕРСКИЙ',
+    oldKnCollected: 'Собрано за период',
+    oldKnCollections: 'Сборы старого кондитерского',
     produced: 'Произведено за период',
     departed: 'Отгружено за период',
     closingBalance: 'Остаток на конец периода',

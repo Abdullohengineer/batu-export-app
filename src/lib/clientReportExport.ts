@@ -91,6 +91,22 @@ export async function buildClientReportWorkbook(
     sheet.addRow([])
   }
 
+  // ---- OLD-KN (2026-08-05) ---- own block, never merged with raw dispatch
+  // or the finished-goods dispatches section -- old-KN is a distinct
+  // product, not raw material.
+  sheet.addRow([t.oldKnSection]).font = { bold: true, size: 12 }
+  const oldKnTotalRow = sheet.addRow([t.oldKnCollected, report.oldKn.collectedKg])
+  oldKnTotalRow.font = { bold: true }
+  if (report.oldKn.collections.length > 0) {
+    sheet.addRow([])
+    sheet.addRow([t.oldKnCollections]).font = { bold: true }
+    sheet.addRow([t.turi, t.plate, t.driver, 'Sana / Дата', t.weight]).font = { bold: true }
+    for (const c of report.oldKn.collections) {
+      sheet.addRow([lookups.typeName(c.typeId), c.plate, c.driver, c.requestDate, c.collectedKg])
+    }
+  }
+  sheet.addRow([])
+
   // ---- FINISHED ----
   sheet.addRow([t.finishedSection]).font = { bold: true, size: 12 }
   sheet.addRow([t.openingBalance, report.finished.openingKg])

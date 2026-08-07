@@ -22,6 +22,48 @@ Read both, relevant sections only, before every task.
 - Storage buckets: one per photo type, `read_all` + `<role>_insert`, same
   shape as `kirim-photos`/`gate-photos`.
 
+## Origin filtering
+- 🚩 **Any view, RPC, hook, or screen that reads material timestamps
+  (`order_date`, `confirmed_at`, `finalized_at`, `received_date`,
+  `completed_at`) or lists inbound work must explicitly handle
+  `kirim_orders.origin`.** Eight separate leaks were found reactively this
+  session, each discovered only after it was already live — opening-stock
+  and internal-reprocess rows are not real deliveries, but nothing stopped
+  them from being read as if they were:
+  - `yield_rows` — phantom 52,210 kg output
+  - `rahbar_monthly_trends` — phantom arrival spike
+  - `wip_rows` — fabricated "578 days waiting"
+  - `get_client_report` — −52,210 kg phantom loss on a client-facing document
+  - Qorovul's gate queue — 5 phantom trucks
+  - Ombor's intake queue — 5 phantom deliveries
+  - `useLaboratorKirim` — opening stock actionable in the lab queue
+  - `useIntakeHistory` / `useGateHistory` — fabricated rows one date-widen
+    from rendering as real
+- Apply the matching filter by category — state which one applies before
+  writing the query:
+  - **Arrival / throughput aggregates** → positive allowlist
+    `origin = 'delivery'`. Opening stock and internal reprocessing are not
+    deliveries.
+  - **Processing aggregates** (yield, loss, wash trends) →
+    `origin != 'opening_stock'`. A re-wash is real processing and must
+    count; seeded opening stock must not.
+  - **Operational queues** (gate, intake, lab) → `origin = 'delivery'`.
+    Only real trucks belong in a work queue.
+  - **Balance / stock views** → usually unfiltered; opening stock is real
+    stock.
+  - **History screens** → same rule as their live counterpart. Three of the
+    eight leaks above were history hooks reading the identical join as an
+    already-fixed live screen — fixing one and not its history twin is not
+    done.
+- **An exclusion that only works because the data happens not to overlap is
+  not acceptable — make it explicit.** `lab_turnaround_avg()` was the one
+  known live instance: it excluded opening stock only because opening
+  stock's fabricated wash rows have no `moyka_sends` counterpart, so the
+  turnaround subtraction silently evaluated to `NULL` and `avg()` dropped
+  it — an accident of the current data, not a filter. Fixed with an
+  explicit `origin != 'opening_stock'`, same as every other processing
+  aggregate (`supabase/migrations/0062_lab_turnaround_avg_explicit_origin_filter.sql`).
+
 ## Reuse, don't rebuild
 - Photo compression: `src/lib/imageCompress.ts`.
 - Append-only notes/Qaydlar: `notes` table + `useNotes`/`EntityNotes`.

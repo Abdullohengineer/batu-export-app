@@ -80,6 +80,20 @@ export async function buildReportWorkbook(
         row.boxMassKg ?? '',
         '',
       ])
+    } else if (row.kind === 'chiqim_old_kn') {
+      sheet.addRow([
+        'CHIQIM (eski KN)',
+        row.dateBasis ?? '',
+        '',
+        lookups.ownerName(row.ownerId),
+        lookups.typeName(row.typeId),
+        '',
+        row.plate,
+        row.driver,
+        row.weightKg,
+        '',
+        '',
+      ])
     } else {
       const note = row.voidInfo
         ? `bekor qilindi — sikl ${row.voidInfo.voidedCycle}, yangi: ${

@@ -3,6 +3,7 @@ import { KirimRowDetail } from './KirimRowDetail'
 import { ChiqimRowDetail } from './ChiqimRowDetail'
 import { RawDispatchRowDetail } from './RawDispatchRowDetail'
 import { OldKnRowDetail } from './OldKnRowDetail'
+import { formatDate } from '../../lib/formatDate'
 import { Card } from '../../components/ui/Card'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { StatusPill } from '../../components/ui/StatusPill'
@@ -83,7 +84,7 @@ export function ReportRowCard({
             {row.kind === 'chiqim' && ` · ${calibreLabel(row.calibreId)}`}
           </span>
           <span className="block text-sm text-slate-500 dark:text-slate-400">
-            {row.dateBasis ?? '—'} · {row.plate || '—'} ·{' '}
+            {formatDate(row.dateBasis)} · {row.plate || '—'} ·{' '}
             {row.kind === 'kirim' ? `${qty.toLocaleString()} kg` : `${qty.toLocaleString()} kg`}
           </span>
         </span>

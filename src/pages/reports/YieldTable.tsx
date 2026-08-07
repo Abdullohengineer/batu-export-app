@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import type { YieldRow } from '../../lib/yield'
+import { formatDate } from '../../lib/formatDate'
 
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top'
@@ -61,7 +62,7 @@ export function YieldTable({
                   </td>
                   <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{ownerName(row.ownerId)}</td>
                   <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{typeName(row.typeId)}</td>
-                  <td className={`${td} whitespace-nowrap text-slate-600 dark:text-slate-300`}>{row.completedDate}</td>
+                  <td className={`${td} whitespace-nowrap text-slate-600 dark:text-slate-300`}>{formatDate(row.completedDate)}</td>
                   <td className={`${td} whitespace-nowrap text-right tabular-nums`}>
                     {Math.round(row.rawConsumedKg).toLocaleString()} kg
                     {row.rawOverageKg > 0 && (

@@ -16,9 +16,10 @@ import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { type Tone } from '../../components/ui/tokens'
+import { formatDate, formatDateTime } from '../../lib/formatDate'
 
 function fmt(ts: string | null) {
-  return ts ? new Date(ts).toLocaleString() : '—'
+  return ts ? formatDateTime(ts) : '—'
 }
 
 // chiqim_requests only ever carries two status values in practice (see
@@ -204,7 +205,7 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
                     {ownerName(request.owner_id)} · {request.plate}
                   </span>
                   <span className="block text-sm text-slate-500 dark:text-slate-400">
-                    {request.request_date} · {request.driver} · {request.lines.length} qator
+                    {formatDate(request.request_date)} · {request.driver} · {request.lines.length} qator
                   </span>
                 </span>
                 {request.voided_at ? (

@@ -6,6 +6,7 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { useIntakeHistory, type IntakeHistoryFilters } from '../../lib/useIntakeHistory'
 import { IntakeDetailView } from './IntakeDetailView'
+import { formatDateTime } from '../../lib/formatDate'
 
 // Ombor's Hisobotlar (task step 4): read-only storage_intake history. Row
 // expand reuses the Step 3 full-story view (IntakeDetailView) unchanged.
@@ -135,7 +136,7 @@ export function OmborHisobotlar() {
               </span>
             </div>
             <div className="mt-1 text-slate-500 dark:text-slate-400">
-              {r.intake.status} · {new Date(r.intake.confirmed_at).toLocaleString()}
+              {r.intake.status} · {formatDateTime(r.intake.confirmed_at)}
             </div>
             {expanded === r.serial && (
               <IntakeDetailView line={r} ownerName={ownerName(r.owner_id)} typeName={typeName(r.type_id)} />

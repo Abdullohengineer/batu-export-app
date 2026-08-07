@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { PhotoField } from '../../components/PhotoField'
 import type { AwaitingSerial } from '../../lib/useLaboratorChiqim'
+import { formatDate } from '../../lib/formatDate'
 import { Button } from '../../components/ui/Button'
 import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
@@ -108,7 +109,7 @@ export function ChiqimTahlilForm({
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500 dark:text-slate-400">Moykaga yuborilgan</span>
           <span className="font-medium text-slate-900 dark:text-slate-100">
-            {item.sentKg.toLocaleString()} kg · {item.sentDate}
+            {item.sentKg.toLocaleString()} kg · {formatDate(item.sentDate)}
           </span>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { KirimRowDetail } from './KirimRowDetail'
 import { ChiqimRowDetail } from './ChiqimRowDetail'
 import { RawDispatchRowDetail } from './RawDispatchRowDetail'
 import { OldKnRowDetail } from './OldKnRowDetail'
+import { formatDate } from '../../lib/formatDate'
 
 const STATUS_LABEL: Record<string, string> = {
   omborda: 'Omborda',
@@ -58,7 +59,7 @@ export function ReportTableRow({
                   : 'CHIQIM'}
           </span>
         </td>
-        <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{row.dateBasis ?? '—'}</td>
+        <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{formatDate(row.dateBasis)}</td>
         <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
           {row.kind === 'chiqim' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}
         </td>

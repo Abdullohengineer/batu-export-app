@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import type { YieldRow } from './yield'
 import { YIELD_LOSS_BASIS_NOTE } from './yield'
+import { toExcelDate, EXCEL_DATE_FORMAT } from './formatDate'
 
 // §3.2.8 Excel export — same `exceljs` choice every other saved view's
 // export already made (see DECISIONS.md "Reporting query engine").
@@ -40,11 +41,11 @@ export async function buildYieldWorkbook(rows: YieldRow[], from: string, to: str
   headerRow.font = { bold: true }
 
   for (const row of rows) {
-    sheet.addRow([
+    const excelRow = sheet.addRow([
       row.serial,
       lookups.ownerName(row.ownerId),
       lookups.typeName(row.typeId),
-      row.completedDate,
+      toExcelDate(row.completedDate),
       row.rewashed ? 'Ha' : "Yo'q",
       row.rawConsumedKg,
       row.rawOverageKg > 0 ? row.rawOverageKg : '',
@@ -56,6 +57,7 @@ export async function buildYieldWorkbook(rows: YieldRow[], from: string, to: str
       row.intakeMoisturePct ?? '',
       row.deliveredMoisturePct ?? '',
     ])
+    excelRow.getCell(4).numFmt = EXCEL_DATE_FORMAT
   }
 
   sheet.columns.forEach((col) => {

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { HistoryView } from '../../components/HistoryView'
 import { GatePhoto } from '../../components/GatePhoto'
 import { defaultDateRange } from '../../lib/dateRange'
+import { formatDate } from '../../lib/formatDate'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -178,7 +179,7 @@ export function LaboratorTarixTab() {
             )}
           </button>
           <div className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
-            {r.sample_date} · Namligi {r.moisture_pct}% · SO₂ {r.so2_mg_kg !== null ? `${r.so2_mg_kg} mg/kg` : "Yo'q · naturel"}
+            {formatDate(r.sample_date)} · Namligi {r.moisture_pct}% · SO₂ {r.so2_mg_kg !== null ? `${r.so2_mg_kg} ppm` : "Yo'q · naturel"}
           </div>
           {expanded === r.id && (
             <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -189,7 +190,7 @@ export function LaboratorTarixTab() {
                 </span>{' '}
                 · SO₂{' '}
                 <span className="text-slate-400 dark:text-slate-500">
-                  {r.target_so2_mg_kg !== null ? `${r.target_so2_mg_kg} mg/kg` : "Talab yo'q"}
+                  {r.target_so2_mg_kg !== null ? `${r.target_so2_mg_kg} ppm` : "Talab yo'q"}
                 </span>
               </div>
               {r.sampled_pallet && (

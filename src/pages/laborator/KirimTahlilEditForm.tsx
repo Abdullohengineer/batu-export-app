@@ -143,7 +143,7 @@ export function KirimTahlilEditForm({
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
             Oltingugurt (SO₂){' '}
-            <span className="font-normal text-slate-400 dark:text-slate-500">(Talab: {row.target_so2_mg_kg} mg/kg)</span>
+            <span className="font-normal text-slate-400 dark:text-slate-500">(Talab: {row.target_so2_mg_kg} ppm)</span>
           </label>
           <div className="relative mt-1">
             <TextInput
@@ -158,7 +158,7 @@ export function KirimTahlilEditForm({
           </div>
           {exceedsTarget && (
             <div className="mt-1">
-              <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} mg/kg) — baribir saqlash mumkin.</StatusNote>
+              <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} ppm) — baribir saqlash mumkin.</StatusNote>
             </div>
           )}
         </div>

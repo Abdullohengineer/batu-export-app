@@ -4,6 +4,7 @@ import type { OutputSerial } from '../../lib/useMoykaOutput'
 import { Button } from '../../components/ui/Button'
 import { TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { formatDate } from '../../lib/formatDate'
 
 export interface ReceiptValues {
   calibreId: string
@@ -17,10 +18,6 @@ export interface ReceiptValues {
 // The Barcode #2 sticker ID is generated here: PLT-<serial>-<calibre code>-<seq>,
 // where seq disambiguates multiple pallets of the same serial+calibre (see
 // DECISIONS — the §2.2 format needed a per-pallet uniquifier).
-function todayLabel() {
-  const d = new Date()
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
-}
 
 export function FinishedReceiptForm({
   serial,
@@ -108,7 +105,7 @@ export function FinishedReceiptForm({
 
       <div>
         <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Sana</div>
-        <div className="mt-1 text-base text-slate-900 dark:text-slate-100">{todayLabel()}</div>
+        <div className="mt-1 text-base text-slate-900 dark:text-slate-100">{formatDate(new Date())}</div>
       </div>
 
       <div>

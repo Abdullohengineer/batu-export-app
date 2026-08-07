@@ -3,6 +3,7 @@ import { HistoryView } from '../../components/HistoryView'
 import { defaultDateRange } from '../../lib/dateRange'
 import { useOwners } from '../../lib/useOwners'
 import { useGateHistory, type GateHistoryFilters, type GateStatus } from '../../lib/useGateHistory'
+import { formatDate, formatDateTime } from '../../lib/formatDate'
 
 const STATUS_LABEL: Record<GateStatus, string> = {
   kirdi_boshatilmoqda: "Kirdi·bo'shatilmoqda",
@@ -96,7 +97,7 @@ export function QorovulHisobotlar() {
             className="flex w-full items-center justify-between text-left"
           >
             <span className="text-slate-900 dark:text-slate-100">
-              {r.sana} · {r.plate} · {r.driver}
+              {formatDate(r.sana)} · {r.plate} · {r.driver}
             </span>
             <span className="text-slate-500 dark:text-slate-400">
               {r.direction.toUpperCase()} · {STATUS_LABEL[r.status]}
@@ -104,7 +105,7 @@ export function QorovulHisobotlar() {
           </button>
           <div className="mt-1 text-slate-500 dark:text-slate-400">
             Yuk bilan: {kg(r.gruzheny_kg)} · Bo'sh: {kg(r.pustoy_kg)} · Net: {kg(r.net_kg)} · Yakun:{' '}
-            {r.completed_at ? new Date(r.completed_at).toLocaleString() : 'kutilmoqda'}
+            {r.completed_at ? formatDateTime(r.completed_at) : 'kutilmoqda'}
           </div>
           {expanded === r.id && (
             <div className="mt-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">

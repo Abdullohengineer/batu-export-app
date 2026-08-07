@@ -117,7 +117,7 @@ export interface PassportCyclePallet {
   barcode2: string
   calibreId: string
   weightKg: number
-  palletStatus: 'omborda' | 'band_qilingan' | 'jonatilgan' | 'bekor_qilingan'
+  palletStatus: 'omborda' | 'band_qilingan' | 'jonatilgan' | 'bekor_qilingan' | 'saqlashda_yoqolgan' | 'ishlatilgan'
   voidSuccessorBarcodes: string[] | null
 }
 
@@ -172,11 +172,89 @@ export interface PassportRawDispatch {
   loadedAt: string
 }
 
-export interface PassportCurrentPosition {
+// Joriy holat (2026-08-07) — a genuine raw+finished balance reconciliation,
+// replacing the old currentPosition (finished-goods-by-calibre only, and
+// silently dropped any pallet awaiting a lab verdict). Two independent
+// balances, not one combined equation: raw-sent-to-Moyka vs finished-
+// returned has a real gap (wash yield loss, yield_rows' own domain).
+// stillInStorageKg on both sides is read directly from stock_on_hand_rows
+// (qoldig'i), not recomputed — see DECISIONS.md "Old-stock reconciliation"
+// for the standing raw-balance two-implementations hazard this must not add
+// a third instance of.
+export interface PassportJoriyHolatRaw {
+  receivedKg: number
+  sentToMoykaKg: number
+  collectedRawKg: number
+  // This serial's DERIVED share of an old-raw close-out (the close-out
+  // itself only books a lump per owner+type, never per serial) -- 0 unless
+  // storageLossClosedAt is set.
+  storageLossKg: number
+  storageLossClosedAt: string | null
+  stillInStorageKg: number
+}
+
+export interface PassportJoriyHolatFinishedByCalibre {
   calibreId: string
-  inStockKg: number
+  availableKg: number
   reservedKg: number
-  collectedKg: number
+  underReviewKg: number
+}
+
+export interface PassportJoriyHolatFinished {
+  returnedKg: number
+  dispatchedKg: number
+  storageLossKg: number
+  // Rare exits, included so the equation never has a silent unexplained
+  // residual: consumed = used as a mint source for another serial; voided =
+  // bekor_qilindi.
+  consumedKg: number
+  voidedKg: number
+  stillInStorageKg: number
+  stillInStorageBreakdown: {
+    availableKg: number
+    reservedKg: number
+    awaitingLabKg: number
+    needsRewashKg: number
+  }
+  byCalibre: PassportJoriyHolatFinishedByCalibre[]
+}
+
+export interface PassportJoriyHolat {
+  raw: PassportJoriyHolatRaw
+  finished: PassportJoriyHolatFinished
+}
+
+// Two genuinely different shapes unioned into one array (old_washed is
+// per-pallet and exact; old_raw is a derived per-serial share of a
+// per-owner+type close-out lump) -- fields are only present for their own
+// kind, not nulled out for the other.
+export interface PassportStorageLossEvent {
+  kind: 'old_washed' | 'old_raw'
+  weightKg: number
+  barcode2?: string
+  calibreId?: string
+  voidedAt?: string
+  closedAt?: string
+  note?: string
+}
+
+// Symptom-A fix: a request that has reserved this serial's material
+// (chiqim_line_pallets / chiqim_line_raw_serials) but hasn't produced the
+// completed event yet (no dispatch_manifest / raw_dispatch_lines row) --
+// previously invisible on the passport even though it's already visible on
+// the CHIQIM screen.
+export interface PassportPendingDispatch {
+  kind: 'finished' | 'raw'
+  requestId: string
+  requestDate: string
+  plate: string
+  driver: string
+  // Only present for kind='finished' -- a raw pool reservation has no
+  // per-serial pending weight (chiqim_lines.qty_kg is the whole line's plan
+  // figure, not a per-serial split).
+  barcode2?: string
+  calibreId?: string
+  weightKg?: number
 }
 
 export interface SerialPassport {
@@ -194,7 +272,9 @@ export interface SerialPassport {
   // Stage 3: entity_type='moyka' notes keyed by this serial -- includes the
   // auto-note the mint writes recording old-stock lineage.
   notes: PassportNote[]
-  currentPosition: PassportCurrentPosition[]
+  joriyHolat: PassportJoriyHolat
+  storageLossEvents: PassportStorageLossEvent[]
+  pendingDispatches: PassportPendingDispatch[]
 }
 
 export async function fetchSerialPassport(serial: string): Promise<SerialPassport> {

@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button'
 import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
+import { formatDate } from '../../lib/formatDate'
 
 export interface IntakeAcceptValues {
   actualQty: number
@@ -17,10 +18,6 @@ export interface IntakeAcceptValues {
 // types, red "Kam chiqdi" past the configured limit — never blocks save.
 // Only the per-serial check exists here; there is no trip-level
 // reconciliation against the gate net (see DECISIONS.md).
-function todayLabel() {
-  const d = new Date()
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
-}
 
 export function IntakeAcceptForm({
   line,
@@ -109,7 +106,7 @@ export function IntakeAcceptForm({
 
       <div>
         <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Sana</div>
-        <div className="mt-1 text-base text-slate-900 dark:text-slate-100">{todayLabel()}</div>
+        <div className="mt-1 text-base text-slate-900 dark:text-slate-100">{formatDate(new Date())}</div>
       </div>
 
       {/* Not FormField: the label's `htmlFor` pairs explicitly with this

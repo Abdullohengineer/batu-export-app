@@ -288,7 +288,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
                 />
               </label>
               <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                Talab: SO₂ mg/kg
+                Talab: SO₂ ppm
                 <input
                   type="number"
                   min="0"

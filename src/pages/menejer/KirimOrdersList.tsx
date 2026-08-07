@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { formatDate } from '../../lib/formatDate'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -224,7 +225,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                 {order.plate} · {order.driver}
               </span>
               <span className="block text-sm text-slate-500 dark:text-slate-400">
-                {order.order_date} · {order.declared_total?.toLocaleString() ?? 0} kg
+                {formatDate(order.order_date)} · {order.declared_total?.toLocaleString() ?? 0} kg
               </span>
             </span>
             <StatusPill tone={STATUS_LABEL[order.status]?.tone ?? 'neutral'}>

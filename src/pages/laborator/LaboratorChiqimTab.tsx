@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { formatDate } from '../../lib/formatDate'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
@@ -93,7 +94,7 @@ export function LaboratorChiqimTab() {
     setSeraError(null)
     const value = parseFloat(seraValue[row.id] ?? '')
     if (isNaN(value)) {
-      setSeraError('SO₂ mg/kg ni kiriting.')
+      setSeraError('SO₂ ppm ni kiriting.')
       return
     }
     setSeraSaving(row.id)
@@ -178,7 +179,7 @@ export function LaboratorChiqimTab() {
                       </span>
                     </div>
                     <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
-                      {item.sentKg.toLocaleString()} kg · yuborilgan {item.sentDate}
+                      {item.sentKg.toLocaleString()} kg · yuborilgan {formatDate(item.sentDate)}
                     </div>
                     {item.rejected && (
                       <div className="mt-1 text-sm font-medium text-red-700 dark:text-red-400">
@@ -243,7 +244,7 @@ export function LaboratorChiqimTab() {
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                   Oltingugurt (SO₂){' '}
                   <span className="font-normal text-slate-400 dark:text-slate-500">
-                    (Talab: {row.target_so2_mg_kg} mg/kg)
+                    (Talab: {row.target_so2_mg_kg} ppm)
                   </span>
                 </label>
                 <div className="mt-1 flex items-center gap-2">
@@ -251,7 +252,7 @@ export function LaboratorChiqimTab() {
                     type="number"
                     min="0"
                     step="0.1"
-                    placeholder="SO₂ mg/kg"
+                    placeholder="SO₂ ppm"
                     value={seraValue[row.id] ?? ''}
                     onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
                     className="flex-1"
@@ -265,7 +266,7 @@ export function LaboratorChiqimTab() {
                   const v = parseFloat(seraValue[row.id] ?? '')
                   return !isNaN(v) && v > row.target_so2_mg_kg! ? (
                     <div className="mt-1">
-                      <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} mg/kg) — baribir saqlash mumkin.</StatusNote>
+                      <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} ppm) — baribir saqlash mumkin.</StatusNote>
                     </div>
                   ) : null
                 })()}
@@ -317,13 +318,13 @@ export function LaboratorChiqimTab() {
                       (Talab: {row.target_moisture_pct !== null ? `${row.target_moisture_pct}%` : "Talab yo'q"})
                     </span>
                     {' · '}
-                    SO₂ {row.so2_mg_kg !== null ? `${row.so2_mg_kg} mg/kg` : "Yo'q · naturel"}{' '}
+                    SO₂ {row.so2_mg_kg !== null ? `${row.so2_mg_kg} ppm` : "Yo'q · naturel"}{' '}
                     {row.target_so2_mg_kg !== null && (
-                      <span className="text-slate-400 dark:text-slate-500">(Talab: {row.target_so2_mg_kg} mg/kg)</span>
+                      <span className="text-slate-400 dark:text-slate-500">(Talab: {row.target_so2_mg_kg} ppm)</span>
                     )}
                   </div>
                   <div>
-                    {row.sample_date}
+                    {formatDate(row.sample_date)}
                     {row.sampledPallet ? ` · namuna manbai: ${row.sampledPallet}` : ''}
                   </div>
                   {row.note && <div>Qayd: {row.note}</div>}

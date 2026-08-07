@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { formatDate } from '../../lib/formatDate'
 
 async function uploadGatePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
@@ -18,15 +19,13 @@ async function uploadGatePhoto(file: File) {
   return path
 }
 
-// mockup "BATU-Qorovul-Screens-v1_1.pdf" p5: DD.MM · HH:MM, not the browser
-// locale default.
+// mockup "BATU-Qorovul-Screens-v1_1.pdf" p5: date · HH:MM, not the browser
+// locale default -- date portion now DD-MM-YY via the shared helper.
 function formatTripTime(iso: string) {
   const d = new Date(iso)
-  const dd = String(d.getDate()).padStart(2, '0')
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
   const hh = String(d.getHours()).padStart(2, '0')
   const min = String(d.getMinutes()).padStart(2, '0')
-  return `${dd}.${mm} · ${hh}:${min}`
+  return `${formatDate(d)} · ${hh}:${min}`
 }
 
 // Qorovul's CHIQIM tab (SPEC §4) — mirrors QorovulKirimTab.tsx exactly:

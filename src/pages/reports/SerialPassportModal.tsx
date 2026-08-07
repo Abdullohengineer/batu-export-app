@@ -2,14 +2,16 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { fetchSerialPassport, type SerialPassport, type PassportGate } from '../../lib/serialPassport'
 import { GatePhoto } from '../../components/GatePhoto'
 import { formatStockDate } from '../../lib/oldStock'
+import { formatDate, formatDateTime } from '../../lib/formatDate'
 
 type OpenPhoto = (url: string, label: string) => void
 
 // §3.2.5 Serial passport — the densest screen in the app, deliberately: one
-// parent serial's whole life, grouped by lifecycle stage so it reads top to
-// bottom as the material's story (Buyurtma → Darvoza → Qabul qilish →
-// Yuvish sikllari 1..N → Jo'natishlar → Joriy holat). Reached as a
-// drill-down from a Hisobot row's existing expand panel — see
+// parent serial's whole life. Opens with Joriy holat (2026-08-07), an
+// at-a-glance raw+finished reconciliation, then reads top to bottom as the
+// material's chronological story (Buyurtma → Darvoza → Qabul qilish →
+// Yuvish sikllari 1..N → Jo'natishlar → Saqlashda yo'qotilgan → Qaydlar).
+// Reached as a drill-down from a Hisobot row's existing expand panel — see
 // KirimRowDetail.tsx/ChiqimRowDetail.tsx's own trigger button — not a
 // separate screen/route, per the task's own framing. First modal in this
 // codebase (same "first of its kind, deliberately" pattern as the reporting
@@ -199,7 +201,7 @@ function PassportBody({
   calibreLabel: (id: string) => string
   onOpenPhoto: OpenPhoto
 }) {
-  const { order, effectiveQty, gate, intake, kirimLab, cycles, dispatches, rawDispatches, mintOrigin, notes, currentPosition } =
+  const { order, effectiveQty, gate, intake, kirimLab, cycles, dispatches, rawDispatches, mintOrigin, notes, joriyHolat, storageLossEvents, pendingDispatches } =
     passport
 
   const effectiveQtyValue = effectiveQty && (
@@ -225,6 +227,148 @@ function PassportBody({
 
   return (
     <div className="space-y-6">
+      {/* Joriy holat (2026-08-07) — at-a-glance raw+finished reconciliation,
+          rendered FIRST so the material's current state is visible before
+          the chronological lifecycle detail below it. Replaces the old
+          bottom-of-page currentPosition (finished-goods-by-calibre only,
+          folded in here as stillInStorageBreakdown/byCalibre). Both
+          balances reconcile exactly (their own parts sum to their own
+          whole) -- raw-sent-to-Moyka vs finished-returned is NOT expected
+          to match: that gap is real wash yield loss (yield_rows' domain),
+          not a reconciliation error. */}
+      <section>
+        <h3 className={sectionTitle}>Joriy holat</h3>
+        <div className="mt-2 grid gap-4 sm:grid-cols-2">
+          <div>
+            <div className={`${label} mb-1 font-semibold uppercase tracking-wide`}>Xom ashyo</div>
+            <FieldTable
+              rows={[
+                { label: 'Qabul qilingan', value: `${joriyHolat.raw.receivedKg.toLocaleString()} kg` },
+                { label: 'Moykaga yuborilgan', value: `${joriyHolat.raw.sentToMoykaKg.toLocaleString()} kg` },
+                { label: 'Xom holda jo’natilgan', value: `${joriyHolat.raw.collectedRawKg.toLocaleString()} kg` },
+                ...(joriyHolat.raw.storageLossKg > 0
+                  ? [
+                      {
+                        label: 'Saqlashda yo’qolgan',
+                        value: (
+                          <>
+                            {joriyHolat.raw.storageLossKg.toLocaleString()} kg
+                            {joriyHolat.raw.storageLossClosedAt && (
+                              <span className={`${label} font-normal`}>
+                                {' '}
+                                — turi {formatDate(joriyHolat.raw.storageLossClosedAt)} da yakunlandi, taxminiy ulush
+                              </span>
+                            )}
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
+                {
+                  label: 'Omborda qoldi',
+                  value: <span className="font-semibold">{joriyHolat.raw.stillInStorageKg.toLocaleString()} kg</span>,
+                },
+              ]}
+            />
+          </div>
+          <div>
+            <div className={`${label} mb-1 font-semibold uppercase tracking-wide`}>Tayyor mahsulot</div>
+            <FieldTable
+              rows={[
+                { label: 'Moykadan qaytdi', value: `${joriyHolat.finished.returnedKg.toLocaleString()} kg` },
+                { label: "Jo'natildi", value: `${joriyHolat.finished.dispatchedKg.toLocaleString()} kg` },
+                ...(joriyHolat.finished.storageLossKg > 0
+                  ? [{ label: 'Saqlashda yo’qolgan', value: `${joriyHolat.finished.storageLossKg.toLocaleString()} kg` }]
+                  : []),
+                ...(joriyHolat.finished.consumedKg > 0
+                  ? [{ label: 'Qayta ishlashga ishlatilgan', value: `${joriyHolat.finished.consumedKg.toLocaleString()} kg` }]
+                  : []),
+                ...(joriyHolat.finished.voidedKg > 0
+                  ? [{ label: 'Bekor qilindi', value: `${joriyHolat.finished.voidedKg.toLocaleString()} kg` }]
+                  : []),
+                {
+                  label: 'Omborda qoldi',
+                  value: (
+                    <>
+                      <span className="font-semibold">{joriyHolat.finished.stillInStorageKg.toLocaleString()} kg</span>
+                      {joriyHolat.finished.stillInStorageKg > 0 && (
+                        <span className={`${label} font-normal`}>
+                          {' '}
+                          — {[
+                            joriyHolat.finished.stillInStorageBreakdown.availableKg > 0 &&
+                              `${joriyHolat.finished.stillInStorageBreakdown.availableKg.toLocaleString()} bo'sh`,
+                            joriyHolat.finished.stillInStorageBreakdown.reservedKg > 0 &&
+                              `${joriyHolat.finished.stillInStorageBreakdown.reservedKg.toLocaleString()} band qilingan`,
+                            joriyHolat.finished.stillInStorageBreakdown.awaitingLabKg > 0 &&
+                              `${joriyHolat.finished.stillInStorageBreakdown.awaitingLabKg.toLocaleString()} laboratoriya kutilmoqda`,
+                            joriyHolat.finished.stillInStorageBreakdown.needsRewashKg > 0 &&
+                              `${joriyHolat.finished.stillInStorageBreakdown.needsRewashKg.toLocaleString()} qayta yuvish kerak`,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </span>
+                      )}
+                    </>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        </div>
+        {joriyHolat.finished.byCalibre.length > 1 && (
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={label}>
+                  <th className="px-1 py-1 text-left">Kalibr</th>
+                  <th className="px-1 py-1 text-right">Bo'sh</th>
+                  <th className="px-1 py-1 text-right">Band qilingan</th>
+                  <th className="px-1 py-1 text-right">Tekshiruvda</th>
+                </tr>
+              </thead>
+              <tbody>
+                {joriyHolat.finished.byCalibre.map((bc) => (
+                  <tr key={bc.calibreId} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="px-1 py-1 text-slate-900 dark:text-slate-100">{calibreLabel(bc.calibreId)}</td>
+                    <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{bc.availableKg.toLocaleString()} kg</td>
+                    <td className="px-1 py-1 text-right text-amber-700 dark:text-amber-400">{bc.reservedKg.toLocaleString()} kg</td>
+                    <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{bc.underReviewKg.toLocaleString()} kg</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Kutilayotgan (Pending dispatches, 2026-08-07 — Symptom A fix). A
+          request that has reserved this serial's material but hasn't
+          produced the completed event yet was previously invisible here
+          even though it's already visible on the CHIQIM screen. Omitted
+          entirely when empty, matching this passport's "missing shows
+          nothing" rule. */}
+      {pendingDispatches.length > 0 && (
+        <section>
+          <h3 className={sectionTitle}>Kutilayotgan yuklashlar</h3>
+          <div className="mt-2 space-y-2">
+            {pendingDispatches.map((pd) => (
+              <div key={`${pd.kind}-${pd.requestId}-${pd.barcode2 ?? ''}`} className="rounded-md border border-amber-200 p-2 text-sm dark:border-amber-900">
+                <span className="font-medium text-slate-900 dark:text-slate-100">
+                  {pd.kind === 'finished' ? "Tayyor mahsulot" : 'Xom ashyo'}
+                </span>
+                <span className={`ml-2 ${label}`}>
+                  {pd.plate} · {pd.driver} · {formatDate(pd.requestDate)}
+                  {pd.kind === 'finished' && pd.weightKg !== undefined && ` · ${pd.weightKg.toLocaleString()} kg`}
+                </span>
+                <div className={label}>
+                  {pd.kind === 'finished' ? "So'rovga band qilingan, hali yuklanmagan" : "Havzaga qo'shilgan, hali yig'ib olinmagan"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Kelib chiqishi (Mint origin) — Stage 3. Rendered FIRST for a minted
           serial: it is this serial's actual beginning, and the Buyurtma /
           Darvoza sections below are near-empty for it by design (no truck
@@ -364,7 +508,7 @@ function PassportBody({
                 },
                 {
                   label: 'Mijoz talabi — SO₂',
-                  value: order.targetSo2MgKg !== null ? `${order.targetSo2MgKg} mg/kg` : "Talab yo'q · naturel",
+                  value: order.targetSo2MgKg !== null ? `${order.targetSo2MgKg} ppm` : "Talab yo'q · naturel",
                 },
                 ...(effectiveQtyValue ? [{ label: 'Effektiv miqdor', value: effectiveQtyValue }] : []),
                 // Nakladnoy — captured on the KIRIM form ("Mijoz nakladnoyasini
@@ -423,7 +567,7 @@ function PassportBody({
                   ),
                 },
                 { label: 'Tara', value: intake.boxMassKg !== null ? `${intake.boxMassKg.toLocaleString()} kg` : '—' },
-                { label: 'Qabul qildi', value: `${intake.confirmedByName ?? '—'} · ${new Date(intake.confirmedAt).toLocaleString()}` },
+                { label: 'Qabul qildi', value: `${intake.confirmedByName ?? '—'} · ${formatDateTime(intake.confirmedAt)}` },
                 ...(intake.barcode1 ? [{ label: 'Barcode #1', value: intake.barcode1 }] : []),
                 ...(intake.komment ? [{ label: 'Izoh', value: intake.komment }] : []),
                 ...(intake.pilePhoto
@@ -441,8 +585,8 @@ function PassportBody({
             <FieldTable
               rows={[
                 { label: 'Namligi', value: `${kirimLab.moisturePct}%` },
-                { label: 'SO₂', value: kirimLab.so2MgKg !== null ? `${kirimLab.so2MgKg} mg/kg` : "yo'q · naturel" },
-                { label: 'Tekshirdi', value: `${kirimLab.testedByName ?? '—'} · ${kirimLab.sampleDate}` },
+                { label: 'SO₂', value: kirimLab.so2MgKg !== null ? `${kirimLab.so2MgKg} ppm` : "yo'q · naturel" },
+                { label: 'Tekshirdi', value: `${kirimLab.testedByName ?? '—'} · ${formatDate(kirimLab.sampleDate)}` },
                 ...(kirimLab.note ? [{ label: 'Izoh', value: kirimLab.note }] : []),
                 ...(kirimLab.samplePhoto
                   ? [{ label: 'Namuna rasmi', value: <GatePhoto path={kirimLab.samplePhoto} label="Namuna rasmi" bucket="lab-photos" thumbnail onOpen={onOpenPhoto} /> }]
@@ -503,7 +647,15 @@ function PassportBody({
                             </span>
                           ) : (
                             <span className="text-slate-500 dark:text-slate-400">
-                              {p.palletStatus === 'omborda' ? 'Omborda' : p.palletStatus === 'band_qilingan' ? 'Band qilingan' : "Jo'natilgan"}
+                              {p.palletStatus === 'omborda'
+                                ? 'Omborda'
+                                : p.palletStatus === 'band_qilingan'
+                                  ? 'Band qilingan'
+                                  : p.palletStatus === 'saqlashda_yoqolgan'
+                                    ? 'Saqlashda yo\'qolgan'
+                                    : p.palletStatus === 'ishlatilgan'
+                                      ? 'Qayta ishlashga ishlatilgan'
+                                      : "Jo'natilgan"}
                             </span>
                           )}
                         </td>
@@ -531,11 +683,11 @@ function PassportBody({
                       },
                       {
                         label: 'SO₂',
-                        value: `${cycle.lab.so2MgKg !== null ? `${cycle.lab.so2MgKg} mg/kg` : "yo'q · naturel"}${
-                          order?.targetSo2MgKg !== null && order?.targetSo2MgKg !== undefined ? ` (talab: ${order.targetSo2MgKg} mg/kg)` : ''
+                        value: `${cycle.lab.so2MgKg !== null ? `${cycle.lab.so2MgKg} ppm` : "yo'q · naturel"}${
+                          order?.targetSo2MgKg !== null && order?.targetSo2MgKg !== undefined ? ` (talab: ${order.targetSo2MgKg} ppm)` : ''
                         }`,
                       },
-                      { label: 'Tekshirdi', value: `${cycle.lab.testedByName ?? '—'} · ${cycle.lab.sampleDate}` },
+                      { label: 'Tekshirdi', value: `${cycle.lab.testedByName ?? '—'} · ${formatDate(cycle.lab.sampleDate)}` },
                       // Was only ever shown in the aggregate Rasmlar gallery
                       // before this task — folded in here now that that
                       // section is going away, so it isn't lost.
@@ -564,11 +716,11 @@ function PassportBody({
                 rows={[
                   { label: 'Moshina raqami', value: d.plate },
                   { label: 'Haydovchi', value: d.driver },
-                  { label: 'Sana', value: d.requestDate },
+                  { label: 'Sana', value: formatDate(d.requestDate) },
                   {
                     label: 'Ombor',
                     value: `${d.omborFinishedByName ? `${d.omborFinishedByName} yakunladi` : 'Ombor hali yakunlamagan'}${
-                      d.omborFinishedAt ? ` · ${new Date(d.omborFinishedAt).toLocaleString()}` : ''
+                      d.omborFinishedAt ? ` · ${formatDateTime(d.omborFinishedAt)}` : ''
                     }`,
                   },
                   ...buildGateRows(d.gate, "Bo'sh (1-bosqich)", 'Yuk bilan (2-bosqich)', onOpenPhoto),
@@ -592,7 +744,7 @@ function PassportBody({
                         <td className="px-1 py-1 font-mono text-slate-900 dark:text-slate-100">{p.barcode2}</td>
                         <td className="px-1 py-1 text-slate-700 dark:text-slate-300">{calibreLabel(p.calibreId)}</td>
                         <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{p.weightKg.toLocaleString()}</td>
-                        <td className="px-1 py-1 text-slate-500 dark:text-slate-400">{new Date(p.loadedAt).toLocaleString()}</td>
+                        <td className="px-1 py-1 text-slate-500 dark:text-slate-400">{formatDateTime(p.loadedAt)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -619,13 +771,50 @@ function PassportBody({
                   rows={[
                     { label: 'Moshina raqami', value: rd.plate },
                     { label: 'Haydovchi', value: rd.driver },
-                    { label: 'Sana', value: rd.requestDate },
+                    { label: 'Sana', value: formatDate(rd.requestDate) },
                     { label: 'Vazn', value: `${rd.weightKg.toLocaleString()} kg` },
                     { label: 'Tara', value: `${rd.boxMassKg.toLocaleString()} kg` },
                     { label: 'Netto', value: `${rd.netKg.toLocaleString()} kg` },
-                    { label: 'Yuklangan', value: new Date(rd.loadedAt).toLocaleString() },
+                    { label: 'Yuklangan', value: formatDateTime(rd.loadedAt) },
                   ]}
                 />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Saqlashda yo'qotilgan (Storage-loss close-out events, 2026-08-07) —
+          the fourth exit path the passport was missing entirely. old_washed
+          is per-pallet and exact; old_raw is a single derived-share entry
+          (the close-out only books a lump per owner+type, never per
+          serial) — no photos exist for a close-out (an administrative RPC
+          action, not a physical event with a camera present), so none are
+          shown, matching "missing shows nothing" rather than fabricating a
+          photo row. */}
+      {storageLossEvents.length > 0 && (
+        <section>
+          <h3 className={sectionTitle}>Saqlashda yo'qotilgan</h3>
+          <div className="mt-2 space-y-2">
+            {storageLossEvents.map((e, i) => (
+              <div key={`${e.kind}-${e.barcode2 ?? i}`} className="rounded-md border border-slate-200 p-2 text-sm dark:border-slate-700">
+                {e.kind === 'old_washed' ? (
+                  <>
+                    <span className="font-mono text-slate-900 dark:text-slate-100">{e.barcode2}</span>
+                    <span className={`ml-2 ${label}`}>
+                      {e.calibreId && calibreLabel(e.calibreId)} · {e.weightKg.toLocaleString()} kg
+                      {e.voidedAt && ` · ${formatDate(e.voidedAt)}`}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium text-slate-900 dark:text-slate-100">Xom ashyo — turi yakunlandi</span>
+                    <span className={`ml-2 ${label}`}>
+                      {e.weightKg.toLocaleString()} kg{e.closedAt && ` · ${formatDate(e.closedAt)}`}
+                    </span>
+                    {e.note && <div className={label}>{e.note}</div>}
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -647,44 +836,13 @@ function PassportBody({
                 {n.body}
                 <span className={`ml-2 ${label}`}>
                   {n.authorName ? `${n.authorName} · ` : ''}
-                  {new Date(n.createdAt).toLocaleString()}
+                  {formatDateTime(n.createdAt)}
                 </span>
               </li>
             ))}
           </ul>
         </section>
       )}
-
-      {/* Joriy holat (Current position), by calibre */}
-      <section>
-        <h3 className={sectionTitle}>Joriy holat</h3>
-        {currentPosition.length === 0 ? (
-          <p className={`mt-2 ${label}`}>Hozircha tayyor mahsulot yo'q.</p>
-        ) : (
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className={label}>
-                  <th className="px-1 py-1 text-left">Kalibr</th>
-                  <th className="px-1 py-1 text-right">Omborda</th>
-                  <th className="px-1 py-1 text-right">Band qilingan</th>
-                  <th className="px-1 py-1 text-right">Jo'natilgan</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentPosition.map((cp) => (
-                  <tr key={cp.calibreId} className="border-t border-slate-100 dark:border-slate-800">
-                    <td className="px-1 py-1 text-slate-900 dark:text-slate-100">{calibreLabel(cp.calibreId)}</td>
-                    <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{cp.inStockKg.toLocaleString()} kg</td>
-                    <td className="px-1 py-1 text-right text-amber-700 dark:text-amber-400">{cp.reservedKg.toLocaleString()} kg</td>
-                    <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{cp.collectedKg.toLocaleString()} kg</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </div>
   )
 }
@@ -738,11 +896,11 @@ function buildGateRows(
       : []),
     {
       label: stage1Label,
-      value: `${gate.stage1CreatedByName ?? '—'} · ${gate.stage1CompletedAt ? new Date(gate.stage1CompletedAt).toLocaleString() : 'kutilmoqda'}`,
+      value: `${gate.stage1CreatedByName ?? '—'} · ${gate.stage1CompletedAt ? formatDateTime(gate.stage1CompletedAt) : 'kutilmoqda'}`,
     },
     {
       label: stage2Label,
-      value: `${gate.stage2CreatedByName ?? '—'} · ${gate.stage2CompletedAt ? new Date(gate.stage2CompletedAt).toLocaleString() : 'kutilmoqda'}`,
+      value: `${gate.stage2CreatedByName ?? '—'} · ${gate.stage2CompletedAt ? formatDateTime(gate.stage2CompletedAt) : 'kutilmoqda'}`,
     },
     ...photos
       .filter((p): p is [string, string] => !!p[0])

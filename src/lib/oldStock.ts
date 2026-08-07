@@ -7,9 +7,11 @@
 // label exists to satisfy — "nothing should imply this material arrived on
 // the seed date"). One shared helper so the wording can't drift screen to
 // screen.
+import { formatDate } from './formatDate'
+
 export const OLD_STOCK_DATE_LABEL = 'Eski zaxira 2025-2026'
 
 export function formatStockDate(isOldStock: boolean, date: string | null): string {
   if (isOldStock) return OLD_STOCK_DATE_LABEL
-  return date ?? '—'
+  return formatDate(date)
 }

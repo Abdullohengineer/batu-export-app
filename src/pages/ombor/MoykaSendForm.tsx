@@ -2,11 +2,7 @@ import { useState, type FormEvent } from 'react'
 import type { MoykaSerial } from '../../lib/useMoykaSerials'
 import { Button } from '../../components/ui/Button'
 import { TextInput } from '../../components/ui/FormField'
-
-function todayLabel() {
-  const d = new Date()
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
-}
+import { formatDate } from '../../lib/formatDate'
 
 // §5.2 send form: quantity input with live "Qoladi" (available − in-progress
 // input, updated as he types). Over-send is blocked — you can't send more raw
@@ -82,7 +78,7 @@ export function MoykaSendForm({
 
       <div>
         <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Sana</div>
-        <div className="mt-1 text-base text-slate-900 dark:text-slate-100">{todayLabel()}</div>
+        <div className="mt-1 text-base text-slate-900 dark:text-slate-100">{formatDate(new Date())}</div>
       </div>
 
       <div>

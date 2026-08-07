@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { formatDate } from '../../lib/formatDate'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
@@ -104,7 +105,7 @@ export function OmborMoykaTab() {
             <ul className="mt-1 space-y-1">
               {s.sends.map((send) => (
                 <li key={send.id} className="text-sm text-slate-600 dark:text-slate-400">
-                  {send.sent_date} · {send.qty_kg.toLocaleString()} kg
+                  {formatDate(send.sent_date)} · {send.qty_kg.toLocaleString()} kg
                 </li>
               ))}
             </ul>

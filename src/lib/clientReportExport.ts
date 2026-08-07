@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import type { ClientReport } from './clientReport'
 import { CLIENT_REPORT_LABELS, type ReportLocale } from './clientReportLabels'
+import { toExcelDate, EXCEL_DATE_FORMAT } from './formatDate'
 
 // §3.2.7 requirement E: Excel output (no PDF -- no such dependency exists
 // in this codebase; this sheet is designed to print directly). Same
@@ -86,7 +87,8 @@ export async function buildClientReportWorkbook(
     sheet.addRow([t.rawDispatches]).font = { bold: true, size: 12 }
     sheet.addRow([t.seriya, t.plate, t.driver, 'Sana / Дата', t.weight, 'Tara / Тара', 'Netto / Нетто']).font = { bold: true }
     for (const d of report.raw.dispatches) {
-      sheet.addRow([d.serial, d.plate, d.driver, d.requestDate, d.weightKg, d.boxMassKg, d.netKg])
+      const excelRow = sheet.addRow([d.serial, d.plate, d.driver, toExcelDate(d.requestDate), d.weightKg, d.boxMassKg, d.netKg])
+      excelRow.getCell(4).numFmt = EXCEL_DATE_FORMAT
     }
     sheet.addRow([])
   }
@@ -102,7 +104,8 @@ export async function buildClientReportWorkbook(
     sheet.addRow([t.oldKnCollections]).font = { bold: true }
     sheet.addRow([t.turi, t.plate, t.driver, 'Sana / Дата', t.weight]).font = { bold: true }
     for (const c of report.oldKn.collections) {
-      sheet.addRow([lookups.typeName(c.typeId), c.plate, c.driver, c.requestDate, c.collectedKg])
+      const excelRow = sheet.addRow([lookups.typeName(c.typeId), c.plate, c.driver, toExcelDate(c.requestDate), c.collectedKg])
+      excelRow.getCell(4).numFmt = EXCEL_DATE_FORMAT
     }
   }
   sheet.addRow([])
@@ -136,11 +139,11 @@ export async function buildClientReportWorkbook(
     t.target,
   ]).font = { bold: true }
   for (const qr of report.qualityRecord) {
-    const targetText = qr.targetSo2MgKg === null && qr.targetMoisturePct === null ? t.naturalNoTarget : `${qr.targetMoisturePct ?? '—'}% / ${qr.targetSo2MgKg === null ? t.naturalNoTarget : qr.targetSo2MgKg + 'mg/kg'}`
-    sheet.addRow([
+    const targetText = qr.targetSo2MgKg === null && qr.targetMoisturePct === null ? t.naturalNoTarget : `${qr.targetMoisturePct ?? '—'}% / ${qr.targetSo2MgKg === null ? t.naturalNoTarget : qr.targetSo2MgKg + ' ppm'}`
+    const excelRow = sheet.addRow([
       qr.serial,
       lookups.typeName(qr.typeId),
-      qr.arrivalDate,
+      toExcelDate(qr.arrivalDate),
       qr.intakeLab?.moisturePct ?? '',
       qr.intakeLab?.so2MgKg ?? (qr.targetSo2MgKg === null ? t.naturalNoTarget : ''),
       qr.deliveredLab?.moisturePct ?? '',
@@ -148,13 +151,17 @@ export async function buildClientReportWorkbook(
       qr.deliveredLab ? (qr.deliveredLab.verdict === 'o_tdi' ? t.verdictPassed : t.verdictRewash) : t.untested,
       targetText,
     ])
+    excelRow.getCell(3).numFmt = EXCEL_DATE_FORMAT
   }
   sheet.addRow([])
 
   // ---- Collapsed-in-UI detail, printed in full here: dispatch trips ----
   sheet.addRow([t.dispatches]).font = { bold: true, size: 12 }
   for (const d of report.dispatches) {
-    sheet.addRow([d.plate, d.driver, d.requestDate, d.departedAt ?? '']).font = { bold: true }
+    const excelRow = sheet.addRow([d.plate, d.driver, toExcelDate(d.requestDate), toExcelDate(d.departedAt)])
+    excelRow.font = { bold: true }
+    excelRow.getCell(3).numFmt = EXCEL_DATE_FORMAT
+    excelRow.getCell(4).numFmt = EXCEL_DATE_FORMAT
     sheet.addRow(['', 'Barcode #2', t.kalibr, t.weight])
     for (const p of d.pallets) {
       sheet.addRow(['', p.barcode2, lookups.calibreLabel(p.calibreId), p.weightKg])

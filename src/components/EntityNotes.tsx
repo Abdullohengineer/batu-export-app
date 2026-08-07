@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNotes } from '../lib/useNotes'
+import { formatDateTime } from '../lib/formatDate'
 
 // Reusable append-only Qaydlar UI (SPEC §2.5): a note list + a
 // "Qaydlar qo'shish" add form. No edit/delete controls by design — append
@@ -34,7 +35,7 @@ export function EntityNotes({ entityType, entityId }: { entityType: string; enti
           {notes.map((n) => (
             <li key={n.id} className="text-sm text-slate-600 dark:text-slate-400">
               {n.body}
-              <span className="ml-2 text-xs text-slate-400">{new Date(n.created_at).toLocaleString()}</span>
+              <span className="ml-2 text-xs text-slate-400">{formatDateTime(n.created_at)}</span>
             </li>
           ))}
         </ul>

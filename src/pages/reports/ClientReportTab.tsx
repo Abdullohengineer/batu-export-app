@@ -7,6 +7,7 @@ import { defaultDateRange } from '../../lib/dateRange'
 import { CLIENT_REPORT_LABELS, type ReportLocale } from '../../lib/clientReportLabels'
 import { downloadClientReportExcel } from '../../lib/clientReportExport'
 import { SerialPassportModal } from './SerialPassportModal'
+import { formatDate } from '../../lib/formatDate'
 import { Button } from '../../components/ui/Button'
 import { StatusNote } from '../../components/ui/StatusNote'
 
@@ -288,7 +289,7 @@ export function ClientReportTab() {
                       )}
                     </td>
                     <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>
-                      {qr.targetSo2MgKg === null ? t.naturalNoTarget : `${qr.targetMoisturePct}% / ${qr.targetSo2MgKg}mg/kg`}
+                      {qr.targetSo2MgKg === null ? t.naturalNoTarget : `${qr.targetMoisturePct}% / ${qr.targetSo2MgKg} ppm`}
                     </td>
                     <td className={`${td} text-right`}>
                       <button
@@ -330,7 +331,7 @@ export function ClientReportTab() {
                         <span className="font-mono font-medium">{d.serial}</span>
                         <span>{d.plate}</span>
                         <span>{d.driver}</span>
-                        <span className="text-slate-400">{d.requestDate}</span>
+                        <span className="text-slate-400">{formatDate(d.requestDate)}</span>
                       </div>
                       <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                         {d.weightKg.toLocaleString()} kg − {d.boxMassKg.toLocaleString()} kg tara = {d.netKg.toLocaleString()} kg
@@ -375,7 +376,7 @@ export function ClientReportTab() {
                         <span className="font-medium">{typeName(c.typeId)}</span>
                         <span>{c.plate}</span>
                         <span>{c.driver}</span>
-                        <span className="text-slate-400">{c.requestDate}</span>
+                        <span className="text-slate-400">{formatDate(c.requestDate)}</span>
                       </div>
                       <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">{c.collectedKg.toLocaleString()} kg</div>
                     </div>
@@ -405,8 +406,8 @@ export function ClientReportTab() {
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-700 dark:text-slate-300">
                         <span className="font-medium">{d.plate}</span>
                         <span>{d.driver}</span>
-                        <span>{d.requestDate}</span>
-                        <span className="text-slate-400">{d.departedAt}</span>
+                        <span>{formatDate(d.requestDate)}</span>
+                        <span className="text-slate-400">{formatDate(d.departedAt)}</span>
                       </div>
                       <ul className="mt-2 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
                         {d.pallets.map((p) => (

@@ -6,6 +6,7 @@ import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { formatDate } from '../../lib/formatDate'
 
 type CloseoutKind = 'old_washed' | 'old_kn' | 'old_raw'
 
@@ -156,7 +157,7 @@ export function OldStockCloseoutTab() {
 
               {isClosed ? (
                 <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                  Yakunlangan · {new Date(l.closed_at as string).toLocaleDateString()} ·{' '}
+                  Yakunlangan · {formatDate(l.closed_at as string)} ·{' '}
                   {(l.closed_book_remaining_kg ?? 0).toLocaleString()} kg saqlash yo'qotishi sifatida yozildi
                 </p>
               ) : canClose ? (

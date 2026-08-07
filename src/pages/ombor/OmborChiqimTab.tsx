@@ -24,6 +24,7 @@ import { Stat } from '../../components/ui/Stat'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { TextInput } from '../../components/ui/FormField'
 import type { Tone } from '../../components/ui/tokens'
+import { formatDate, formatDateTime } from '../../lib/formatDate'
 
 // Opening stock, Stage 2 (2026-08-02, see DECISIONS.md "Opening stock") —
 // old-stock lines get a shared amber treatment wherever they render
@@ -646,7 +647,7 @@ export function OmborChiqimTab() {
                       {ownerName(request.owner_id)}
                     </div>
                     <div className="truncate text-sm text-slate-500 dark:text-slate-400">
-                      So'rov · {request.request_date} · {request.plate} · {request.driver}
+                      So'rov · {formatDate(request.request_date)} · {request.plate} · {request.driver}
                     </div>
                   </div>
                   <StatusPill tone="info">Nishon {target.toLocaleString()} kg</StatusPill>
@@ -693,7 +694,7 @@ export function OmborChiqimTab() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-slate-500 dark:text-slate-400">So'rov sanasi</span>
-                          <span className="font-medium text-slate-900 dark:text-slate-100">{request.request_date}</span>
+                          <span className="font-medium text-slate-900 dark:text-slate-100">{formatDate(request.request_date)}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-slate-500 dark:text-slate-400">Moshina · haydovchi</span>
@@ -1253,7 +1254,7 @@ export function OmborChiqimTab() {
                   </div>
                   <div className="truncate text-sm text-slate-500 dark:text-slate-400">
                     {request.plate} · {request.driver} · maqsad {requestTarget(request).toLocaleString()} kg · yuklangan{' '}
-                    {request.ombor_finished_at ? new Date(request.ombor_finished_at).toLocaleString() : ''}
+                    {request.ombor_finished_at ? formatDateTime(request.ombor_finished_at) : ''}
                   </div>
                 </div>
                 <span className="shrink-0 text-slate-500 dark:text-slate-400">⋯</span>
@@ -1349,7 +1350,7 @@ export function OmborChiqimTab() {
                       <ul className="mt-1 space-y-0.5">
                         {oldKnPastCollections.map((c) => (
                           <li key={c.id} className="flex items-center justify-between text-xs">
-                            <span className="text-slate-600 dark:text-slate-400">{new Date(c.collected_at).toLocaleString()}</span>
+                            <span className="text-slate-600 dark:text-slate-400">{formatDateTime(c.collected_at)}</span>
                             <span className="text-slate-600 dark:text-slate-400">{c.collected_kg.toLocaleString()} kg</span>
                           </li>
                         ))}

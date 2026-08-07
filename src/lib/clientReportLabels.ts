@@ -113,7 +113,7 @@ export const CLIENT_REPORT_LABELS: Record<ReportLocale, ClientReportLabelSet> = 
     turi: 'Tur',
     kalibr: 'Kalibr',
     moisture: 'Namligi %',
-    so2: 'SO₂ mg/kg',
+    so2: 'SO₂ ppm',
     verdict: 'Verdikt',
     plate: 'Moshina',
     driver: 'Haydovchi',

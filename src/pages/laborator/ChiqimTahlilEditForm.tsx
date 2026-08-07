@@ -177,14 +177,14 @@ export function ChiqimTahlilEditForm({
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
             Oltingugurt (SO₂){' '}
-            <span className="font-normal text-slate-400 dark:text-slate-500">(Talab: {row.target_so2_mg_kg} mg/kg)</span>
+            <span className="font-normal text-slate-400 dark:text-slate-500">(Talab: {row.target_so2_mg_kg} ppm)</span>
           </label>
           <div className="relative mt-1">
             <TextInput type="number" min="0" step="0.1" required value={so2} onChange={(e) => setSo2(e.target.value)} className="!text-2xl font-bold" />
           </div>
           {exceedsSo2Target && (
             <div className="mt-1">
-              <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} mg/kg) — baribir saqlash mumkin.</StatusNote>
+              <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} ppm) — baribir saqlash mumkin.</StatusNote>
             </div>
           )}
         </div>

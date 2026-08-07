@@ -30,8 +30,8 @@ export function KirimRowDetail({ row, onOpenPassport }: { row: KirimReportRow; o
           Namligi: {row.kirimMoisturePct !== null ? `${row.kirimMoisturePct}%` : 'tekshirilmagan'}
           {row.targetMoisturePct !== null && ` (talab: ${row.targetMoisturePct}%)`}
           {' · '}
-          SO₂: {row.kirimSo2MgKg !== null ? `${row.kirimSo2MgKg} mg/kg` : row.targetSo2MgKg === null ? "yo'q · naturel" : 'tekshirilmagan'}
-          {row.targetSo2MgKg !== null && ` (talab: ${row.targetSo2MgKg} mg/kg)`}
+          SO₂: {row.kirimSo2MgKg !== null ? `${row.kirimSo2MgKg} ppm` : row.targetSo2MgKg === null ? "yo'q · naturel" : 'tekshirilmagan'}
+          {row.targetSo2MgKg !== null && ` (talab: ${row.targetSo2MgKg} ppm)`}
         </div>
       )}
       <button

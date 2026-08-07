@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import type { IntakeLine, IntakeRecord } from '../../lib/useIntakeLines'
 import { Barcode1Display } from './Barcode1Display'
 import { Stat } from '../../components/ui/Stat'
+import { formatDate } from '../../lib/formatDate'
 
 // §5.1 item 5: the on-demand full story for one serial — manager's
 // declared figures, the gate's weights (or "kutilmoqda" if stage 2 hasn't
@@ -40,7 +41,7 @@ export function IntakeDetailView({
           background invented for this screen. */}
       <div className="grid grid-cols-2 gap-2">
         <Stat value={`${line.intake.actual_qty.toLocaleString()} kg`} label="Aniq" tone="info" valueSize="compact" />
-        <Stat value={line.order_date} label="Sana" tone="info" valueSize="compact" />
+        <Stat value={formatDate(line.order_date)} label="Sana" tone="info" valueSize="compact" />
       </div>
 
       <div>

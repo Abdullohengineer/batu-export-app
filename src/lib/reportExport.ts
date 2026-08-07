@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import { dateBasisLabel, WEIGHT_BASIS_LABEL, type ReportRow, type ReportFilters, type ReportTotals } from './reportQuery'
 import { fetchAllReportRowsForExport } from './useReportQuery'
+import { toExcelDate, EXCEL_DATE_FORMAT } from './formatDate'
 
 // §3.2.4/§3.2.2 "Excel export on every view, respecting the active filter,
 // with the date basis and weight basis printed in the header." Uses
@@ -52,10 +53,11 @@ export async function buildReportWorkbook(
   headerRow.font = { bold: true }
 
   for (const row of rows) {
+    let excelRow: ExcelJS.Row
     if (row.kind === 'kirim') {
-      sheet.addRow([
+      excelRow = sheet.addRow([
         'KIRIM',
-        row.dateBasis ?? '',
+        toExcelDate(row.dateBasis),
         row.serial,
         lookups.ownerName(row.ownerId),
         lookups.typeName(row.typeId),
@@ -67,9 +69,9 @@ export async function buildReportWorkbook(
         row.provisional ? 'tarozi kutilmoqda' : '',
       ])
     } else if (row.kind === 'chiqim_raw') {
-      sheet.addRow([
+      excelRow = sheet.addRow([
         'CHIQIM (xom)',
-        row.dateBasis ?? '',
+        toExcelDate(row.dateBasis),
         row.serial,
         lookups.ownerName(row.ownerId),
         lookups.typeName(row.typeId),
@@ -81,9 +83,9 @@ export async function buildReportWorkbook(
         '',
       ])
     } else if (row.kind === 'chiqim_old_kn') {
-      sheet.addRow([
+      excelRow = sheet.addRow([
         'CHIQIM (eski KN)',
-        row.dateBasis ?? '',
+        toExcelDate(row.dateBasis),
         '',
         lookups.ownerName(row.ownerId),
         lookups.typeName(row.typeId),
@@ -102,9 +104,9 @@ export async function buildReportWorkbook(
         : row.palletStatus !== 'jonatilgan'
           ? row.palletStatus
           : ''
-      sheet.addRow([
+      excelRow = sheet.addRow([
         'CHIQIM',
-        row.dateBasis ?? '',
+        toExcelDate(row.dateBasis),
         row.barcode2,
         lookups.ownerName(row.ownerId),
         lookups.typeName(row.typeId),
@@ -116,6 +118,8 @@ export async function buildReportWorkbook(
         note,
       ])
     }
+    // 'Sana' is column 2 in every branch above.
+    excelRow.getCell(2).numFmt = EXCEL_DATE_FORMAT
   }
 
   sheet.addRow([])

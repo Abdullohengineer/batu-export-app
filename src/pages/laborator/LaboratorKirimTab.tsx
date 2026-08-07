@@ -14,10 +14,10 @@ import { StatusNote } from '../../components/ui/StatusNote'
 import { TextInput } from '../../components/ui/FormField'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { Stat } from '../../components/ui/Stat'
+import { formatDate } from '../../lib/formatDate'
 
 function shortDate(iso: string) {
-  const d = new Date(iso)
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`
+  return formatDate(iso)
 }
 
 // §5.5.2 Laborator KIRIM — descriptive check, no verdict. Three windows:
@@ -85,7 +85,7 @@ export function LaboratorKirimTab() {
     setSeraError(null)
     const value = parseFloat(seraValue[row.id] ?? '')
     if (!value && value !== 0) {
-      setSeraError('SO₂ mg/kg ni kiriting.')
+      setSeraError('SO₂ ppm ni kiriting.')
       return
     }
     setSeraSaving(row.id)
@@ -224,7 +224,7 @@ export function LaboratorKirimTab() {
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                   Oltingugurt (SO₂){' '}
                   <span className="font-normal text-slate-400 dark:text-slate-500">
-                    (Talab: {row.target_so2_mg_kg} mg/kg)
+                    (Talab: {row.target_so2_mg_kg} ppm)
                   </span>
                 </label>
                 <div className="mt-1 flex items-center gap-2">
@@ -232,7 +232,7 @@ export function LaboratorKirimTab() {
                     type="number"
                     min="0"
                     step="0.1"
-                    placeholder="SO₂ mg/kg"
+                    placeholder="SO₂ ppm"
                     value={seraValue[row.id] ?? ''}
                     onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
                     className="flex-1"
@@ -249,7 +249,7 @@ export function LaboratorKirimTab() {
                   const v = parseFloat(seraValue[row.id] ?? '')
                   return !isNaN(v) && v > row.target_so2_mg_kg! ? (
                     <div className="mt-1">
-                      <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} mg/kg) — baribir saqlash mumkin.</StatusNote>
+                      <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} ppm) — baribir saqlash mumkin.</StatusNote>
                     </div>
                   ) : null
                 })()}
@@ -283,7 +283,7 @@ export function LaboratorKirimTab() {
                   <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {row.moisture_pct}% · {row.so2_mg_kg !== null ? row.so2_mg_kg.toLocaleString() : "Yo'q · naturel"}
                   </div>
-                  <div className="text-xs text-slate-400">namligi · SO₂ mg/kg</div>
+                  <div className="text-xs text-slate-400">namligi · SO₂ ppm</div>
                 </div>
               </button>
               {expandedFinished === row.id && (
@@ -295,10 +295,10 @@ export function LaboratorKirimTab() {
                     </span>{' '}
                     · SO₂{' '}
                     <span className="text-slate-400 dark:text-slate-500">
-                      {row.target_so2_mg_kg !== null ? `${row.target_so2_mg_kg} mg/kg` : "Talab yo'q"}
+                      {row.target_so2_mg_kg !== null ? `${row.target_so2_mg_kg} ppm` : "Talab yo'q"}
                     </span>
                   </div>
-                  <div>{row.sample_date} · tahlil to'liq</div>
+                  <div>{formatDate(row.sample_date)} · tahlil to'liq</div>
                   {row.note && <div>Qayd: {row.note}</div>}
                   <GatePhoto path={row.sample_photo} label="Namuna rasmi" bucket="lab-photos" />
                   {editingFinished !== row.id && (

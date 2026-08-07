@@ -34,8 +34,8 @@ export function ChiqimRowDetail({
             Laboratoriya (chiqim): namligi {row.moisturePct !== null ? `${row.moisturePct}%` : 'tekshirilmagan'}
             {row.targetMoisturePct !== null && ` (talab: ${row.targetMoisturePct}%)`}
             {' · '}
-            SO₂: {row.so2MgKg !== null ? `${row.so2MgKg} mg/kg` : row.targetSo2MgKg === null ? "yo'q · naturel" : 'tekshirilmagan'}
-            {row.targetSo2MgKg !== null && ` (talab: ${row.targetSo2MgKg} mg/kg)`}
+            SO₂: {row.so2MgKg !== null ? `${row.so2MgKg} ppm` : row.targetSo2MgKg === null ? "yo'q · naturel" : 'tekshirilmagan'}
+            {row.targetSo2MgKg !== null && ` (talab: ${row.targetSo2MgKg} ppm)`}
           </div>
           {!row.requestId && <div>Hali hech qanday CHIQIM so'roviga bog'lanmagan.</div>}
         </>

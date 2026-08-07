@@ -13,6 +13,7 @@ import { hasRawRemainder } from '../../lib/stageMembership'
 import { IntakeAcceptForm, type IntakeAcceptValues } from './IntakeAcceptForm'
 import { IntakeDetailView } from './IntakeDetailView'
 import { Barcode1Display } from './Barcode1Display'
+import { formatDate } from '../../lib/formatDate'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { IconButton } from '../../components/ui/IconButton'
@@ -151,7 +152,7 @@ export function OmborIntakeTab() {
                   </span>
                 </div>
                 <div className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
-                  {line.plate} · {line.driver} · {line.order_date}
+                  {line.plate} · {line.driver} · {formatDate(line.order_date)}
                 </div>
 
                 {!acceptable && (

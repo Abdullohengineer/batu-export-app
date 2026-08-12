@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BATU EXPORT — Bosh sahifa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f4f1; --card:#fff; --line:#e9e4dd;
+  --ink:#1f1c18; --mid:#6f675c; --faint:#a39a8d;
+  --amber:#e0952f; --amber-t:#fbf0dd;
+  --sage:#6f9450;  --sage-t:#ecf2e4;
+  --plum:#8d5c7c;  --plum-t:#f4ecf1;
+  --red:#c0392b;   --sand-t:#f4efe6;
+  --p1:#2f6d86; --p2:#5aa0a8; --p3:#7c86b8;
+  --r:18px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;padding:28px 20px 80px}
+.wrap{max-width:1180px;margin:0 auto}
+h1,h2{font-family:"Bricolage Grotesque",system-ui,sans-serif}
+h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0}
+.sub{color:var(--mid);font-size:13.5px;margin-top:3px}
+.filters{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:18px 0 22px}
+.fgroup{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.flabel{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 14px;
+  font-size:13px;font-weight:500;color:var(--mid);white-space:nowrap}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.scope{display:flex;gap:3px;background:#eceae5;border-radius:999px;padding:3px}
+.scope span{padding:6px 16px;border-radius:999px;font-size:13px;font-weight:600;color:var(--mid)}
+.scope span.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.07)}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+.tile{border-radius:var(--r);padding:20px}
+.tile .k{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;opacity:.72}
+.tile .v{font-size:29px;font-weight:800;letter-spacing:-.02em;margin-top:7px;line-height:1;font-family:"Bricolage Grotesque",sans-serif}
+.tile .u{font-size:14px;font-weight:600;opacity:.6;margin-left:3px}
+.tile .d{font-size:12.5px;margin-top:8px;opacity:.68}
+.t-a{background:var(--amber-t);color:#6a4514}.t-s{background:var(--sage-t);color:#3d5629}
+.t-p{background:var(--plum-t);color:#5a3550}.t-n{background:var(--sand-t);color:#5d5140}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:22px;margin-bottom:14px}
+.chead{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+h2{font-size:17px;font-weight:600;letter-spacing:-.01em;margin:0}
+.hint{font-size:12.5px;color:var(--faint);margin-top:2px}
+.selbtn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 14px;
+  font-size:13px;font-weight:600;color:var(--ink);display:inline-flex;align-items:center;gap:8px}
+.selbtn .cnt{background:#f2efea;border-radius:6px;padding:1px 7px;font-size:11.5px;color:var(--mid)}
+.split{display:grid;grid-template-columns:1fr 1px 1fr;gap:30px}
+.rule{background:var(--line)}
+.panelttl{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:14px}
+.grid2b{display:grid;grid-template-columns:.9fr 1.1fr;gap:30px}
+.silo{display:flex;height:54px;border-radius:12px;overflow:hidden;margin-bottom:16px}
+.silo div{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:13px}
+.legend{display:flex;flex-direction:column;gap:10px}
+.lrow{display:flex;align-items:center;gap:11px;font-size:13.5px}
+.dot{width:11px;height:11px;border-radius:3px;flex:none}
+.lrow .nm{flex:1;color:var(--mid)}
+.lrow .kg{font-weight:600;font-family:"Bricolage Grotesque",sans-serif}
+.lrow .pc{color:var(--faint);font-size:12.5px;width:40px;text-align:right}
+table{width:100%;border-collapse:collapse}
+.led td{padding:11px 0;border-bottom:1px solid #f2efea;font-size:14px}
+.led td:last-child{text-align:right;font-weight:600;font-family:"Bricolage Grotesque",sans-serif;font-size:15px}
+.led .in td{color:var(--sage)}
+.led .out td{color:var(--red)}
+.led .tot td{border-bottom:0;border-top:2px solid var(--ink);padding-top:13px;font-weight:700;font-size:15px}
+.led .tot td:last-child{font-size:18px}
+.led .sb td{color:var(--mid);font-size:13px;padding-left:16px}
+.sign{display:inline-block;width:16px;font-weight:700}
+.grand{border:2px solid var(--ink);border-radius:14px;padding:18px 20px;margin-top:22px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.grand .gl{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mid)}
+.grand .gs{font-size:12.5px;color:var(--faint);margin-top:3px}
+.grand .gv{font-family:"Bricolage Grotesque",sans-serif;font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.cap{font-size:12.5px;color:var(--faint);margin-top:14px;line-height:1.55}
+.bars{display:flex;flex-direction:column;gap:12px}
+.brow{display:grid;grid-template-columns:104px 1fr 100px;align-items:center;gap:12px;font-size:13.5px}
+.brow .bn{color:var(--mid)}
+.track{height:25px;background:#f4f1ec;border-radius:7px;overflow:hidden}
+.fill{height:100%;border-radius:7px}
+.brow .bv{text-align:right;font-weight:600;font-family:"Bricolage Grotesque",sans-serif}
+.brow .bv small{color:var(--faint);font-weight:400;font-family:"IBM Plex Sans";margin-left:5px}
+.sep{height:1px;background:#f2efea;margin:4px 0}
+.divide{height:1px;background:var(--line);margin:26px 0 20px}
+@media(max-width:900px){.tiles{grid-template-columns:repeat(2,1fr)}
+ .split{grid-template-columns:1fr;gap:24px}.rule{height:1px;width:100%}.grid2b{grid-template-columns:1fr;gap:24px}}
+</style>
+</head>
+<body><div class="wrap">
+
+<div><h1>Bosh sahifa</h1><div class="sub">Global Export Company</div></div>
+
+<div class="filters">
+  <div class="fgroup"><span class="flabel">Zaxira</span>
+    <div class="scope"><span class="on">Yangi</span><span>Eski</span><span>Hammasi</span></div></div>
+  <div class="fgroup"><span class="flabel">Davr</span>
+    <span class="chip on">Boshidan</span><span class="chip">Bu oy</span>
+    <span class="chip">O'tgan oy</span><span class="chip">15.07 — 12.08 &#9662;</span></div>
+</div>
+
+<div class="tiles">
+  <div class="tile t-n"><div class="k">Jami zaxira</div><div class="v">21,855<span class="u">kg</span></div><div class="d">Omborda qolgan — barcha holat</div></div>
+  <div class="tile t-a"><div class="k">Xom &middot; yuvilmagan</div><div class="v">16,035<span class="u">kg</span></div><div class="d">Yuvishga tayyor</div></div>
+  <div class="tile t-s"><div class="k">Tayyor &middot; kalibrli</div><div class="v">4,560<span class="u">kg</span></div><div class="d">3,700 olib ketilgan</div></div>
+  <div class="tile t-p"><div class="k">Konditirskiy</div><div class="v">1,260<span class="u">kg</span></div><div class="d">600 olib ketilgan</div></div>
+</div>
+
+<div class="card">
+  <div class="chead"><div><h2>Zaxira tarkibi</h2><div class="hint">Hozir omborda nima bor — olib ketilgani chegirilgan</div></div></div>
+  <div class="split">
+    <div>
+      <div class="panelttl">Holat bo'yicha</div>
+      <div class="silo">
+        <div style="width:73.4%;background:var(--amber)">16,035</div>
+        <div style="width:20.9%;background:var(--sage)">4,560</div>
+        <div style="width:5.7%;background:var(--plum)">1,260</div>
+      </div>
+      <div class="legend">
+        <div class="lrow"><span class="dot" style="background:var(--amber)"></span><span class="nm">Xom — yuvilmagan</span><span class="kg">16,035 kg</span><span class="pc">73%</span></div>
+        <div class="lrow"><span class="dot" style="background:var(--sage)"></span><span class="nm">Tayyor — kalibrli</span><span class="kg">4,560 kg</span><span class="pc">21%</span></div>
+        <div class="lrow"><span class="dot" style="background:var(--plum)"></span><span class="nm">Konditirskiy</span><span class="kg">1,260 kg</span><span class="pc">6%</span></div>
+      </div>
+      <div class="cap">Zavoddan chiqqan mahsulot — &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; va olib ketilgan tayyor — bu raqamlardan chegirilgan.</div>
+    </div>
+    <div class="rule"></div>
+    <div>
+      <div class="panelttl">Tur bo'yicha</div>
+      <svg viewBox="0 0 240 200" width="100%" style="max-width:250px;display:block;margin:0 auto 4px">
+        <circle cx="120" cy="100" r="72" fill="none" stroke="#f2efea" stroke-width="26"/>
+        <circle cx="120" cy="100" r="72" fill="none" stroke="#2f6d86" stroke-width="26" stroke-dasharray="348 104" transform="rotate(-90 120 100)"/>
+        <circle cx="120" cy="100" r="72" fill="none" stroke="#5aa0a8" stroke-width="26" stroke-dasharray="104 348" stroke-dashoffset="-348" transform="rotate(-90 120 100)"/>
+        <text x="120" y="96" text-anchor="middle" font-family="Bricolage Grotesque" font-size="25" font-weight="800" fill="#1f1c18">21,855</text>
+        <text x="120" y="116" text-anchor="middle" font-family="IBM Plex Sans" font-size="11.5" fill="#a39a8d">kg &middot; 2 tur</text>
+      </svg>
+      <div class="legend">
+        <div class="lrow"><span class="dot" style="background:#2f6d86"></span><span class="nm">Subxon</span><span class="kg">16,830 kg</span><span class="pc">77%</span></div>
+        <div class="lrow"><span class="dot" style="background:#5aa0a8"></span><span class="nm">Isfara</span><span class="kg">5,025 kg</span><span class="pc">23%</span></div>
+      </div>
+      <div class="cap">Yangi davrda faqat ikki tur kelgan. Eski zaxirada besh tur bor.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="chead"><div><h2>Kirim va chiqim</h2><div class="hint">15.07.26 — 12.08.26 &middot; qizil rang — zavoddan chiqqan</div></div></div>
+  <div class="grid2b">
+    <div>
+      <table class="led">
+        <tr class="in"><td><span class="sign">+</span>Zavodga kirdi</td><td>31,635 kg</td></tr>
+        <tr class="out"><td><span class="sign">&minus;</span>&#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; — xom qaytdi</td><td>3,200 kg</td></tr>
+        <tr><td><span class="sign">&middot;</span>Yuvilgan</td><td>12,400 kg</td></tr>
+        <tr class="tot"><td>Xom qoldiq</td><td>16,035 kg</td></tr>
+      </table>
+
+      <table class="led" style="margin-top:24px">
+        <tr><td>Yuvilgan mahsulot</td><td>10,120 kg</td></tr>
+        <tr class="sb"><td>shundan Konditirskiy</td><td>1,860 kg</td></tr>
+        <tr><td><span class="sign">&minus;</span>Yo'qotish</td><td>2,280 kg &middot; 18.4%</td></tr>
+        <tr class="out"><td><span class="sign">&minus;</span>Jami olib ketilgan</td><td>4,300 kg</td></tr>
+        <tr class="tot"><td>Tayyor qoldiq</td><td>5,820 kg</td></tr>
+      </table>
+
+      <div class="grand">
+        <div><div class="gl">Jami zaxira</div>
+        <div class="gs">Xom 16,035 &middot; kalibrli 4,560 &middot; KN 1,260</div></div>
+        <div class="gv">21,855<span style="font-size:16px;font-weight:600;opacity:.55;margin-left:4px">kg</span></div>
+      </div>
+      <div class="cap">&#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; — mijoz yuvdirmasdan qaytarib olgan xom mahsulot. Yo'qotish yuvish jarayonida yo'qolgan qism, zavoddan chiqmagan.</div>
+    </div>
+
+    <div>
+      <svg viewBox="0 0 470 250" width="100%">
+        <line x1="44" y1="18" x2="44" y2="198" stroke="#e9e4dd"/><line x1="44" y1="198" x2="458" y2="198" stroke="#e9e4dd"/>
+        <g font-family="IBM Plex Sans" font-size="10.5" fill="#a39a8d">
+          <text x="36" y="22" text-anchor="end">12k</text><text x="36" y="82" text-anchor="end">8k</text>
+          <text x="36" y="142" text-anchor="end">4k</text><text x="36" y="201" text-anchor="end">0</text></g>
+        <g stroke="#f4f1ec"><line x1="44" y1="18" x2="458" y2="18"/><line x1="44" y1="78" x2="458" y2="78"/><line x1="44" y1="138" x2="458" y2="138"/></g>
+        <path d="M78,140 L158,86 L238,112 L318,64 L398,98 L398,198 L78,198 Z" fill="#e0952f" opacity=".12"/>
+        <polyline points="78,140 158,86 238,112 318,64 398,98" fill="none" stroke="#e0952f" stroke-width="2.6" stroke-linejoin="round"/>
+        <polyline points="78,192 158,168 238,150 318,132 398,140" fill="none" stroke="#6f9450" stroke-width="2.6" stroke-linejoin="round"/>
+        <polyline points="78,198 158,190 238,186 318,174 398,181" fill="none" stroke="#c0392b" stroke-width="2.6" stroke-dasharray="5 4" stroke-linejoin="round"/>
+        <g fill="#e0952f"><circle cx="78" cy="140" r="3.4"/><circle cx="158" cy="86" r="3.4"/><circle cx="238" cy="112" r="3.4"/><circle cx="318" cy="64" r="3.4"/><circle cx="398" cy="98" r="3.4"/></g>
+        <g fill="#6f9450"><circle cx="158" cy="168" r="3"/><circle cx="238" cy="150" r="3"/><circle cx="318" cy="132" r="3"/><circle cx="398" cy="140" r="3"/></g>
+        <g font-family="IBM Plex Sans" font-size="10.5" fill="#a39a8d" text-anchor="middle">
+          <text x="78" y="216">16.07</text><text x="158" y="216">23.07</text><text x="238" y="216">25.07</text>
+          <text x="318" y="216">02.08</text><text x="398" y="216">09.08</text></g>
+      </svg>
+      <div class="legend" style="margin-top:4px">
+        <div class="lrow"><span class="dot" style="background:#e0952f"></span><span class="nm">Zavodga kirgan</span><span class="kg">31,635 kg</span></div>
+        <div class="lrow"><span class="dot" style="background:#6f9450"></span><span class="nm">Yuvilgan</span><span class="kg">12,400 kg</span></div>
+        <div class="lrow"><span class="dot" style="background:#c0392b"></span><span class="nm">&#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;</span><span class="kg">3,200 kg</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="chead">
+    <div><h2>Yuvilgan mahsulot</h2><div class="hint">12,400 kg xomdan olingan natija</div></div>
+    <span class="selbtn">Turlar: hammasi <span class="cnt">2 / 2</span> &#9662;</span>
+  </div>
+  <div class="bars">
+    <div class="brow"><span class="bn">Kalibr 6</span><div class="track"><div class="fill" style="width:100%;background:var(--sage)"></div></div><span class="bv">3,150<small>31%</small></span></div>
+    <div class="brow"><span class="bn">Kalibr 8</span><div class="track"><div class="fill" style="width:94.6%;background:var(--sage)"></div></div><span class="bv">2,980<small>29%</small></span></div>
+    <div class="brow"><span class="bn">Kalibr 4</span><div class="track"><div class="fill" style="width:39.4%;background:var(--sage)"></div></div><span class="bv">1,240<small>12%</small></span></div>
+    <div class="brow"><span class="bn">Kalibr 1</span><div class="track"><div class="fill" style="width:28.3%;background:var(--sage)"></div></div><span class="bv">890<small>9%</small></span></div>
+    <div class="sep"></div>
+    <div class="brow"><span class="bn">Konditirskiy</span><div class="track"><div class="fill" style="width:59%;background:var(--plum)"></div></div><span class="bv">1,860<small>18%</small></span></div>
+    <div class="brow"><span class="bn">Yo'qotish</span><div class="track"><div class="fill" style="width:72.4%;background:#cfc7bb"></div></div><span class="bv">2,280<small>18.4%</small></span></div>
+  </div>
+  <div class="cap">Turlar tugmasi orqali bir yoki bir nechta mahsulot turini tanlash mumkin — masalan faqat Subxon, yoki Subxon va Isfara birga.</div>
+
+  <div class="divide"></div>
+
+  <div class="chead" style="margin-bottom:14px">
+    <div><h2 style="font-size:15px">Olib ketilgan tayyor mahsulot</h2>
+    <div class="hint">Yuvilgandan keyin mijozga qaytgan qismi</div></div>
+  </div>
+  <div class="bars">
+    <div class="brow"><span class="bn">Kalibr 6</span><div class="track"><div class="fill" style="width:57.1%;background:var(--p1)"></div></div><span class="bv">1,800<small>57%</small></span></div>
+    <div class="brow"><span class="bn">Kalibr 8</span><div class="track"><div class="fill" style="width:50.3%;background:var(--p1)"></div></div><span class="bv">1,500<small>50%</small></span></div>
+    <div class="brow"><span class="bn">Kalibr 4</span><div class="track"><div class="fill" style="width:32.3%;background:var(--p1)"></div></div><span class="bv">400<small>32%</small></span></div>
+    <div class="sep"></div>
+    <div class="brow"><span class="bn">Konditirskiy</span><div class="track"><div class="fill" style="width:32.3%;background:var(--p3)"></div></div><span class="bv">600<small>32%</small></span></div>
+  </div>
+  <div class="cap">Jami olib ketilgan <strong style="color:var(--ink)">4,300 kg</strong> &middot; omborda qolgan <strong style="color:var(--ink)">5,820 kg</strong>. Foizlar — o'sha kalibrning yuvilgan miqdoridan qancha qismi ketgani.</div>
+</div>
+
+</div></body></html>

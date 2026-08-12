@@ -2666,4 +2666,148 @@ Deliberately two equations, not one — raw-sent-to-Moyka vs. finished-returned 
 
 **Verification.** `npx tsc -b --noEmit` clean. Unit suite 82/82. Playwright 5/5.
 
+## 2026-08-12 — Rahbar dashboard: sync-twin of get_client_report, not a shared refactor
+
+**Context:** `rahbar_dashboard_ledger` (0068) needs the same opening/kirdi/chiqdi/closing raw
+and finished balance logic as `get_client_report` (0065) — factory-wide instead of per-owner,
+scope-filtered on `kirim_orders.origin` instead of unfiltered. Extracting a shared helper was
+considered and explicitly rejected.
+
+**Decision:**
+- `rahbar_dashboard_ledger` duplicates `get_client_report`'s CTE shapes directly rather than
+  factoring out a common function. The migration's header comment carries a full CTE-name
+  mapping table between the two functions. Any change to a shared formula in one must be
+  hand-applied to the other — there is no compiler or test that will catch drift automatically.
+- One real deviation was found and kept, not silently inherited: `raw_received_total` in
+  `rahbar_dashboard_ledger` adds a `has_intake` filter that `get_client_report`'s identical
+  formula lacks. Found live (real serial `110826-003`, 7,160 kg) — without it, "kirdi" could
+  count a serial invisible to "closing," breaking the identity. `get_client_report` was left
+  untouched (out of scope for this task) but carries the same latent gap — logged as a
+  follow-up below.
+- The "Moykada" line was requested sourced from `wip_rows`, but `wip_rows` has no kg column
+  and only covers wash cycles already past the idle-days threshold — structurally cannot
+  supply "kg currently in Moyka." Substituted `get_client_report`'s own `moykada_total`
+  formula instead: still zero new derivation, just a different already-verified source.
+- Konditirskiy tile (`rahbar_stock_snapshot`) excludes the `old_kn` bucket entirely — Ledger C
+  is `finished_pallets`-based and structurally cannot reflect old-KN pool balance, so folding
+  it into the tile would silently disagree with the ledger under Eski/Hammasi scope. KN origin
+  tracking stays out of scope; this dashboard doesn't claim old-KN coverage anywhere.
+  (Superseded 2026-08-13 below — old KN restored as its own separate figure.)
+
+**Alternatives considered:** Extracting shared CTEs into a parameterized helper function
+(owner filter optional) — rejected per direct instruction; duplication is accepted as the
+simpler, more auditable path given `get_client_report`'s existing complexity.
+
+**Follow-up, not fixed:** `get_client_report`'s own `raw_received_total` still lacks the
+`has_intake` filter described above.
+
+## 2026-08-13 — Rahbar dashboard revision: old-KN restored, Moykada opening balance, over-send edge case
+
+**Context:** First revision round against the 2026-08-12 draft — four defects, two agreed
+changes.
+
+**Decision:**
+- Root-caused the reported "52,210 should be 51,170" defect as a false premise, not a bug:
+  migration 0059 (2026-08-03) fully reverted the Stage 3 re-wash test and reissued the same
+  1,040 kg (barcodes `PLT-020826-037-06-1/-2` → `PLT-020826-038-06-1/-2`, serial
+  `020826-038`) before this dashboard existed. `serial_mint_sources` was empty at the time;
+  its exclusion clause was a correct no-op, not a broken one. 52,210 stood, confirmed against
+  `stock_on_hand_rows` independently.
+- `chart_kirdi` gained the `has_intake` filter `raw_received_total` already had; `chart_chiqgan`
+  and `chart_vozvrat` gained the `between p_from and p_to` upper-bound guard `chart_kirdi`
+  already had — weekly buckets whose span isn't a multiple of 7 days left the final bucket's
+  naive upper edge past `p_to`, leaking later events in. Both gaps confirmed live before the
+  fix and closed after.
+- Old-KN pool stock restored as its own `oldKnKg` snapshot key, included in `totalKg` and
+  `byType`, explicitly separate from and never reconciled against Ledger C. Omitting it
+  entirely (the 08-12 draft's choice) hid ~103,936 kg of real client-owned stock; judged the
+  worse error.
+- Ledger B gained its own identity: `moyka_opening_total`, the same `moykada_total` formula as
+  the existing closing snapshot, evaluated at `p_from` instead of `p_to`. Verified live on a
+  straddle fixture: opening 500 + sent 700 − processed 800 = 400 = closing, exact.
+- **Edge case found and left unfixed, by design:** when a line is sent to Moyka for more than
+  its own effective raw quantity (`report_kirim_rows_as_of`'s `qty_kg`), (1) the new Ledger B
+  opening/closing identity shows a residual equal to the over-send amount, because
+  `sent_capped_kg` caps at the declared quantity while the Moykada snapshot formulas use the
+  uncapped sent total; and (2) for the same reason, Ledger A's own `opening + kirdi − vozvrat −
+  moykaga = closing` identity can also undershoot by the same residual, because
+  `raw_closing_total` floors at `greatest(0, ...)`. Both verified live with disposable fixtures
+  (600 kg declared, 900 kg sent → 300 kg residual in both cases). Not fixed: capping
+  `raw_received_total`/`moyka_sent_period_total` to match the floor would be a new, unconfirmed
+  gating scheme, and `get_client_report` carries the identical `greatest(0,...)` characteristic
+  and is out of scope for this task.
+
+**Follow-ups (not fixed, flagged only):** the `get_client_report` `raw_received_total` gap
+(2026-08-12 entry) and the over-send floor characteristic above both remain open on
+`get_client_report`.
+
+## 2026-08-14 — Rahbar dashboard revision 2: mint exclusion exercised, over-send residual surfaced, date-basis conflict flagged (deferred)
+
+**Context:** Second revision round — two fixture tests and one investigation, the
+investigation reported but not implemented.
+
+**Decision:**
+- `serial_mint_sources`'s exclusion clause in `pallets` (both `rahbar_dashboard_ledger` and
+  `get_client_report`) confirmed live, not dead code: `mint_serial_from_sources` (0055) writes
+  real rows on its current path. Exercised with a disposable fixture replicating the mint flow
+  exactly — source pallets dropped out of the ledger, out of Eski finished closing, and out of
+  the snapshot; the minted serial's own output correctly landed under Yangi scope
+  (`origin='internal_reprocess'`). First time the clause has ever fired against real-shaped
+  data.
+- Added `raw.residualKg` and `moykadaSnapshot.residualKg` to `rahbar_dashboard_ledger` —
+  diagnostic-only, computed from the already-existing CTEs, no balance formula touched. Both
+  read 0 on all real data. Verified on a 600-declared/900-sent fixture: raw residual −300,
+  Moyka residual +300 — same magnitude, opposite sign by construction (each formula's own term
+  order), not an inconsistency.
+- **Investigated, not implemented, then formally deferred by Abdulloh (2026-08-14):** a
+  proposed rule to date inbound/outbound movements by finalization (Ombor + gate) rather than
+  by Menejer's entered date directly contradicts SPEC.md §3.2.3 (v1.24) and the 2026-07-30
+  decision "Reports showed the wrong date," which deliberately reverted the system away from
+  gate-timestamp dating for exactly this reason — order entry and the physical gate event
+  landing on different days is "the normal case," not an edge case, and that decision
+  explicitly extended to `get_client_report`'s dispatch-side bucketing with the user's own
+  sign-off. `rahbar_dashboard_ledger` is already built on the current (entered-date) rule and
+  is not the source of any drift. Live data quantified: 0 change to any period total on the
+  live period tested (kirdi's per-line dates shift up to 13 days within the same window;
+  vozvrat/olib ketilgan show zero gap on all 3 real CHIQIM requests in that period). **Both
+  deferred, not implemented, per Abdulloh's call — the возврат gate-weigh-2 gate and the kirdi
+  intake→gate-weigh-2 change stay open follow-ups, revisit if the conflict with §3.2.3 is
+  ever deliberately resolved the other way.**
+
+**Source-mapping (requested this round):** most `rahbar_dashboard_ledger`/
+`rahbar_stock_snapshot` figures re-derive an existing per-owner `get_client_report` formula at
+factory-wide grain, or read `stock_on_hand_rows`' rows directly. Genuinely new, with no
+existing source: the two residual lines, `moykadaSnapshot.openingKg`, `byCalibreType`'s
+type×calibre cross, and the chart's three time-bucketed series. No existing view was changed
+to manufacture a shared source for any of these.
+
+**Follow-ups (not fixed, flagged only):** the `get_client_report` `raw_received_total`
+has_intake gap and the over-send floor characteristic (both above) remain open. The date-basis
+conflict is now a formally deferred item, not fixed, per Abdulloh's 2026-08-14 call.
+
+## 2026-08-14 — Rahbar dashboard: migration applied, frontend built
+
+**Context:** Abdulloh's call: ship the dashboard visual with what exists; stop the date-basis
+work (both proposed gate changes deferred, logged above).
+
+**Decision:**
+- Applied `0068_rahbar_dashboard.sql` as-is (`rahbar_stock_snapshot`, `rahbar_dashboard_ledger`).
+  Post-apply, re-verified against live data in all three scopes: ledger closing = snapshot
+  (both raw and finished), Ledger A identity exact, both `residualKg` lines read 0, all three
+  chart series sum exactly to their ledger totals.
+- `RahbarHome.tsx` (Bosh sahifa) rebuilt against `docs/mockups/BATU-Rahbar-dashboard-v3.html`,
+  replacing its previous trends/ranking/product-mix content on this route. The backing
+  functions (`rahbar_monthly_trends`/`rahbar_client_ranking`/`rahbar_product_mix`) and their
+  hooks (`useRahbarDashboard.ts`) are untouched — nothing currently routes to that content;
+  flagged, not silently decided, since the task didn't specify where (or whether) it should
+  move. **Confirmed 2026-08-14 (follow-up round): this is a deliberate hold, not an
+  oversight.** The trends/ranking/product-mix RPCs, their hooks, and the old `RahbarHome.tsx`
+  content stay exactly where they were — unrouted, not deleted, not touched further. Whether
+  to remove them, re-site them elsewhere in the nav, or restore them alongside the new
+  dashboard is a separate decision, out of scope for this task.
+- Frontend reads both RPCs directly (`rahbar_stock_snapshot`, `rahbar_dashboard_ledger`) and
+  performs no balance arithmetic of its own beyond client-side re-slicing of
+  `byCalibreType` for the Turlar filter (a pure filter/regroup of already-summed server data,
+  not a new sum).
+
 **Out of scope:** Rezka, qoldig'i itself (read-only reuse target), the `target_so2_mg_kg`/`so2_mg_kg` column names.

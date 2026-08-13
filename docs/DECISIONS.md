@@ -2860,12 +2860,49 @@ bug report (`050826-001`, `290726-071`) are currently sent to Moyka with no lab 
 - `SPEC.md` §5.3 amended in place (struck, not deleted) to state the exception; §5.5.3's hard
   gate text is unchanged, already correct.
 
-**Decision — server-side (proposed, NOT applied, awaiting confirmation):** `wash_cycles` has
-an `ombor_updates` UPDATE policy with `with_check` currently `null` — nothing stops an
-`ombor`-role client from setting `status='final'` on a serial with no passing verdict via a
-direct API call, bypassing the UI entirely. Proposed migration mirrors `finished_pallets`'
-`ombor_writes` gate exactly, restricted to the finalizing transition only (any non-final update
-— e.g. the first-send `status='active'` upsert — is unaffected):
+**Decision — server-side (applied, `wash_cycles_finalize_lab_gate`).** `wash_cycles` had an
+`ombor_updates` UPDATE policy with `with_check` `null` — nothing stopped an `ombor`-role client
+from setting `status='final'` on a serial with no passing verdict via a direct API call,
+bypassing the UI entirely. Four things checked before writing the policy, per direct
+instruction, since a blanket verdict requirement could otherwise permanently block a
+legitimately-verdict-less path:
+
+1. **Rezka.** `mint_serial_from_sources` (`0055_mint_serial_rpc.sql`) — the function Rezka is
+   documented to reuse unchanged (see the 2026-08-02 "Opening stock, Stage 3" entry: "Rezka
+   calls it unchanged and sends its serial to cutting instead") — never references
+   `wash_cycles` at all. Only `send_old_stock_to_moyka`, an explicitly separate Moyka-only
+   wrapper, does the `wash_cycles` upsert. So a Rezka-cut serial cannot acquire a `wash_cycles`
+   row via any currently-planned path; nothing in the schema needs to distinguish wash from
+   cut on this table today. Not adding a `process_kind` column now — that would pre-guess a
+   design Rezka hasn't made yet, and would work against the deliberate mint/wrapper split this
+   codebase already built specifically to keep Rezka Moyka-free. Flagged instead, same pattern
+   as `raw_dispatch_lines.serial`'s FK (2026-07-31 entry): if Rezka's own completion-tracking
+   design ever reuses `wash_cycles`, this policy's verdict check must be revisited then, or a
+   cut serial (which will never have a passing CHIQIM verdict) would be permanently
+   unfinalizable.
+2. **Raw dispatch.** Grepped every INSERT/UPDATE/UPSERT against `wash_cycles` across all
+   migrations and all frontend files — nothing in the raw-dispatch path
+   (`raw_dispatch_lines`/`chiqim_line_raw_serials`) appears. Matches SPEC.md's own text: raw
+   never enters processing, so it never reaches the lab gate in the first place.
+3. **Mint path + opening-stock seeds.** `mint_serial_from_sources` never touches `wash_cycles`
+   (above). `send_old_stock_to_moyka` inserts `status='active'` only, never `'final'`. The five
+   backdated seed rows (`0048_opening_stock_stage1_seed.sql:772`) were written once, directly,
+   inside a migration script (bypasses RLS entirely; already ran; won't re-run). Nothing
+   re-updates them: `OmborMoykaTab.handleSend`'s upsert uses `ignoreDuplicates: true` (a true
+   no-op against an existing row), and `OmborTayyorTab.handleTugallash` — the one site that
+   could — is structurally unreachable for them (`sent_kg=0`, already `finalized=true`, so
+   `isAwaitingTugallash` excludes them from Window 1 entirely).
+4. **Security-definer RPCs under another role.** `send_old_stock_to_moyka` is the only one
+   writing `wash_cycles`, always invoked as `ombor` (checked in its own body via `my_role()`).
+   Caveat stated plainly: RLS does not apply inside `security definer` function bodies at all —
+   this gate protects real client sessions and direct API calls under the `ombor` role (the
+   actual bug scenario), not a hypothetical future security-definer RPC. Identical scope to the
+   existing `finished_pallets` gate and every other RLS policy in this schema — not a new
+   weakness.
+
+All four confirmed with the user before applying. Mirrors `finished_pallets`' `ombor_writes`
+gate exactly, restricted to the finalizing transition only — any non-final update (the
+first-send `status='active'` upsert, or anything a future Rezka path would do) is untouched:
 
 ```sql
 drop policy ombor_updates on wash_cycles;
@@ -2884,22 +2921,39 @@ create policy ombor_updates on wash_cycles for update
   );
 ```
 
-**Testing.** Disposable fixture, two serials under one `TEST-`-owner (non-`TEST-` plates
-`01A901TG`/`01A902TG`), sent to Moyka, no verdict. Confirmed live in the browser (real Ombor
-login) against both fixture serials *and* the two real at-risk production serials
-simultaneously: (1) no verdict → Tugallash absent, reason legible, for all four; (2) inserted a
-passing `lab_results` row for fixture serial 1 → `+ Qabul qilish` and `Tugallash` both
-reappeared for it alone, the other three unchanged; received a real 700 kg pallet through
-`FinishedReceiptForm` (Barcode #2 `PLT-130826-001-06-1` generated, printable), then Tugallash →
-confirm dialog showed `Yakuniy yo'qotish: 300 kg · 30.0%` (real figure, not fabricated),
-`Ha, tugallash` → `wash_cycles.final_loss_pct = 30` in the database, serial correctly moved to
-Window 2 (`-30.0%` badge); (3) passed verdict on fixture serial 2, Tugallash with 0 received →
-confirm dialog showed `500 kg · 100.0%` with the existing soft warning, `Ha, tugallash` →
-`final_loss_pct = 100` — a genuine total loss, but only reachable through the same deliberate,
-warned confirm step every other finalization goes through, never the sole default action.
-Fixture fully removed afterward (owner, 2 orders/lines/intakes/gate-weighings/sends/cycles/
-pallets/lab-results), reverified at zero rows. `npx tsc -b --noEmit` and `npm run lint` clean
-(same one pre-existing unrelated warning) both before and after the fixture work.
+**Testing, round 1 (UI-level, before the RLS migration).** Disposable fixture, two serials
+under one `TEST-`-owner (non-`TEST-` plates `01A901TG`/`01A902TG`), sent to Moyka, no verdict.
+Confirmed live in the browser (real Ombor login) against both fixture serials *and* the two
+real at-risk production serials simultaneously: (1) no verdict → Tugallash absent, reason
+legible, for all four; (2) inserted a passing `lab_results` row for fixture serial 1 → `+ Qabul
+qilish` and `Tugallash` both reappeared for it alone, the other three unchanged; received a real
+700 kg pallet through `FinishedReceiptForm` (Barcode #2 `PLT-130826-001-06-1` generated,
+printable), then Tugallash → confirm dialog showed `Yakuniy yo'qotish: 300 kg · 30.0%` (real
+figure, not fabricated), `Ha, tugallash` → `wash_cycles.final_loss_pct = 30`, serial correctly
+moved to Window 2 (`-30.0%` badge); (3) passed verdict on fixture serial 2, Tugallash with 0
+received → confirm dialog showed `500 kg · 100.0%` with the existing soft warning, `Ha,
+tugallash` → `final_loss_pct = 100`. Fixture fully removed, reverified at zero rows.
+`npx tsc -b --noEmit` and `npm run lint` clean throughout.
 
-**Out of scope, not touched:** the server-side migration above (proposed only), Rezka, KN
-origin tracking.
+**Testing, round 2 (RLS-level, after applying the migration).** A fresh disposable fixture
+(`TEST — wash_cycles RLS gate verification`, serials `130826-003`/`130826-004`, plates
+`01A903RG`/`01A904RG`), sent to Moyka, no verdict. From a real, logged-in Ombor browser session,
+called `window.supabase.from('wash_cycles').update({status:'final', ...}).eq('serial',
+'130826-003')` directly — bypassing the app's UI entirely, exercising the real PostgREST
+endpoint with the real `ombor` JWT (`window.supabase` is exposed in dev builds specifically for
+this, see `src/lib/supabase.ts`). **Rejected**: `{code: "42501", message: "new row violates
+row-level security policy for table \"wash_cycles\""}` — confirmed via direct query afterward
+that the row was untouched (`status='active'`, `final_loss_pct=null`). Then gave the fixture a
+passing verdict and repeated the full normal-finalize flow through the real UI end to end: 600
+kg received (Barcode #2 `PLT-130826-003-06-1`), Tugallash confirm showed `200 kg · 25.0%`,
+confirmed → `wash_cycles.final_loss_pct = 25` — this time a real, RLS-permitted write. A second
+fixture line (`130826-004`, 300 kg sent, passing verdict, 0 received) confirmed the deliberate
+total-loss path still works under the new gate: confirm dialog showed `300 kg · 100.0%`,
+confirmed → `final_loss_pct = 100`. Fixture fully removed afterward (owner, 2 orders/lines/
+intakes/gate-weighings/sends/cycles/pallets/lab-results), reverified at zero rows. Re-queried
+production one final time: `050826-001` and `290726-071` both still `status='active'`,
+`final_loss_pct=null`, no verdict — untouched throughout every test in both rounds. Zero real
+(non-`TEST-`, non-`opening_stock`-origin) `wash_cycles` rows with `status='final'` exist
+anywhere in the database.
+
+**Out of scope, not touched:** Rezka implementation, KN origin tracking.

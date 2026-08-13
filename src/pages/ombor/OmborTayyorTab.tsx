@@ -193,7 +193,19 @@ export function OmborTayyorTab() {
   // (the row already exists from OmborMoykaTab's first-send upsert — this
   // just updates it); soft-warned (never blocked) in the UI before this
   // runs when raw remainder or loss > 10% applies.
+  //
+  // Hard availability gate (2026-08-14 restoration, see DECISIONS.md "Ombor
+  // Moyka finalize: restore the lab-verdict hard gate on Tugallash"): the
+  // button that calls this is no longer rendered while labStatus !==
+  // 'passed', so this check should be unreachable in normal use -- it's
+  // defense in depth, same shape as handleReceipt's reliance on the RLS
+  // gate above. The database-level gate (mirroring finished_pallets'
+  // ombor_writes policy) is a separate, explicitly-confirmed migration --
+  // see the PR/DECISIONS entry for whether it has landed.
   async function handleTugallash(serial: OutputSerial) {
+    if (serial.labStatus !== 'passed') {
+      throw new Error("Tugallash bloklangan: seriyada o'tdi natijasi yo'q.")
+    }
     const { error } = await supabase.from('wash_cycles').upsert(
       {
         serial: serial.serial,
@@ -274,16 +286,20 @@ export function OmborTayyorTab() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <StatusNote tone={s.labStatus === 'failed' ? 'problem' : 'pending'}>
-                      {s.labStatus === 'failed'
-                        ? "Rad etildi — qayta tekshirilmoqda. Barcode #2 uchun o'tdi natijasi kerak."
-                        : "Tahlil kutilmoqda — Barcode #2 chiqarish uchun Laborator tekshiruvi kerak."}
-                    </StatusNote>
-                    <Button variant="secondary" size="lg" fullWidth onClick={() => setConfirming(s.serial)}>
-                      Tugallash
-                    </Button>
-                  </div>
+                  // Hard availability gate (SPEC.md §5.5.3), the documented
+                  // exception to the §5.3 soft-warning rule -- NOT a warning.
+                  // No Tugallash here: without a passing verdict, "received"
+                  // can only ever be 0, so finishing now could only lock in a
+                  // fabricated 100% loss, never a real result. Restores the
+                  // receive/finish symmetry the 2026-07-28 lab-relocation
+                  // change (d85664d) established for receiving but never
+                  // extended to Tugallash -- see DECISIONS.md "Ombor Moyka
+                  // finalize: restore the lab-verdict hard gate on Tugallash."
+                  <StatusNote tone={s.labStatus === 'failed' ? 'problem' : 'pending'}>
+                    {s.labStatus === 'failed'
+                      ? "Rad etildi — qayta tekshirilmoqda. Qabul qilish va tugallash uchun o'tdi natijasi kerak."
+                      : "Tahlil kutilmoqda — qabul qilish va tugallash uchun Laborator tekshiruvi (o'tdi natijasi) kerak."}
+                  </StatusNote>
                 )}
               </div>
             )}

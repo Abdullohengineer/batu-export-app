@@ -1,4 +1,5 @@
 import type { ReportRow } from '../../lib/reportQuery'
+import { REPORT_COLUMNS } from '../../lib/reportColumns'
 import { ReportTableRow } from './ReportTableRow'
 import { ReportRowCard } from './ReportRowCard'
 
@@ -20,8 +21,16 @@ const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text
 // window" — columns never shrink/wrap there; the card rendering below is
 // what actually serves phone-width viewports now, not a horizontal scroll
 // of the same dense table.
+//
+// Column picker (2026-08-15): header + row cells both driven by the same
+// ordered, visibility-filtered column list (src/lib/reportColumns.ts) —
+// previously the column set was hardcoded here AND in ReportTableRow.tsx
+// independently, with nothing keeping the two in sync. ReportRowCard
+// (mobile) is deliberately untouched — it's a fixed summary card, not a
+// column-based layout, and was out of scope for this change.
 export function ReportResultsTable({
   rows,
+  visibleColumnKeys,
   expandedKey,
   onToggle,
   ownerName,
@@ -30,6 +39,7 @@ export function ReportResultsTable({
   onOpenPassport,
 }: {
   rows: ReportRow[]
+  visibleColumnKeys: Set<string>
   expandedKey: string | null
   onToggle: (key: string) => void
   ownerName: (id: string) => string
@@ -37,23 +47,19 @@ export function ReportResultsTable({
   calibreLabel: (id: string) => string
   onOpenPassport: (serial: string) => void
 }) {
+  const visibleColumns = REPORT_COLUMNS.filter((c) => visibleColumnKeys.has(c.key))
+
   return (
     <>
       <div className="hidden overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700 lg:block">
         <table className="w-full min-w-[960px] border-collapse">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60">
-              <th className={th}>Yo'nalish</th>
-              <th className={th}>Sana</th>
-              <th className={th}>Seriya / Barcode #2</th>
-              <th className={th}>Buyurtmachi</th>
-              <th className={th}>Tur</th>
-              <th className={th}>Kalibr</th>
-              <th className={`${th} text-right`}>Netto, kg</th>
-              <th className={`${th} text-right`}>Tara, kg</th>
-              <th className={th}>Moshina</th>
-              <th className={th}>Haydovchi</th>
-              <th className={th}>Holat</th>
+              {visibleColumns.map((col) => (
+                <th key={col.key} className={col.align === 'right' ? `${th} text-right` : th}>
+                  {col.label}
+                </th>
+              ))}
               <th className={th} aria-label="Batafsil" />
             </tr>
           </thead>
@@ -62,6 +68,7 @@ export function ReportResultsTable({
               <ReportTableRow
                 key={row.key}
                 row={row}
+                visibleColumns={visibleColumns}
                 expanded={expandedKey === row.key}
                 onToggle={() => onToggle(row.key)}
                 ownerName={ownerName}

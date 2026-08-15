@@ -95,6 +95,15 @@ export interface KirimReportRow {
   dateBasisSource: DateBasisSource
   declaredQty: number
   effectiveQtyKg: number
+  // "Hisobiy" (2026-08-15) -- least(netto, declared) per row, computed
+  // here, never stored, never the accounting basis. Only ever meaningful
+  // on kirim rows (declaredQty is a KIRIM-only concept -- see
+  // ChiqimReportRow/RawDispatchReportRow/OldKnReportRow, none of which
+  // carry a declaredQty field at all), so this lives only on
+  // KirimReportRow, not as a nullable field on the shared union -- a
+  // caller can't accidentally read it off a row kind where it doesn't
+  // exist. See DECISIONS.md "Hisobot: E'lon qilingan + Hisobiy columns."
+  hisobiyKg: number
   provisional: boolean
   truckVarianceDiffKg: number | null
   truckVarianceDiffPct: number | null
@@ -203,6 +212,12 @@ export interface ReportTotals {
   net: number
   taraIn: number
   taraOut: number
+  // "E'lon qilingan"/"Hisobiy" totals (2026-08-15) -- unlike kgIn/kgOut,
+  // these are KIRIM-only concepts by construction (declared_qty is
+  // NULL::numeric on every non-kirim report_rows kind), so there is no
+  // analogous "out" side to split against, unlike taraIn/taraOut.
+  totalDeclared: number
+  totalHisobiy: number
 }
 
 // §3.2.3 🔒 date basis label, shown on screen and in exports — printed
@@ -259,6 +274,8 @@ function num(v: number | string | null): number | null {
 
 export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
   if (row.kind === 'kirim') {
+    const declaredQty = num(row.declared_qty) ?? 0
+    const effectiveQtyKg = Number(row.qty_kg)
     return {
       kind: 'kirim',
       key: row.row_key,
@@ -270,8 +287,9 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       driver: row.driver,
       dateBasis: row.date_basis,
       dateBasisSource: row.date_basis_source,
-      declaredQty: num(row.declared_qty) ?? 0,
-      effectiveQtyKg: Number(row.qty_kg),
+      declaredQty,
+      effectiveQtyKg,
+      hisobiyKg: Math.min(effectiveQtyKg, declaredQty),
       provisional: row.provisional,
       truckVarianceDiffKg: num(row.truck_variance_diff_kg),
       truckVarianceDiffPct: num(row.truck_variance_diff_pct),

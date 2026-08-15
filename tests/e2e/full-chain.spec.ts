@@ -59,29 +59,27 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   const PLATE_OUT = uniqueRealLookingPlate()
   chiqimPlates.push(PLATE_OUT)
 
-  // --- Menejer: KIRIM order, two lines — Subxon (sulfured, both targets)
-  // continues the whole chain; Isfara (natural, SO2 blank) stops at the lab. ---
+  // --- Menejer: KIRIM order, two lines — Subxon (sulfured at Laborator's
+  // first entry, below) continues the whole chain; Isfara (natural) stops
+  // at the lab. Menejer's own form is back to plain Tur + Miqdori
+  // (2026-08-15) -- see DECISIONS.md "Natural/sulphured classification
+  // moved from Menejer to Laborator; audit trail": the lab now sets
+  // is_sulfured, not Menejer, so this form has exactly one select per row
+  // (Tur) again -- no ppm/percent, no Naturel/Sulfatlangan here at all. ---
   await loginAs(page, 'MENEJER')
   await expect(page.getByRole('heading', { name: 'Yangi KIRIM' })).toBeVisible()
   await page.locator('div:has(> label:text-is("Moshina raqami")) > input').fill(PLATE_IN)
   await page.locator('div:has(> label:text-is("Haydovchi ismi")) > input').fill('TEST Driver')
   await page.locator('div:has(> label:text-is("Buyurtmachi")) select').selectOption({ label: E2E_OWNER_NAME })
 
-  // Explicit natural/sulphured classification (2026-08-14), replacing the
-  // old numeric target inputs -- see DECISIONS.md "Client quality targets
-  // removed from Menejer/Laborator; explicit natural/sulphured flag". Each
-  // row now carries two selects in DOM order: [0] Tur, [1] Naturel/
-  // Sulfatlangan (`is_sulfured`) -- no ppm/percent field exists any more.
   const row1 = page.locator('form div.space-y-1.rounded-md').nth(0)
-  await row1.locator('select').nth(0).selectOption({ label: 'Subxon' })
+  await row1.locator('select').selectOption({ label: 'Subxon' })
   await row1.getByPlaceholder('Miqdori (kg)').fill('5000')
-  await row1.locator('select').nth(1).selectOption({ label: 'Sulfatlangan' })
 
   await page.getByRole('button', { name: "+ Tur qo'shish" }).click()
   const row2 = page.locator('form div.space-y-1.rounded-md').nth(1)
-  await row2.locator('select').nth(0).selectOption({ label: 'Isfara' })
+  await row2.locator('select').selectOption({ label: 'Isfara' })
   await row2.getByPlaceholder('Miqdori (kg)').fill('500')
-  await row2.locator('select').nth(1).selectOption({ label: 'Naturel' })
 
   await page.getByRole('button', { name: 'Saqlash' }).click()
 
@@ -91,14 +89,11 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await expect(savedPanel.locator('span.font-mono').nth(1)).toHaveText(/^\d{6}-\d{3}$/, { timeout: 10000 })
   const [subxonSerial, isfaraSerial] = await savedPanel.locator('span.font-mono').allTextContents()
 
-  // --- Explicit natural/sulphured flag persists correctly (2026-08-14):
-  // Subxon (Sulfatlangan) -> is_sulfured=true, Isfara (Naturel) ->
-  // is_sulfured=false. Also confirms Menejer's form no longer writes the
-  // numeric target columns at all (both null on both lines) -- see
-  // DECISIONS.md "Client quality targets removed from Menejer/Laborator;
-  // explicit natural/sulphured flag". Supersedes the old kirim-client-
-  // targets.spec.ts assertion (targets were the natural/sulphured signal
-  // then; the flag is now, and targets are simply unwritten). ---
+  // --- Menejer's form writes neither the classification nor the numeric
+  // target columns (2026-08-15) -- is_sulfured stays NULL on both lines
+  // until Laborator classifies them below. See DECISIONS.md "Natural/
+  // sulphured classification moved from Menejer to Laborator; audit
+  // trail". ---
   {
     const result = await page.evaluate(async ({ subxon, isfara }) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
@@ -117,8 +112,8 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     }[]
     const subxonLine = rows.find((r) => r.serial === subxonSerial)!
     const isfaraLine = rows.find((r) => r.serial === isfaraSerial)!
-    expect(subxonLine.is_sulfured).toBe(true)
-    expect(isfaraLine.is_sulfured).toBe(false)
+    expect(subxonLine.is_sulfured).toBeNull()
+    expect(isfaraLine.is_sulfured).toBeNull()
     expect(subxonLine.target_moisture_pct).toBeNull()
     expect(subxonLine.target_so2_mg_kg).toBeNull()
     expect(isfaraLine.target_moisture_pct).toBeNull()
@@ -219,9 +214,14 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     // and its own nested serial chip -- the `div` type selector excludes
     // the span (nav/visual-redesign pass, real strict-mode violation found
     // via e2e, not assumed safe from inspection alone).
+    // Classification set HERE now (2026-08-15), not on Menejer's form --
+    // same save as the moisture reading, via the "Mahsulot" select this
+    // form now carries. See DECISIONS.md "Natural/sulphured classification
+    // moved from Menejer to Laborator; audit trail".
     const subxonW1 = w1.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(subxonW1).toBeVisible()
     await subxonW1.getByRole('button', { name: 'Tahlil' }).click()
+    await subxonW1.locator('select').selectOption({ label: 'Sulfatlangan' })
     await subxonW1.locator('div:has(> label:text-is("Namligi %")) input').fill('7.5')
     await subxonW1.getByRole('button', { name: 'Saqlash' }).click()
     const subxonW2 = w2.locator('div.rounded-md', { hasText: subxonSerial })
@@ -235,6 +235,7 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     const isfaraW1 = w1.locator('div.rounded-md', { hasText: isfaraSerial })
     await expect(isfaraW1).toBeVisible()
     await isfaraW1.getByRole('button', { name: 'Tahlil' }).click()
+    await isfaraW1.locator('select').selectOption({ label: 'Naturel' })
     await isfaraW1.locator('div:has(> label:text-is("Namligi %")) input').fill('9.5')
     await isfaraW1.getByRole('button', { name: 'Saqlash' }).click()
     // Natural line: skips W2 entirely, lands straight in W3.
@@ -242,6 +243,16 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     const isfaraW3 = w3.locator('div.rounded-md', { hasText: isfaraSerial })
     await expect(isfaraW3).toBeVisible()
     await expect(isfaraW3).toContainText("Yo'q · naturel")
+
+    // Confirm the classification actually persisted through
+    // classify_kirim_line_sulfur() -- both lines resolved from NULL.
+    const flags = await page.evaluate(async ({ subxon, isfara }) => {
+      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const { data } = await w.supabase.from('kirim_lines').select('serial, is_sulfured').in('serial', [subxon, isfara])
+      return data as { serial: string; is_sulfured: boolean | null }[]
+    }, { subxon: subxonSerial, isfara: isfaraSerial })
+    expect(flags.find((r) => r.serial === subxonSerial)?.is_sulfured).toBe(true)
+    expect(flags.find((r) => r.serial === isfaraSerial)?.is_sulfured).toBe(false)
 
     await subxonW2.locator('input[type="number"]').fill('45')
     await subxonW2.getByRole('button', { name: 'Sera kiritish' }).click()
@@ -305,9 +316,10 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   // hard gate on Barcode #2 assignment moved to packing, so this verdict
   // must now happen BEFORE Ombor can pack -- it used to run after packing
   // and Tugallash, back when CHIQIM lab testing was scoped to a completed
-  // wash cycle. Subxon is sulfured (is_sulfured=true, set on Menejer's form
-  // above), so ChiqimTahlilForm's requireVerdict is false (item.is_sulfured
-  // === false) -- Tahlil only records moisture
+  // wash cycle. Subxon is already sulfured (is_sulfured=true, set at KIRIM
+  // Tahlil above and carried over -- this form's own Mahsulot select
+  // pre-fills to Sulfatlangan, no need to touch it), so ChiqimTahlilForm's
+  // internally-derived requireVerdict is false -- Tahlil only records moisture
   // (Saqlash, no verdict yet), the cycle moves to Sera kutilmoqda, and the
   // verdict happens at Sera kiritish alongside SO2 -- the same two-step
   // shape as the KIRIM check above. No more pallet <select> in this form

@@ -77,7 +77,15 @@ async function fetchVoidedBarcodeMatch(barcode2Query: string): Promise<ChiqimRep
 export function useReportQuery(filters: ReportFilters) {
   const [rows, setRows] = useState<ReportRow[]>([])
   const [voidedBarcodeMatch, setVoidedBarcodeMatch] = useState<ChiqimReportRow | null>(null)
-  const [totals, setTotals] = useState<ReportTotals>({ kgIn: 0, kgOut: 0, net: 0, taraIn: 0, taraOut: 0 })
+  const [totals, setTotals] = useState<ReportTotals>({
+    kgIn: 0,
+    kgOut: 0,
+    net: 0,
+    taraIn: 0,
+    taraOut: 0,
+    totalDeclared: 0,
+    totalHisobiy: 0,
+  })
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -112,13 +120,17 @@ export function useReportQuery(filters: ReportFilters) {
               total_kg_out: number | string
               total_kg_tara_in: number | string
               total_kg_tara_out: number | string
+              total_declared: number | string
+              total_hisobiy: number | string
             }
           | undefined
         const kgIn = Number(t?.total_kg_in ?? 0)
         const kgOut = Number(t?.total_kg_out ?? 0)
         const taraIn = Number(t?.total_kg_tara_in ?? 0)
         const taraOut = Number(t?.total_kg_tara_out ?? 0)
-        setTotals({ kgIn, kgOut, net: kgIn - kgOut, taraIn, taraOut })
+        const totalDeclared = Number(t?.total_declared ?? 0)
+        const totalHisobiy = Number(t?.total_hisobiy ?? 0)
+        setTotals({ kgIn, kgOut, net: kgIn - kgOut, taraIn, taraOut, totalDeclared, totalHisobiy })
         setTotalCount(Number(t?.total_count ?? 0))
         setVoidedBarcodeMatch(voided)
       } finally {

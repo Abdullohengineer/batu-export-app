@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { HistoryView } from '../../components/HistoryView'
-import { ReportFilterBar } from '../../components/report/ReportFilterBar'
+import { ReportFilterBar, FilterField } from '../../components/report/ReportFilterBar'
 import { TotalsStrip } from '../../components/report/TotalsStrip'
 import { defaultDateRange } from '../../lib/dateRange'
 import { useOwners } from '../../lib/useOwners'
@@ -9,6 +9,7 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useReportQuery, ExportTooLargeError } from '../../lib/useReportQuery'
 import { downloadReportExcel } from '../../lib/reportExport'
 import { dateBasisLabel, defaultReportFilters, type PalletStatusFilter } from '../../lib/reportQuery'
+import { REPORT_COLUMNS, defaultVisibleColumnKeys } from '../../lib/reportColumns'
 import { ReportResultsTable } from './ReportResultsTable'
 import { SerialPassportModal } from './SerialPassportModal'
 import { Button } from '../../components/ui/Button'
@@ -40,6 +41,12 @@ const STATUS_OPTIONS: { value: Exclude<PalletStatusFilter, ''>; label: string }[
 export function HisobotTab() {
   const initial = defaultDateRange()
   const [filters, setFilters] = useState(defaultReportFilters(initial.from, initial.to))
+  // Column picker (2026-08-15) — display-only, independent of `filters`:
+  // hiding a column must never remove it as a filter (Buyurtmachi/plate
+  // stay filterable via ReportFilterBar even when hidden here). Local
+  // component state, not persisted — resets to the spec'd defaults on
+  // reload, same as every other piece of UI-only state on this screen.
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<Set<string>>(defaultVisibleColumnKeys())
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -93,7 +100,7 @@ export function HisobotTab() {
 
   return (
     <div className="space-y-4">
-      <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(filters.direction)} />
+      <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(filters.direction)} visibleColumnKeys={visibleColumnKeys} />
 
       <HistoryView
         loading={loading}
@@ -155,9 +162,25 @@ export function HisobotTab() {
               Keyingi →
             </button>
           </div>
-          <Button variant="success" size="md" onClick={handleExport} disabled={exporting || totalCount === 0}>
-            {exporting ? 'Tayyorlanmoqda…' : '↓ Excel yuklab olish'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Column picker (2026-08-15) -- reuses ReportFilterBar's own
+                multi-select checkbox-panel component ("styled like the
+                existing filters"), wired independently of `filters`: this
+                controls DISPLAY only, never the query, so hiding a column
+                can never remove it as a filter. */}
+            <FilterField
+              label="Ustunlar"
+              allLabel="Hammasi"
+              options={REPORT_COLUMNS.map((c) => ({ value: c.key, label: c.label }))}
+              selected={REPORT_COLUMNS.filter((c) => visibleColumnKeys.has(c.key)).map((c) => c.key)}
+              onChange={(keys) => setVisibleColumnKeys(new Set(keys))}
+              multi
+              compact
+            />
+            <Button variant="success" size="md" onClick={handleExport} disabled={exporting || totalCount === 0}>
+              {exporting ? 'Tayyorlanmoqda…' : '↓ Excel yuklab olish'}
+            </Button>
+          </div>
         </div>
 
         {exportError && <StatusNote tone="problem">{exportError}</StatusNote>}
@@ -181,6 +204,7 @@ export function HisobotTab() {
 
         <ReportResultsTable
           rows={rows}
+          visibleColumnKeys={visibleColumnKeys}
           expandedKey={expandedKey}
           onToggle={(key) => setExpandedKey(expandedKey === key ? null : key)}
           ownerName={ownerName}

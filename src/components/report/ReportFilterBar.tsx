@@ -37,7 +37,14 @@ export interface FilterOption {
 // (stock-on-hand's "Kalibr 4 and Kalibr 6 at once" requirement). Native
 // `<select multiple>` was considered and rejected: ctrl/cmd-click selection
 // is not discoverable and doesn't work on touch at all.
-function FilterField({
+//
+// Exported (2026-08-15) so HisobotTab's column picker can reuse the exact
+// same multi-select checkbox-panel UI ("styled like the existing
+// filters") instead of a bespoke component — the column picker isn't a
+// ReportFilters field (it controls display, not the query), so it's wired
+// directly in HisobotTab rather than threaded through this bar's own
+// filter-specific props.
+export function FilterField({
   label,
   allLabel,
   options,

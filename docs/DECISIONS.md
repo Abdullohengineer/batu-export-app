@@ -3575,7 +3575,11 @@ are internal movements, confirmed schema-level) and `report_moyka_output_rows` (
    CHIQIM/tayyor (the request event) — for the same physical pallet. This is consistent with how
    this whole reporting engine already works (one physical object, one row per lifecycle event,
    e.g. a serial's own KIRIM row and its later CHIQIM row are already two separate rows for "the
-   same material") — not a duplication bug introduced by this task.
+   same material") — not a duplication bug introduced by this task. **The accurate departed
+   figure is the `Olib ketilgan` state column** (`kirim_line_state`'s `departed` CTE /
+   `report_totals.state_olib_ketilgan`), which specifically requires `gate_weighings.completed_at`
+   to be set — the direction checkbox's own label was corrected to plain "CHIQIM (tayyor)" (see
+   `ReportFilterBar.tsx`'s `DIRECTION_OPTIONS`) precisely so it stops implying that figure.
 
 🔒 **Scaling note, recorded per explicit instruction — not a blocker today, not fixed:**
 `kirim_line_state` runs once per **distinct serial** inside `report_totals`, and once per

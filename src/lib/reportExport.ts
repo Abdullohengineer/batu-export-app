@@ -44,7 +44,7 @@ export async function buildReportWorkbook(
   const sheet = wb.addWorksheet('Hisobot')
 
   sheet.addRow(['BATU EXPORT — Hisobot']).font = { bold: true }
-  sheet.addRow([dateBasisLabel(filters.direction)])
+  sheet.addRow([dateBasisLabel(filters.directions)])
   sheet.addRow([WEIGHT_BASIS_LABEL])
   sheet.addRow([`Davr: ${filters.from} — ${filters.to}`])
   sheet.addRow([])
@@ -95,6 +95,37 @@ export async function buildReportWorkbook(
         row.weightKg,
         '',
         '',
+      ])
+    } else if (row.kind === 'moyka_send') {
+      // Internal movement — no waybill/gate weighing, so Moshina/Haydovchi/
+      // Tara are structurally absent (blank, not zero — same convention as
+      // every other kind above).
+      excelRow = sheet.addRow([
+        'MOYKAGA',
+        toExcelDate(row.dateBasis),
+        row.serial,
+        lookups.ownerName(row.ownerId),
+        lookups.typeName(row.typeId),
+        '',
+        '',
+        '',
+        row.weightKg,
+        '',
+        '',
+      ])
+    } else if (row.kind === 'moyka_output') {
+      excelRow = sheet.addRow([
+        'MOYKADAN',
+        toExcelDate(row.dateBasis),
+        row.barcode2,
+        lookups.ownerName(row.ownerId),
+        lookups.typeName(row.typeId),
+        lookups.calibreLabel(row.calibreId),
+        '',
+        '',
+        row.weightKg,
+        '',
+        row.palletStatus !== 'omborda' ? row.palletStatus : '',
       ])
     } else {
       const note = row.voidInfo

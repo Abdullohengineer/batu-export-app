@@ -19,7 +19,7 @@ const EXPORT_CHUNK_SIZE = 1000
 const EXPORT_MAX_CHUNKS = 50
 
 interface RpcParams {
-  p_direction: string
+  p_directions: string[] | null
   p_from: string
   p_to: string
   p_owner_id: string | null
@@ -34,9 +34,14 @@ interface RpcParams {
   p_status: string | null
 }
 
+// p_directions: null (not []) for "no restriction" — matches
+// report_filtered_rows(text[],...)'s own
+// `p_directions is null or array_length(p_directions, 1) is null` check;
+// either form works there, but null is the more conventional "no filter"
+// signal to send over the wire.
 function toRpcParams(filters: ReportFilters): RpcParams {
   return {
-    p_direction: filters.direction,
+    p_directions: filters.directions.length > 0 ? filters.directions : null,
     p_from: filters.from,
     p_to: filters.to,
     p_owner_id: filters.ownerId || null,
@@ -85,6 +90,16 @@ export function useReportQuery(filters: ReportFilters) {
     taraOut: 0,
     totalDeclared: 0,
     totalHisobiy: 0,
+    totalToMoyka: 0,
+    totalFromMoyka: 0,
+    stateSerialCount: 0,
+    stateQabulQilingan: 0,
+    stateOmbordaQoldi: 0,
+    stateMoykagaYuborilgan: 0,
+    stateMoykada: 0,
+    stateMoykadanChiqgan: 0,
+    stateXomJonatilgan: 0,
+    stateOlibKetilgan: 0,
   })
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
@@ -122,6 +137,16 @@ export function useReportQuery(filters: ReportFilters) {
               total_kg_tara_out: number | string
               total_declared: number | string
               total_hisobiy: number | string
+              total_kg_to_moyka: number | string
+              total_kg_from_moyka: number | string
+              state_serial_count: number | string
+              state_qabul_qilingan: number | string
+              state_omborda_qoldi: number | string
+              state_moykaga_yuborilgan: number | string
+              state_moykada: number | string
+              state_moykadan_chiqgan: number | string
+              state_xom_jonatilgan: number | string
+              state_olib_ketilgan: number | string
             }
           | undefined
         const kgIn = Number(t?.total_kg_in ?? 0)
@@ -130,7 +155,25 @@ export function useReportQuery(filters: ReportFilters) {
         const taraOut = Number(t?.total_kg_tara_out ?? 0)
         const totalDeclared = Number(t?.total_declared ?? 0)
         const totalHisobiy = Number(t?.total_hisobiy ?? 0)
-        setTotals({ kgIn, kgOut, net: kgIn - kgOut, taraIn, taraOut, totalDeclared, totalHisobiy })
+        setTotals({
+          kgIn,
+          kgOut,
+          net: kgIn - kgOut,
+          taraIn,
+          taraOut,
+          totalDeclared,
+          totalHisobiy,
+          totalToMoyka: Number(t?.total_kg_to_moyka ?? 0),
+          totalFromMoyka: Number(t?.total_kg_from_moyka ?? 0),
+          stateSerialCount: Number(t?.state_serial_count ?? 0),
+          stateQabulQilingan: Number(t?.state_qabul_qilingan ?? 0),
+          stateOmbordaQoldi: Number(t?.state_omborda_qoldi ?? 0),
+          stateMoykagaYuborilgan: Number(t?.state_moykaga_yuborilgan ?? 0),
+          stateMoykada: Number(t?.state_moykada ?? 0),
+          stateMoykadanChiqgan: Number(t?.state_moykadan_chiqgan ?? 0),
+          stateXomJonatilgan: Number(t?.state_xom_jonatilgan ?? 0),
+          stateOlibKetilgan: Number(t?.state_olib_ketilgan ?? 0),
+        })
         setTotalCount(Number(t?.total_count ?? 0))
         setVoidedBarcodeMatch(voided)
       } finally {

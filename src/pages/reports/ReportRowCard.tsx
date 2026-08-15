@@ -3,6 +3,8 @@ import { KirimRowDetail } from './KirimRowDetail'
 import { ChiqimRowDetail } from './ChiqimRowDetail'
 import { RawDispatchRowDetail } from './RawDispatchRowDetail'
 import { OldKnRowDetail } from './OldKnRowDetail'
+import { MoykaSendRowDetail } from './MoykaSendRowDetail'
+import { MoykaOutputRowDetail } from './MoykaOutputRowDetail'
 import { formatDate } from '../../lib/formatDate'
 import { Card } from '../../components/ui/Card'
 import { SerialChip } from '../../components/ui/SerialChip'
@@ -57,6 +59,9 @@ export function ReportRowCard({
   } else if (row.kind === 'chiqim_raw' || row.kind === 'chiqim_old_kn') {
     tone = 'ok'
     label = `${qty.toLocaleString()} kg`
+  } else if (row.kind === 'moyka_send') {
+    tone = 'neutral'
+    label = `${qty.toLocaleString()} kg`
   } else if (row.palletStatus === 'bekor_qilingan') {
     tone = 'problem'
     label = 'Bekor qilingan'
@@ -77,11 +82,13 @@ export function ReportRowCard({
   return (
     <Card padding="compact">
       <button type="button" onClick={onToggle} className="flex min-h-12 w-full items-center gap-3 text-left">
-        <SerialChip>{row.kind === 'chiqim' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}</SerialChip>
+        <SerialChip>
+          {row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}
+        </SerialChip>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-slate-900 dark:text-slate-100">
             {ownerName(row.ownerId)} · {typeName(row.typeId)}
-            {row.kind === 'chiqim' && ` · ${calibreLabel(row.calibreId)}`}
+            {(row.kind === 'chiqim' || row.kind === 'moyka_output') && ` · ${calibreLabel(row.calibreId)}`}
           </span>
           <span className="block text-sm text-slate-500 dark:text-slate-400">
             {formatDate(row.dateBasis)} · {row.plate || '—'} ·{' '}
@@ -98,6 +105,10 @@ export function ReportRowCard({
             <RawDispatchRowDetail row={row} onOpenPassport={onOpenPassport} />
           ) : row.kind === 'chiqim_old_kn' ? (
             <OldKnRowDetail row={row} />
+          ) : row.kind === 'moyka_send' ? (
+            <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />
+          ) : row.kind === 'moyka_output' ? (
+            <MoykaOutputRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
           ) : (
             <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
           )}

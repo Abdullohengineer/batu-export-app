@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Owner } from '../../lib/useOwners'
 import type { ProductType } from '../../lib/useProductTypes'
 import type { Calibre } from '../../lib/useCalibres'
-import { type ReportDirection, type LabVerdictFilter } from '../../lib/reportQuery'
+import { type ReportRowKind, type LabVerdictFilter } from '../../lib/reportQuery'
 import { defaultDateRange } from '../../lib/dateRange'
 
 const inputClass =
@@ -11,7 +11,27 @@ const inputClass =
 const pillSelectClass =
   'rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
 
-const DIRECTION_LABEL: Record<ReportDirection, string> = { kirim: 'Kirim', chiqim: 'Chiqim', both: 'Hammasi' }
+// Direction is multi-select (2026-08-15, was a 3-value Kirim/Chiqim/Hammasi
+// radio) — keeps the old "all chiqim at once" view (check all three CHIQIM
+// boxes) while adding real per-kind granularity, and matches the Ustunlar
+// picker's own already-established pattern on this exact screen (see
+// DECISIONS.md "Hisobot: Moyka rows, direction split, serial-state
+// columns"). "CHIQIM (tayyor)" is deliberately NOT labelled "olib
+// ketilgan" — confirmed directly that report_chiqim_rows includes
+// reserved-but-undeparted (band_qilingan) pallets too, dated by request
+// creation, not departure; calling it "olib ketilgan" would overstate what
+// actually left. The accurate departed figure is the separate
+// `Olib ketilgan` STATE column (report_totals.state_olib_ketilgan / the
+// olib_ketilgan field on SerialState), which specifically requires
+// gate_weighings.completed_at to be set.
+const DIRECTION_OPTIONS: { value: ReportRowKind; label: string }[] = [
+  { value: 'kirim', label: 'KIRIM' },
+  { value: 'chiqim', label: 'CHIQIM (tayyor)' },
+  { value: 'chiqim_raw', label: 'CHIQIM (xom)' },
+  { value: 'chiqim_old_kn', label: 'CHIQIM (eski KN)' },
+  { value: 'moyka_send', label: 'MOYKAGA' },
+  { value: 'moyka_output', label: 'MOYKADAN' },
+]
 const VERDICT_LABEL: Record<Exclude<LabVerdictFilter, ''>, string> = {
   o_tdi: "O'tdi",
   qayta_yuvish: 'Qayta yuvish',
@@ -163,8 +183,8 @@ export function ReportFilterBar({
   onSearchChange,
   searchPlaceholder = 'Qidirish',
 
-  direction,
-  onDirectionChange,
+  directions,
+  onDirectionsChange,
   serial,
   onSerialChange,
   barcode2,
@@ -206,8 +226,8 @@ export function ReportFilterBar({
   onSearchChange?: (value: string) => void
   searchPlaceholder?: string
 
-  direction?: ReportDirection
-  onDirectionChange?: (d: ReportDirection) => void
+  directions?: ReportRowKind[]
+  onDirectionsChange?: (d: ReportRowKind[]) => void
   serial?: string
   onSerialChange?: (v: string) => void
   barcode2?: string
@@ -234,23 +254,16 @@ export function ReportFilterBar({
   return (
     <div className="w-full space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {onDirectionChange && direction && (
-          <div className="inline-flex rounded-full border border-slate-300 p-0.5 dark:border-slate-700">
-            {(['both', 'kirim', 'chiqim'] as ReportDirection[]).map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => onDirectionChange(d)}
-                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                  direction === d
-                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                }`}
-              >
-                {DIRECTION_LABEL[d]}
-              </button>
-            ))}
-          </div>
+        {onDirectionsChange && directions && (
+          <FilterField
+            label="Yo'nalish"
+            allLabel="Hammasi"
+            options={DIRECTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            selected={directions}
+            onChange={(vals) => onDirectionsChange(vals as ReportRowKind[])}
+            multi
+            compact
+          />
         )}
 
         <button type="button" onClick={() => onDateRangeChange(isoToday(), isoToday())} className={pillSelectClass}>

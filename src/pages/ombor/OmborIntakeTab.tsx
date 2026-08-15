@@ -20,6 +20,33 @@ import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { FormField, TextInput } from '../../components/ui/FormField'
+
+// Tara correction (2026-08-15) -- tara is the only figure Ombor enters
+// himself (declared/gate/lab figures are read-only here, per this task's
+// own scope); everything correct_kirim_line_tara returns, mapped from the
+// RPC's snake_case row shape (see supabase/migrations/
+// 0072_correct_kirim_line_tara_rpc.sql).
+//
+// 🔒 Shown as a page-level banner, NOT a per-card confirmation -- found
+// live during testing: Window 2's own membership is hasRawRemainder
+// (effective_qty - sent > 0, stageMembership.ts). A tara correction that
+// pushes sent past the new effective_qty is exactly the allow-with-impact
+// case this feature exists to surface -- and it ALSO makes the serial's
+// own row disappear from this window the instant refresh() re-runs,
+// taking a per-row confirmation down with it before the operator could
+// ever read the warning it was supposed to show. A banner above both
+// windows survives regardless of which window the serial ends up in.
+interface TaraCorrectionResult {
+  serial: string
+  beforeBoxMassKg: number
+  afterBoxMassKg: number
+  beforeEffectiveQty: number
+  afterEffectiveQty: number
+  sentKg: number
+  rawDispatchedKg: number
+  newAvailableKg: number
+}
 
 async function uploadPilePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
@@ -38,6 +65,11 @@ export function OmborIntakeTab() {
   const { serials: moykaSerials, loading: moykaLoading } = useMoykaSerials()
   const [activeSerial, setActiveSerial] = useState<string | null>(null)
   const [expandedSerial, setExpandedSerial] = useState<string | null>(null)
+  const [editingTaraSerial, setEditingTaraSerial] = useState<string | null>(null)
+  const [taraDraft, setTaraDraft] = useState('')
+  const [taraBusy, setTaraBusy] = useState(false)
+  const [taraError, setTaraError] = useState<string | null>(null)
+  const [lastTaraResult, setLastTaraResult] = useState<TaraCorrectionResult | null>(null)
   // Mirrors OmborTayyorTab.tsx's lastBarcode: which serial's Barcode #1 just
   // appeared, so Barcode1Display auto-prints once (native only) the same way
   // a freshly-saved Barcode #2 does — see Barcode1Display.tsx's `autoprint`.
@@ -102,6 +134,62 @@ export function OmborIntakeTab() {
     refreshEffectiveQty()
   }
 
+  function startTaraEdit(line: IntakeLine & { intake: IntakeRecord }) {
+    setEditingTaraSerial(line.serial)
+    setTaraDraft(String(line.intake.box_mass_kg))
+    setTaraError(null)
+  }
+
+  function cancelTaraEdit() {
+    setEditingTaraSerial(null)
+    setTaraError(null)
+  }
+
+  // Tara-only correction (2026-08-15, DECISIONS.md "Ombor KIRIM tara-only
+  // correction"): allow-with-impact, not block -- correct_kirim_line_tara
+  // itself never rejects an over-committed result (sent/raw_dispatched
+  // exceeding the corrected effective_qty), it just reports it, matching
+  // this app's existing tolerance for the same state reachable via an
+  // ordinary over-send (moyka_sends has no balance check at all). No
+  // expiry -- the button stays available regardless of downstream state,
+  // same as classify_kirim_line_sulfur.
+  async function saveTara(serial: string) {
+    const value = Number(taraDraft)
+    if (!Number.isFinite(value) || value < 0) {
+      setTaraError("Tara qiymati noto'g'ri.")
+      return
+    }
+    setTaraBusy(true)
+    setTaraError(null)
+    try {
+      const { data, error } = await supabase.rpc('correct_kirim_line_tara', {
+        p_serial: serial,
+        p_box_mass_kg: value,
+      })
+      if (error) throw error
+      const row = data?.[0]
+      if (row) {
+        setLastTaraResult({
+          serial,
+          beforeBoxMassKg: Number(row.before_box_mass_kg),
+          afterBoxMassKg: Number(row.after_box_mass_kg),
+          beforeEffectiveQty: Number(row.before_effective_qty),
+          afterEffectiveQty: Number(row.after_effective_qty),
+          sentKg: Number(row.sent_kg),
+          rawDispatchedKg: Number(row.raw_dispatched_kg),
+          newAvailableKg: Number(row.new_available_kg),
+        })
+      }
+      setEditingTaraSerial(null)
+      refresh()
+      refreshEffectiveQty()
+    } catch (err) {
+      setTaraError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
+    } finally {
+      setTaraBusy(false)
+    }
+  }
+
   if (loading || moykaLoading) return null
 
   const pending = lines.filter((l) => !l.intake)
@@ -135,6 +223,33 @@ export function OmborIntakeTab() {
 
   return (
     <div className="space-y-6">
+      {lastTaraResult && (
+        <Card padding="compact">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <StatusNote tone="ok">
+                {lastTaraResult.serial}: Tara {lastTaraResult.beforeBoxMassKg.toLocaleString()} →{' '}
+                {lastTaraResult.afterBoxMassKg.toLocaleString()} kg. Netto{' '}
+                {lastTaraResult.beforeEffectiveQty.toLocaleString()} → {lastTaraResult.afterEffectiveQty.toLocaleString()} kg.
+              </StatusNote>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Yuborilgan {lastTaraResult.sentKg.toLocaleString()} kg · Xom jo'natilgan{' '}
+                {lastTaraResult.rawDispatchedKg.toLocaleString()} kg · Yangi qoldiq{' '}
+                {lastTaraResult.newAvailableKg.toLocaleString()} kg
+              </p>
+              {lastTaraResult.sentKg + lastTaraResult.rawDispatchedKg > lastTaraResult.afterEffectiveQty && (
+                <StatusNote tone="problem">
+                  Diqqat: yuborilgan/jo'natilgan miqdor yangi netadan ortiq — qoldiq 0 sifatida ko'rsatiladi.
+                </StatusNote>
+              )}
+            </div>
+            <IconButton label="Yopish" onClick={() => setLastTaraResult(null)}>
+              ✕
+            </IconButton>
+          </div>
+        </Card>
+      )}
+
       <div>
         <SectionHeading>1 · Qabul kutilmoqda</SectionHeading>
         <div className="mt-2 space-y-2">
@@ -244,11 +359,41 @@ export function OmborIntakeTab() {
                       }}
                     />
                   )}
+                  <IconButton label="Tahrirlash" onClick={() => startTaraEdit(line)}>
+                    ✎
+                  </IconButton>
                   <IconButton label="Batafsil" onClick={() => setExpandedSerial(expandedSerial === line.serial ? null : line.serial)}>
                     ⋯
                   </IconButton>
                 </div>
               </div>
+              {/* Tara-only Tahrirlash (2026-08-15) -- tara is the only figure
+                  Ombor enters himself; declared/gate/lab figures stay
+                  read-only here. No expiry, allow-with-impact rather than
+                  block -- see DECISIONS.md "Ombor KIRIM tara-only
+                  correction." */}
+              {editingTaraSerial === line.serial ? (
+                <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                  <FormField label="Tara (quti massasi), kg">
+                    <TextInput
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={taraDraft}
+                      onChange={(e) => setTaraDraft(e.target.value)}
+                    />
+                  </FormField>
+                  {taraError && <StatusNote tone="problem">{taraError}</StatusNote>}
+                  <div className="flex gap-2">
+                    <Button variant="primary" size="md" disabled={taraBusy} onClick={() => saveTara(line.serial)}>
+                      {taraBusy ? 'Saqlanmoqda…' : 'Saqlash'}
+                    </Button>
+                    <Button variant="ghost" size="md" onClick={cancelTaraEdit}>
+                      Bekor qilish
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               {/* §5.1 amend: gate-vs-declared variance, shown once gate stage 2 is known.
                   Ombor card-polish pass: deliberately NOT a StatusNote here (unlike the
                   identical line on OmborMoykaTab's card, which the same pass removes

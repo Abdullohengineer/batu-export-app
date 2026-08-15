@@ -32,6 +32,12 @@ export interface AwaitingSerial {
   owner_id: string
   target_moisture_pct: number | null
   target_so2_mg_kg: number | null
+  // Explicit natural/sulphured flag (2026-08-14), replacing the
+  // target_so2_mg_kg-is-null inference. null = not yet classified — every
+  // consumer must treat it as sulfured (defer verdict, show the field),
+  // never as natural. See DECISIONS.md "Client quality targets removed
+  // from Menejer/Laborator; explicit natural/sulphured flag".
+  is_sulfured: boolean | null
   sentKg: number // Σ moyka_sends.qty_kg for this serial — the batch size Laborator sees, no pallets exist yet
   sentDate: string // earliest moyka_sends.sent_date for this serial — FIFO sort key
   rejected: boolean // true when this serial's LATEST verdict was qayta_yuvish — awaiting RE-test, not a first-time one
@@ -54,6 +60,7 @@ export interface ChiqimLabResultRow {
   created_at: string
   target_moisture_pct: number | null
   target_so2_mg_kg: number | null
+  is_sulfured: boolean | null
 }
 
 export function useLaboratorChiqim() {
@@ -97,7 +104,7 @@ export function useLaboratorChiqim() {
       const [{ data: lines }, { data: results }] = await Promise.all([
         supabase
           .from('kirim_lines')
-          .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg')
+          .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, is_sulfured')
           .in('serial', serials),
         supabase
           .from('lab_results')
@@ -152,6 +159,7 @@ export function useLaboratorChiqim() {
             owner_id: order.owner_id,
             target_moisture_pct: line.target_moisture_pct,
             target_so2_mg_kg: line.target_so2_mg_kg,
+            is_sulfured: line.is_sulfured,
             sentKg: sentBySerial.get(cycle.serial) ?? 0,
             sentDate: earliestSentDateBySerial.get(cycle.serial) ?? '',
             rejected: !!result,
@@ -176,6 +184,7 @@ export function useLaboratorChiqim() {
           created_at: result.created_at,
           target_moisture_pct: line.target_moisture_pct,
           target_so2_mg_kg: line.target_so2_mg_kg,
+          is_sulfured: line.is_sulfured,
         }
         if (result.status === 'moisture_in') sulfurRows.push(row)
         else finishedRows.push(row)

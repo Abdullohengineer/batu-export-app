@@ -59,8 +59,13 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   const PLATE_OUT = uniqueRealLookingPlate()
   chiqimPlates.push(PLATE_OUT)
 
-  // --- Menejer: KIRIM order, two lines — Subxon (sulfured, both targets)
-  // continues the whole chain; Isfara (natural, SO2 blank) stops at the lab. ---
+  // --- Menejer: KIRIM order, two lines — Subxon (sulfured at Laborator's
+  // first entry, below) continues the whole chain; Isfara (natural) stops
+  // at the lab. Menejer's own form is back to plain Tur + Miqdori
+  // (2026-08-15) -- see DECISIONS.md "Natural/sulphured classification
+  // moved from Menejer to Laborator; audit trail": the lab now sets
+  // is_sulfured, not Menejer, so this form has exactly one select per row
+  // (Tur) again -- no ppm/percent, no Naturel/Sulfatlangan here at all. ---
   await loginAs(page, 'MENEJER')
   await expect(page.getByRole('heading', { name: 'Yangi KIRIM' })).toBeVisible()
   await page.locator('div:has(> label:text-is("Moshina raqami")) > input').fill(PLATE_IN)
@@ -70,15 +75,11 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   const row1 = page.locator('form div.space-y-1.rounded-md').nth(0)
   await row1.locator('select').selectOption({ label: 'Subxon' })
   await row1.getByPlaceholder('Miqdori (kg)').fill('5000')
-  await row1.getByPlaceholder('—').fill('8')
-  await row1.getByPlaceholder('naturel').fill('50')
 
   await page.getByRole('button', { name: "+ Tur qo'shish" }).click()
   const row2 = page.locator('form div.space-y-1.rounded-md').nth(1)
   await row2.locator('select').selectOption({ label: 'Isfara' })
   await row2.getByPlaceholder('Miqdori (kg)').fill('500')
-  await row2.getByPlaceholder('—').fill('9')
-  // SO2 target intentionally left blank — natural product.
 
   await page.getByRole('button', { name: 'Saqlash' }).click()
 
@@ -88,27 +89,35 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await expect(savedPanel.locator('span.font-mono').nth(1)).toHaveText(/^\d{6}-\d{3}$/, { timeout: 10000 })
   const [subxonSerial, isfaraSerial] = await savedPanel.locator('span.font-mono').allTextContents()
 
-  // --- kirim-client-targets.spec.ts's core assertion, folded in here: a
-  // blank SO2 target persists as a real SQL null, not 0/''/undefined. ---
+  // --- Menejer's form writes neither the classification nor the numeric
+  // target columns (2026-08-15) -- is_sulfured stays NULL on both lines
+  // until Laborator classifies them below. See DECISIONS.md "Natural/
+  // sulphured classification moved from Menejer to Laborator; audit
+  // trail". ---
   {
     const result = await page.evaluate(async ({ subxon, isfara }) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
       const { data, error } = await w.supabase
         .from('kirim_lines')
-        .select('serial, target_moisture_pct, target_so2_mg_kg')
+        .select('serial, target_moisture_pct, target_so2_mg_kg, is_sulfured')
         .in('serial', [subxon, isfara])
       return { data, error: error?.message ?? null }
     }, { subxon: subxonSerial, isfara: isfaraSerial })
     expect(result.error).toBeNull()
-    const rows = result.data as { serial: string; target_moisture_pct: number; target_so2_mg_kg: number | null }[]
+    const rows = result.data as {
+      serial: string
+      target_moisture_pct: number | null
+      target_so2_mg_kg: number | null
+      is_sulfured: boolean | null
+    }[]
     const subxonLine = rows.find((r) => r.serial === subxonSerial)!
     const isfaraLine = rows.find((r) => r.serial === isfaraSerial)!
-    expect(subxonLine.target_moisture_pct).toBe(8)
-    expect(subxonLine.target_so2_mg_kg).toBe(50)
-    expect(isfaraLine.target_moisture_pct).toBe(9)
+    expect(subxonLine.is_sulfured).toBeNull()
+    expect(isfaraLine.is_sulfured).toBeNull()
+    expect(subxonLine.target_moisture_pct).toBeNull()
+    expect(subxonLine.target_so2_mg_kg).toBeNull()
+    expect(isfaraLine.target_moisture_pct).toBeNull()
     expect(isfaraLine.target_so2_mg_kg).toBeNull()
-    expect(typeof isfaraLine.target_so2_mg_kg).not.toBe('string')
-    expect(isfaraLine.target_so2_mg_kg).not.toBe(0)
   }
 
   // --- Qorovul: KIRIM gate, both stages, one truck-wide weighing covering
@@ -205,19 +214,28 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     // and its own nested serial chip -- the `div` type selector excludes
     // the span (nav/visual-redesign pass, real strict-mode violation found
     // via e2e, not assumed safe from inspection alone).
+    // Classification set HERE now (2026-08-15), not on Menejer's form --
+    // same save as the moisture reading, via the "Mahsulot" select this
+    // form now carries. See DECISIONS.md "Natural/sulphured classification
+    // moved from Menejer to Laborator; audit trail".
     const subxonW1 = w1.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(subxonW1).toBeVisible()
     await subxonW1.getByRole('button', { name: 'Tahlil' }).click()
+    await subxonW1.locator('select').selectOption({ label: 'Sulfatlangan' })
     await subxonW1.locator('div:has(> label:text-is("Namligi %")) input').fill('7.5')
     await subxonW1.getByRole('button', { name: 'Saqlash' }).click()
     const subxonW2 = w2.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(subxonW2).toBeVisible()
     await expect(w3.locator('div.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
-    await expect(subxonW2).toContainText('Talab: 50')
+    // No client target text anywhere on this active-input card any more
+    // (2026-08-14) -- see DECISIONS.md "Client quality targets removed
+    // from Menejer/Laborator; explicit natural/sulphured flag".
+    await expect(subxonW2).not.toContainText('Talab')
 
     const isfaraW1 = w1.locator('div.rounded-md', { hasText: isfaraSerial })
     await expect(isfaraW1).toBeVisible()
     await isfaraW1.getByRole('button', { name: 'Tahlil' }).click()
+    await isfaraW1.locator('select').selectOption({ label: 'Naturel' })
     await isfaraW1.locator('div:has(> label:text-is("Namligi %")) input').fill('9.5')
     await isfaraW1.getByRole('button', { name: 'Saqlash' }).click()
     // Natural line: skips W2 entirely, lands straight in W3.
@@ -225,6 +243,16 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     const isfaraW3 = w3.locator('div.rounded-md', { hasText: isfaraSerial })
     await expect(isfaraW3).toBeVisible()
     await expect(isfaraW3).toContainText("Yo'q · naturel")
+
+    // Confirm the classification actually persisted through
+    // classify_kirim_line_sulfur() -- both lines resolved from NULL.
+    const flags = await page.evaluate(async ({ subxon, isfara }) => {
+      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const { data } = await w.supabase.from('kirim_lines').select('serial, is_sulfured').in('serial', [subxon, isfara])
+      return data as { serial: string; is_sulfured: boolean | null }[]
+    }, { subxon: subxonSerial, isfara: isfaraSerial })
+    expect(flags.find((r) => r.serial === subxonSerial)?.is_sulfured).toBe(true)
+    expect(flags.find((r) => r.serial === isfaraSerial)?.is_sulfured).toBe(false)
 
     await subxonW2.locator('input[type="number"]').fill('45')
     await subxonW2.getByRole('button', { name: 'Sera kiritish' }).click()
@@ -288,8 +316,10 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   // hard gate on Barcode #2 assignment moved to packing, so this verdict
   // must now happen BEFORE Ombor can pack -- it used to run after packing
   // and Tugallash, back when CHIQIM lab testing was scoped to a completed
-  // wash cycle. Subxon is sulfured, so ChiqimTahlilForm's requireVerdict is
-  // false (target_so2_mg_kg !== null) -- Tahlil only records moisture
+  // wash cycle. Subxon is already sulfured (is_sulfured=true, set at KIRIM
+  // Tahlil above and carried over -- this form's own Mahsulot select
+  // pre-fills to Sulfatlangan, no need to touch it), so ChiqimTahlilForm's
+  // internally-derived requireVerdict is false -- Tahlil only records moisture
   // (Saqlash, no verdict yet), the cycle moves to Sera kutilmoqda, and the
   // verdict happens at Sera kiritish alongside SO2 -- the same two-step
   // shape as the KIRIM check above. No more pallet <select> in this form

@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useLaboratorKirim, type AwaitingLine, type LabResultRow } from '../../lib/useLaboratorKirim'
+import { applySulfurClassification, sulfurChoiceFromFlag, type SulfurChoice } from '../../lib/classifySulfur'
 import { KirimTahlilForm, type TahlilValues } from './KirimTahlilForm'
 import { KirimTahlilEditForm, type TahlilEditValues } from './KirimTahlilEditForm'
 import { GatePhoto } from '../../components/GatePhoto'
@@ -34,6 +35,13 @@ export function LaboratorKirimTab() {
   const [activeTahlil, setActiveTahlil] = useState<string | null>(null)
   const [tahlilError, setTahlilError] = useState<string | null>(null)
   const [seraValue, setSeraValue] = useState<Record<string, string>>({})
+  // Per-row override for the Sera-kiritish classification select (2026-08-15)
+  // -- absent means "not touched yet," falls back to the row's own current
+  // flag (see seraClassificationFor below), not to '' -- a W2 row's flag is
+  // always already resolved true by construction (status='moisture_in' is
+  // only ever set when Tahlil resolved it sulfured), so there is no
+  // unresolved-'' case to default to here the way the Tahlil forms have.
+  const [seraClassification, setSeraClassification] = useState<Record<string, SulfurChoice>>({})
   const [seraSaving, setSeraSaving] = useState<string | null>(null)
   const [seraError, setSeraError] = useState<string | null>(null)
   const [expandedFinished, setExpandedFinished] = useState<string | null>(null)
@@ -47,12 +55,16 @@ export function LaboratorKirimTab() {
     return productTypes.find((t) => t.id === id)?.name ?? id
   }
 
-  // §5.5.1: whether this line has a sulfur target decides what happens
+  // §5.5.1: whether this line is classified sulfured decides what happens
   // immediately after save — sulfured -> W2 (moisture_in), natural -> W3
   // directly (complete), skipping W2 entirely. No SO2 value is written
-  // either way; that only ever happens via Sera kiritish (W2).
+  // either way; that only ever happens via Sera kiritish (W2). Classification
+  // (2026-08-15) is chosen live in the Tahlil form itself, not read from the
+  // line's prior flag -- values.isSulfured is authoritative here.
   async function handleTahlil(line: AwaitingLine, values: TahlilValues) {
     setTahlilError(null)
+    await applySulfurClassification(line.serial, line.is_sulfured, values.isSulfured)
+
     let photoPath: string | null = null
     if (values.photoFile) {
       const path = `${crypto.randomUUID()}.jpg`
@@ -61,7 +73,6 @@ export function LaboratorKirimTab() {
       photoPath = path
     }
 
-    const isSulfured = line.target_so2_mg_kg !== null
     const { error } = await supabase.from('lab_results').insert({
       scope: 'kirim',
       parent_serial: line.serial,
@@ -70,7 +81,7 @@ export function LaboratorKirimTab() {
       sample_photo: photoPath,
       note: values.note || null,
       tested_by: profile?.id,
-      status: isSulfured ? 'moisture_in' : 'complete',
+      status: values.isSulfured ? 'moisture_in' : 'complete',
     })
     if (error) throw error
 
@@ -78,24 +89,42 @@ export function LaboratorKirimTab() {
     refresh()
   }
 
-  // §5.5.2 W2 "Sera kiritish" — single-field update, only reachable for
-  // sulfured products by construction (W2 membership = status='moisture_in',
-  // which handleTahlil only ever sets when a sulfur target exists).
+  function seraClassificationFor(row: LabResultRow): SulfurChoice {
+    return seraClassification[row.id] ?? sulfurChoiceFromFlag(row.is_sulfured)
+  }
+
+  // §5.5.2 W2 "Sera kiritish" — reachable for sulfured lines by construction
+  // (W2 membership = status='moisture_in', which handleTahlil only ever sets
+  // when Tahlil resolved sulfured) -- but the lab can still discover here
+  // that a line is actually natural after all (2026-08-15) and correct it on
+  // this same save: SO2 becomes optional, the line completes without it.
+  // so2_mg_kg has no carry-forward concern -- a W2 row has never had one set.
   async function handleSera(row: LabResultRow) {
     setSeraError(null)
-    const value = parseFloat(seraValue[row.id] ?? '')
-    if (!value && value !== 0) {
-      setSeraError('SO₂ ppm ni kiriting.')
-      return
+    const classification = seraClassificationFor(row)
+    const isSulfured = classification !== 'false'
+    let value: number | null = null
+    if (isSulfured) {
+      value = parseFloat(seraValue[row.id] ?? '')
+      if (!value && value !== 0) {
+        setSeraError('SO₂ ppm ni kiriting.')
+        return
+      }
     }
     setSeraSaving(row.id)
     try {
+      await applySulfurClassification(row.parent_serial, row.is_sulfured, isSulfured)
       const { error } = await supabase
         .from('lab_results')
         .update({ so2_mg_kg: value, status: 'complete' })
         .eq('id', row.id)
       if (error) throw error
       setSeraValue((m) => {
+        const next = { ...m }
+        delete next[row.id]
+        return next
+      })
+      setSeraClassification((m) => {
         const next = { ...m }
         delete next[row.id]
         return next
@@ -118,6 +147,8 @@ export function LaboratorKirimTab() {
   // keeps the previous sample photo rather than dropping it.
   async function handleTahlilEdit(row: LabResultRow, values: TahlilEditValues) {
     setEditError(null)
+    await applySulfurClassification(row.parent_serial, row.is_sulfured, values.isSulfured)
+
     let photoPath = row.sample_photo
     if (values.photoFile) {
       const path = `${crypto.randomUUID()}.jpg`
@@ -220,39 +251,43 @@ export function LaboratorKirimTab() {
               <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
                 Namligi {row.moisture_pct}% kiritildi · sera hali yo'q
               </div>
-              <div className="mt-2">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Oltingugurt (SO₂){' '}
-                  <span className="font-normal text-slate-400 dark:text-slate-500">
-                    (Talab: {row.target_so2_mg_kg} ppm)
-                  </span>
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <TextInput
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    placeholder="SO₂ ppm"
-                    value={seraValue[row.id] ?? ''}
-                    onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
-                    className="flex-1"
-                  />
-                  <Button variant="primary" size="md" disabled={seraSaving === row.id} onClick={() => handleSera(row)}>
-                    {seraSaving === row.id ? 'Saqlanmoqda…' : 'Sera kiritish'}
-                  </Button>
+              <div className="mt-2 space-y-2">
+                {/* Classification, correctable here too (2026-08-15) -- the
+                    lab may discover at this point that a line is actually
+                    natural, and correct it on this same save. See
+                    KirimTahlilForm.tsx's identical block. */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mahsulot</label>
+                  <select
+                    required
+                    value={seraClassificationFor(row)}
+                    onChange={(e) => setSeraClassification((m) => ({ ...m, [row.id]: e.target.value as SulfurChoice }))}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    <option value="" disabled>
+                      Tanlang…
+                    </option>
+                    <option value="false">Naturel</option>
+                    <option value="true">Sulfatlangan</option>
+                  </select>
                 </div>
-                {/* The target is a ceiling, not an exact spec -- any reading
-                    under it is acceptable. Informational only, never blocks
-                    saving, same treatment as ChiqimTahlilForm's moisture
-                    soft-warn. */}
-                {(() => {
-                  const v = parseFloat(seraValue[row.id] ?? '')
-                  return !isNaN(v) && v > row.target_so2_mg_kg! ? (
-                    <div className="mt-1">
-                      <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} ppm) — baribir saqlash mumkin.</StatusNote>
-                    </div>
-                  ) : null
-                })()}
+                {seraClassificationFor(row) !== 'false' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Oltingugurt (SO₂)</label>
+                    <TextInput
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      placeholder="SO₂ ppm"
+                      value={seraValue[row.id] ?? ''}
+                      onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
+                <Button variant="primary" size="md" fullWidth disabled={seraSaving === row.id} onClick={() => handleSera(row)}>
+                  {seraSaving === row.id ? 'Saqlanmoqda…' : 'Sera kiritish'}
+                </Button>
               </div>
               {seraError && (
                 <div className="mt-1">

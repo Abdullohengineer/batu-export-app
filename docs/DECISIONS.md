@@ -2957,3 +2957,237 @@ production one final time: `050826-001` and `290726-071` both still `status='act
 anywhere in the database.
 
 **Out of scope, not touched:** Rezka implementation, KN origin tracking.
+
+## 2026-08-14 — Client quality targets removed from Menejer/Laborator; explicit natural/sulphured flag
+**Context:** Abdulloh flagged that Menejer's KIRIM form and Laborator's KIRIM/CHIQIM Tahlil and
+Edit forms displayed the client's quality requirement ("Talab: X%", "Talab: X ppm") right next
+to the field where the lab enters its own reading. The lab already knows the requirement and
+judges against it independently — a displayed target anchors the reading before it's taken.
+Separately, `kirim_lines.target_so2_mg_kg IS NULL` had been serving double duty as "this
+product needs no sulfur test" (natural), which silently misclassified three real production
+serials (`110826-001`, `110826-002`, `110826-003`) as natural — genuinely sulfured deliveries
+that never got a target entered — hiding the SO₂ input entirely and leaving them stuck.
+
+**Decision:**
+- **Explicit flag, not an inference.** Added `kirim_lines.is_sulfured boolean`, nullable, no
+  default. `NULL` means "not yet classified," and — critically — every consumer treats `NULL`
+  the same as `true` (sulfured): shows the SO₂ field, marks it required, defers the CHIQIM
+  verdict to Sera kiritish. Only an explicit `false` means natural (hides SO₂, allows an
+  immediate verdict). This is a deliberate fail-safe inversion of the old bug: previously a
+  data-entry gap silently meant "natural" (missing functionality, a serial gets stuck exactly
+  like the three above); now a gap silently means "sulfured" (extra visible field, at worst one
+  harmless extra step, never a block).
+- **Who sets it: Menejer, immediately, coarse.** A required Naturel/Sulfatlangan select on
+  Menejer's KIRIM form (`src/pages/menejer/KirimForm.tsx`) — no ppm, no percent, no numeric
+  target of any kind. This is a statement of what the product *is*, not a quality spec, and
+  Menejer can state it without seeing or entering any client number. Shipped in the same change
+  as the flag rather than held: every intake before this lands inherits `NULL`, and under the
+  fail-safe rule that's harmless (reads as sulfured), whereas the reverse design — nobody sets
+  the flag, everything defaults to natural — would have reopened exactly the bug this fixes.
+- **`talab` removed from active-input surfaces only.** No target inputs on Menejer's form. No
+  "Talab: …" text, target value, tolerance band, or pass/fail note on Laborator's four
+  Tahlil/Edit input forms (`KirimTahlilForm`, `KirimTahlilEditForm`, `ChiqimTahlilForm`,
+  `ChiqimTahlilEditForm`) or the two tabs' inline Window 2 "Sera kiritish" cards
+  (`LaboratorKirimTab.tsx`, `LaboratorChiqimTab.tsx`). Deliberately **not** touched: the
+  Window 3 "Yakunlangan" expanded-row displays, `LaboratorTarixTab.tsx` (history), the serial
+  passport, client report, and Hisobot — all retrospective/read-only, none of them anchor a
+  not-yet-taken reading. `target_moisture_pct`/`target_so2_mg_kg` are kept on `kirim_lines`,
+  still read by those surfaces; nothing writes to them anymore.
+- **`wip_rows.so2_pending`** (the Laborator sulfur-overdue WIP alert) switched from
+  `kl.target_so2_mg_kg IS NOT NULL` to `kl.is_sulfured IS DISTINCT FROM false` — same
+  NULL-means-sulfured direction as everywhere else.
+
+**Repair (production data, `110826-001`/`002`/`003`):**
+- `kirim_lines.is_sulfured` set to `true` for all three — unambiguous, these are known-sulfured
+  deliveries.
+- Setting the flag alone does not reopen them: `useLaboratorKirim.ts`'s Window 1/2/3 membership
+  is decided purely by `lab_results.status` (`moisture_in` → W2, `complete` → W3), independent
+  of the flag. All three had already been written to `status='complete'` with `so2_mg_kg=null`
+  by the branch being fixed. The flag makes Laborator's "Edit" action on the Yakunlangan row
+  mechanically capable of showing and saving an SO₂ input (Edit's Window 3 membership doesn't
+  depend on the flag), but leaving `status='complete'`/`so2_mg_kg=null` in place would be
+  internally dishonest — the record would say "finished" while missing a value the flag now
+  says is required. So the LATEST `lab_results` row per serial (one per serial; the current
+  record) was corrected to `status='moisture_in'` as well. **Consequence, by design: all three
+  now resolve via Window 2 "Sera kiritish", not "Edit."** Anyone looking for them under Edit
+  won't find them — they're in Sera kutilmoqda instead, which is where a sulfured serial with
+  moisture in and SO₂ pending is supposed to sit.
+- `110826-001` carries four `lab_results` rows from repeated retries during the original
+  incident — only the newest was touched by the status correction above; the three older ones
+  stay `status='complete'` untouched. `lab_results` has no void/superseded state and no delete
+  path (append-only, §2.15) — they remain visible, undeduplicated, in Laborator's Tarix
+  (history) view, which is the honest record of what actually happened. Deleting them was
+  considered and rejected.
+- The six opening-stock seed rows keep `is_sulfured = NULL` — genuinely unclassified, no
+  production consequence (opening-stock rows don't flow through Laborator).
+
+**Testing (production data, post-repair, live browser session against the real dev server +
+this same Supabase project).** Logged in as the real Laborator role: all three serials
+(`110826-001`/`002`/`003`) appeared in **2 · Sera natijasi kutilmoqda**, each showing its
+already-recorded moisture and a bare "Oltingugurt (SO₂)" label with no target/talab text.
+**Sera kiritish** accepted an SO₂ reading for each (45/48/42 ppm respectively) and saved —
+Sera kutilmoqda dropped to 0, all three moved to **3 · Yakunlangan** showing the correct
+moisture+SO₂ pair (KIRIM has no verdict by design, §5.5.2; "reaching a correct verdict" here
+means landing correctly in Yakunlangan with both values recorded, which they did). Flag-driven
+visibility confirmed on two real cases: `150826-001` (a genuinely new, real, `NULL`-flag
+production row that arrived mid-session) showed the SO₂ field on Tahlil — NULL reads as
+sulphured, as designed — and the form was cancelled without submitting, leaving this real row
+untouched; a disposable `TEST-VERIFY-SULFUR-FLAG` fixture (owner "Boysun Quritilgan Mevalar",
+serial `150826-002`, `is_sulfured=false` via Menejer's own Naturel/Sulfatlangan select) showed
+no SO₂ field at all on Tahlil, confirming the explicit-`false` case. No "Talab" text appeared
+anywhere across either Laborator tab's active-input forms or W2 cards. Zero console errors
+across the entire session. Fixture fully removed after (`kirim_orders`/`kirim_lines`/
+`gate_weighings`, no downstream rows had been created), reverified at zero rows. Downstream
+surfaces confirmed unbroken on rows still carrying old target values: Hisobot's expanded row
+and the full serial passport for `110826-001` both rendered cleanly, correctly showing "Talab
+yo'q" / "Talab yo'q · naturel" for the still-NULL, no-longer-written `target_moisture_pct`/
+`target_so2_mg_kg`, alongside the repaired lab reading (17%, 45 ppm). `npx tsc -b --noEmit` and
+`npm run lint` both clean throughout. `wip_rows` recompiles clean against the new
+`is_sulfured`-based `so2_pending` predicate. Direct query confirmed all three serials'
+`kirim_lines.is_sulfured = true` and their latest `lab_results.status` correctly resolved
+through the save; the three older `110826-001` duplicate rows remain `status='complete'`
+untouched, as decided.
+
+**Two latent e2e bugs found and fixed while rewriting the suite, before they could go stale:**
+`lab-packing-hard-gate.spec.ts` and `lab-relocation-loss-verification.spec.ts` both seed a
+"natural product, one-step verdict" fixture via a direct `kirim_lines` insert (bypassing
+Menejer's form) that never set `is_sulfured`. Under the old inference this correctly read as
+natural (blank target); under the new NULL-means-sulfured fail-safe it would have silently
+flipped to sulphured, deferring the verdict to Sera kiritish and breaking both tests' downstream
+assumption that the verdict buttons sit directly on the Tahlil form. Both fixed by adding
+`is_sulfured: false` explicitly to the insert.
+
+**Out of scope, not touched:** the numeric `target_moisture_pct`/`target_so2_mg_kg` columns
+themselves (kept, still read by passport/client report/Hisobot), any change to who can see
+those read-only displays, Rahbar dashboard, Ombor Tugallash, Rezka.
+
+## 2026-08-15 — Natural/sulphured classification moved from Menejer to Laborator; audit trail
+**Context:** Abdulloh's reasoning: the lab physically sees the product, so they're the right
+observer for whether it's sulphured — and because it's set on a form the lab can reopen, a
+misclassification becomes fixable in-app instead of requiring SQL (the exact repair path the
+prior entry above needed for `110826-001`/`002`/`003`). Investigated four questions before
+touching anything; findings below, then the design.
+
+**1. Does product type already encode the classification?** No — investigated live data, not
+assumed. Five types (`Isfara`, `Natural`, `Qand`, `Qand qizil`, `Subxon`), all one category
+(O'rik/apricot). Zero rows in the entire database have ever been explicitly classified `false`
+(natural) — not one, of any type. Worse, every `true` value traces back to either the mechanical
+backfill from the retired `target_so2_mg_kg` proxy or the manual 3-serial repair — never a
+deliberate click on the real select — so even the strongest-looking signal (`Subxon`, 8-for-8
+sulphured) is provenance-tainted by the exact mechanism this whole feature replaced because it
+was proven unreliable. The type literally named "Natural" has the *least* evidence of any type
+(its one real row is a permanently-exempt opening-stock line). Seed/demo data treats `Isfara` as
+the flagship natural example; production's two real (backfilled) rows say sulphured — a direct
+contradiction. **No type-level default was built.** If revisited once real lab-set volume
+accumulates: a nullable `product_types.default_is_sulfured` column (mirroring the existing
+`product_categories.calibre_applies` precedent), used only to pre-select Laborator's choice,
+never to skip asking — the same "explicit click, never auto-derived" principle §5.5.3 already
+holds for verdicts.
+
+**2. Pre-lab window — can `wip_rows` fire prematurely on a `NULL` line?** No, confirmed
+structurally, two independent ways. `wip_rows.so2_pending` reaches a `wash_cycles` row only via
+`JOIN LATERAL` (not `LEFT JOIN LATERAL`) against `lab_results` — a wash cycle with zero CHIQIM
+readings produces zero rows in that CTE, full stop, regardless of `is_sulfured`. Independently,
+`lr.status = 'moisture_in'` is only ever written *as part of* the very insert that creates the
+first CHIQIM reading, so that status literally cannot exist before a reading does. And before
+Moyka-send, there's no `wash_cycles` row at all for `so2_pending` to look at. One correction to
+how this was framed: the "Diqqat talab" screen doesn't read `wip_rows` directly — it goes
+through `rahbar_exceptions()`, which folds `so2_pending` and `awaiting_lab` into one generic
+"Tahlil kechikdi" label; the literal "Sera kechikdi" text only renders on the separate
+"Kutilayotgan ishlar" screen. Both gate through the identical predicate, so the safety holds
+either way.
+
+**3. Can a serial reach CHIQIM lab with zero KIRIM lab history?** Yes — confirmed real, not
+theoretical: 5 live serials today are `internal_reprocess`-origin (opening-stock re-wash, minted
+by `send_old_stock_to_moyka`), which are **excluded by construction** from ever reaching KIRIM
+Tahlil (`useLaboratorKirim.ts`'s own `origin = 'delivery'` filter) — CHIQIM is the *only* lab
+check these serials will ever get. Before this change, nothing on the CHIQIM side (Tahlil, Sera
+kiritish, or Edit) offered any way to set `is_sulfured` — these 5 serials were stuck reading
+sulphured (fail-safe) forever, with no lab-side fix. This was the deciding case for scope:
+selector placement is Option A, all six touchpoints (see Decision below), specifically because
+Option B (KIRIM Tahlil only) would have left this real, already-occurring case permanently
+unfixable in-app — the opposite of what this whole task exists to achieve.
+
+**4. Correction via Edit — safe, with one real bug found and fixed.** `is_sulfured` is
+genuinely one value per serial (`kirim_lines` PK is `serial`; `lab_results` carries no flag of
+its own), so any change is inherently retroactive across every past-and-future reading for that
+serial — expected, not a defect. Flipping natural→sulphured after an already-given CHIQIM
+verdict is safe: the `finished_pallets` hard-gate RLS policy checks only the latest verdict,
+never `is_sulfured`, and a later flag change can't retroactively un-gate an already-packed
+pallet. **Bug found:** both Edit forms decided whether to show/require SO₂ from the *live* flag,
+defaulting the omitted case to `null` — so flipping sulphured→natural, then later using Edit to
+fix *any* unrelated field (a note, a typo), silently erased a real, previously-recorded SO₂
+reading from every "current status" surface (Window 3, the serial passport), leaving it visible
+only in raw Tarix history. Confirmed reproducible against `110826-001`'s own live row shape.
+**Fixed as a general rule, not a symptom-patch:** an edit form now carries forward any value it
+doesn't present, never writes `null` in place of an existing one. Clearing a real reading is not
+something either Edit form can do as a side effect of an unrelated correction — there is no
+"clear" action at all, deliberately. Audited both forms for the same exposure on every other
+field: moisture, sample date, and (CHIQIM) sampled-source are always rendered/required, never
+gated — no exposure. Verdict is the opposite case, by design: `ChiqimTahlilEditForm`'s two
+buttons require an explicit click on every save, matching §5.5.3's "never auto-derived" invariant
+— nothing to carry forward there, since nothing is ever silently reused.
+
+**Decision — implementation:**
+- Menejer's KIRIM form: reverted to plain Tur + Miqdori. No sulfur question, ever.
+- The Naturel/Sulfatlangan select moved onto all six Laborator touchpoints that can be a line's
+  "first genuine save" or a later correction of it: `KirimTahlilForm`, `ChiqimTahlilForm`, both
+  Edit forms, and both tabs' inline Window 2 "Sera kiritish" cards. Each pre-fills from the
+  line's current `is_sulfured` (blank/forced-choice only if still `NULL`) and re-derives what
+  the rest of that form shows/requires live, in the same render — the classification and the
+  reading are captured by the same save. `ChiqimTahlilForm`'s `requireVerdict` moved from a prop
+  computed by the caller before the form opened to a value derived inside the form from the live
+  selection, since the lab may change the classification while filling the form out.
+- **Last-write-wins, stated plainly (asked explicitly, since one value can now be set from six
+  places):** `is_sulfured` is a single plain column, written by a plain `UPDATE`, no version
+  check. Whichever save reaches the database last simply overwrites — identical to every other
+  single-value field on this table, no new concurrency model introduced. The realistic collision
+  window is tiny (one lab, one record, one screen at a time); what changes is that every actual
+  change is now recorded (see below), so even though only the latest value is "live," the full
+  who/when history survives it.
+- **Audit trail, and why it is an RPC, not a client-granted UPDATE policy or a client-side
+  audit insert (both proposed first, both rejected on review):** a row-level `kirim_lines` UPDATE
+  policy for Laborator would have granted write access to every column on the table —
+  `declared_qty`, `type_id`, `order_id` — all of which feed `report_kirim_rows_as_of` and every
+  downstream balance; "the UI only ever sends `is_sulfured`" is a client-side assumption, not an
+  enforced one, and unlike Menejer's date/plate/driver Tahrirlash precedent (which accepts this
+  exact tradeoff, `0038`), the blast radius here isn't comparable — `is_sulfured` gates dispatch.
+  A client-side audit insert, alongside a client-side update, has two further problems: it can
+  fail silently after the flag has already changed, and `audit_log`'s own INSERT policy is
+  permissive-by-role (any authenticated user), so a client-supplied `actor` on a field that gates
+  dispatch isn't trustworthy. **`classify_kirim_line_sulfur(p_serial, p_is_sulfured)`**
+  (`security definer`, matching `send_old_stock_to_moyka`'s exact pattern — role check first,
+  `search_path` pinned, `auth.uid()` captured server-side) does the column update and the
+  `audit_log` insert in one transaction, with actor derived server-side, never passed by the
+  client. Rejects a `NULL` `p_is_sulfured` outright (the never-classified state must only ever be
+  *left*, never set backwards) and raises, rather than silently no-opping, if the serial doesn't
+  exist. No-ops (skips both writes) if the submitted value matches the current one, so a save
+  that doesn't touch classification doesn't add audit noise. No UPDATE policy exists on
+  `kirim_lines` at all — this function is the only way `is_sulfured` can change post-intake.
+  `audit_log` itself needed no schema change — existing since Phase 0, same table Menejer's own
+  KIRIM/CHIQIM Tahrirlash already write to (`0038`), confirmed its `row_id` column is `text`
+  (matching `kirim_lines.serial`, not `uuid`) before relying on it.
+
+**Testing:** live browser session against the real dev server + this same database, plus direct
+SQL checks. Confirmed: Menejer's KIRIM form has no sulfur field at all; a fresh two-line intake
+(disposable `TEST-VERIFY-R2`) — one classified Sulfatlangan at KIRIM Tahlil correctly routed to
+Sera kutilmoqda and completed there; one classified Naturel skipped Sera kutilmoqda entirely and
+completed at moisture, in one save. `150826-001` (a real, still-unclassified production row) —
+its Tahlil form still shows the SO₂ field by default, and `form.checkValidity()` confirmed the
+browser blocks submission outright while the required select sits on its disabled placeholder
+option; left untouched, not submitted. Correction path: flipped `150826-003` (sulphured, real
+SO₂=33 already recorded) to natural via Edit while only touching the note field — the new
+superseding `lab_results` row still carries `so2_mg_kg=33`, confirming the carry-forward fix.
+Simulated the `internal_reprocess`-shape fixture directly (disposable `TEST-INTERNAL-REPROCESS`
+owner/order, replicating what `send_old_stock_to_moyka` produces) — the resulting serial never
+appeared on the KIRIM tab at all, reached CHIQIM Window 1 with `is_sulfured` still `NULL`,
+classified Naturel there, and completed in one step with a verdict, since that form was its
+first and only lab touchpoint. `audit_log` correctly recorded all four real classification
+events from this session (2 initial, 1 correction, 1 CHIQIM-first), each with the right
+before/after and a real server-derived actor. `wip_rows.so2_pending` stayed at zero rows
+throughout. Zero console/server errors across the whole session. All fixtures (`kirim_orders`,
+`kirim_lines`, `wash_cycles`, `moyka_sends`, `lab_results`, `audit_log` rows) fully deleted and
+reverified at zero afterward.
+
+**Out of scope, not touched:** the type-level default mechanism sketched above (deferred until
+real volume exists), Rahbar dashboard, Ombor Tugallash, Rezka.

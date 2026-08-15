@@ -78,9 +78,15 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   const serial = await page.evaluate(
     async ({ orderId, typeId }) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
+      // is_sulfured: false -- an explicit natural classification (2026-08-14;
+      // see DECISIONS.md "Client quality targets removed from Menejer/
+      // Laborator; explicit natural/sulphured flag") so the below "natural
+      // product, one-step verdict" CHIQIM flow actually gets a one-step
+      // verdict -- leaving this unset now reads as SULFURED (NULL-means-
+      // sulfured fail-safe), which would defer the verdict to Sera kiritish.
       const { data: line, error } = await w.supabase
         .from('kirim_lines')
-        .insert({ order_id: orderId, type_id: typeId, declared_qty: 1000 })
+        .insert({ order_id: orderId, type_id: typeId, declared_qty: 1000, is_sulfured: false })
         .select('serial')
         .single()
       if (error) throw new Error(`kirim_lines insert: ${error.message}`)

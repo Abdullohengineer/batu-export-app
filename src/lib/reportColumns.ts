@@ -18,12 +18,32 @@
 //     averaging moisture across unrelated serials is meaningless.
 export type ReportColumnKind = 'context' | 'volume' | 'measurement'
 
+// Which totals-strip GROUP a volume column's total belongs to (2026-08-15,
+// Moyka rows + serial-state columns). Only meaningful when kind==='volume';
+// defaults to 'movement' when omitted (every pre-existing volume column).
+//   - movement: the row's own kg, summed across ROWS in the filtered set —
+//     "Harakatlar bo'yicha". This is what every volume column did before
+//     today.
+//   - state: a serial's own standing balance, summed once per DISTINCT
+//     serial (never per row — a serial can own several rows) — "Seriyalar
+//     bo'yicha (N ta seriya)". As-of-now, never clipped to the date filter.
+//   - both: the column name legitimately means two different numbers —
+//     "Moykaga yuborilgan"/"Moykadan chiqgan" are each a real *activity*
+//     total (how much moved during this window) AND a real *standing*
+//     total (how much of that serial's total ever/still exists) that can
+//     diverge (see DECISIONS.md "Hisobot: Moyka rows..."). Renders one chip
+//     in EACH group, distinctly labelled ("(davrda)" / "(joriy)") so two
+//     different numbers under the same column name are never shown as one
+//     unlabelled "Jami."
+export type ReportColumnTotalBasis = 'movement' | 'state' | 'both'
+
 export interface ReportColumnDef {
   key: string
   label: string
   kind: ReportColumnKind
   defaultVisible: boolean
   align?: 'right'
+  totalBasis?: ReportColumnTotalBasis
 }
 
 // Order here is display order, left to right. Defaults per the task spec:
@@ -53,6 +73,23 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'moisture', label: 'Namlik %', kind: 'measurement', defaultVisible: false, align: 'right' },
   { key: 'so2', label: 'SO₂ ppm', kind: 'measurement', defaultVisible: false, align: 'right' },
   { key: 'status', label: 'Holat', kind: 'context', defaultVisible: true },
+  // Serial-state columns (2026-08-15, see DECISIONS.md "Hisobot: Moyka
+  // rows, direction split, serial-state columns") — every row shows its
+  // PARENT SERIAL's own standing breakdown, same value repeated on every
+  // row belonging to that serial. As-of-now, never clipped to the date
+  // filter (clipping breaks the reconciliation identity: Qabul qilingan =
+  // Omborda qoldi + Moykaga yuborilgan + Xom holda jo'natilgan). All
+  // default-hidden — expandable via the column picker, same as Tara/
+  // Namlik/SO2 today.
+  { key: 'qabul_qilingan', label: 'Qabul qilingan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'omborda_qoldi', label: 'Omborda qoldi, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  // 'both': also a real per-row MOVEMENT total (report_totals.total_kg_to_moyka) — see ReportColumnTotalBasis above.
+  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'both' },
+  { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  // 'both': also a real per-row MOVEMENT total (report_totals.total_kg_from_moyka) — deliberately allowed to diverge from the state figure, see DECISIONS.md.
+  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'both' },
+  { key: 'xom_jonatilgan', label: "Xom holda jo'natilgan, kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'olib_ketilgan', label: 'Olib ketilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
 ]
 
 export function defaultVisibleColumnKeys(): Set<string> {

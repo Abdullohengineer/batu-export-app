@@ -20,8 +20,28 @@
 // request-level row would leave those filters ambiguous (which pallet on the
 // truck do you mean?). This mirrors KIRIM's own row being at serial (not
 // truck) granularity for the identical reason.
+//
+// Moyka rows + serial-state columns (2026-08-15, see DECISIONS.md "Hisobot:
+// Moyka rows, direction split, serial-state columns"): two more row kinds,
+// `moyka_send` (one moyka_sends entry, dated by sent_date) and
+// `moyka_output` (one finished_pallets entry, dated by received_date) —
+// both internal movements, no waybill/gate weighing, so their
+// declared/hisobiy/tara fields don't exist at all (not just null — the
+// concept doesn't apply, matching the existing chiqim_raw/chiqim_old_kn
+// pattern for the same reason). Every row of every kind ALSO carries
+// `state`, its parent serial's own as-of-now standing balance (identical
+// value repeated on every row of that serial) — read from
+// report_query_page's 7 new state_* columns, backed by the new
+// kirim_line_state(serial) SQL function (migration 0073). The direction
+// filter is now multi-select (6 independently-checkable kinds, not a
+// 3-value radio) — see ReportRowKind below.
 
-export type ReportDirection = 'kirim' | 'chiqim' | 'both'
+// One value per report_rows kind (2026-08-15) — replaces the old
+// 'kirim' | 'chiqim' | 'both' 3-value radio. The filter is now multi-select
+// (see ReportFilterBar.tsx): `directions: []` means no restriction (every
+// kind), matching report_totals/report_filtered_rows' own
+// `p_directions is null or array_length(...) is null` semantics.
+export type ReportRowKind = 'kirim' | 'chiqim' | 'chiqim_raw' | 'chiqim_old_kn' | 'moyka_send' | 'moyka_output'
 
 // The four states named verbatim in §3.2.2. "omborda"/"band_qilingan" have no
 // governing event yet (no arrival or dispatch date to filter on) — they
@@ -49,7 +69,7 @@ export type PalletStatusFilter =
 export type LabVerdictFilter = '' | 'o_tdi' | 'qayta_yuvish' | 'tekshirilmagan'
 
 export interface ReportFilters {
-  direction: ReportDirection
+  directions: ReportRowKind[] // [] = no restriction (every kind) — see ReportRowKind above
   from: string // YYYY-MM-DD, inclusive
   to: string // YYYY-MM-DD, inclusive
   ownerId: string // '' = all
@@ -65,7 +85,7 @@ export interface ReportFilters {
 
 export function defaultReportFilters(from: string, to: string): ReportFilters {
   return {
-    direction: 'both',
+    directions: [],
     from,
     to,
     ownerId: '',
@@ -80,7 +100,23 @@ export function defaultReportFilters(from: string, to: string): ReportFilters {
   }
 }
 
-export type DateBasisSource = 'gate_stage1' | 'order_date' | 'gate_stage2' | null
+export type DateBasisSource = 'gate_stage1' | 'order_date' | 'gate_stage2' | 'sent_date' | 'received_date' | null
+
+// A serial's own as-of-now standing balance (2026-08-15) — repeated
+// identically on every row belonging to that serial, regardless of row
+// kind. Never clipped to the report's date filter (see DECISIONS.md —
+// clipping would break the Qabul qilingan = Omborda qoldi + Moykaga
+// yuborilgan + Xom holda jo'natilgan identity). "Yo'qotish" deliberately
+// not included — no canonical per-serial loss-in-kg figure exists yet.
+export interface SerialState {
+  qabulQilingan: number
+  ombordaQoldi: number
+  moykagaYuborilgan: number
+  moykada: number
+  moykadanChiqgan: number
+  xomJonatilgan: number
+  olibKetilgan: number
+}
 
 export interface KirimReportRow {
   kind: 'kirim'
@@ -113,6 +149,7 @@ export interface KirimReportRow {
   kirimMoisturePct: number | null // lab_results scope=kirim, descriptive only, no verdict (§5.5.2)
   kirimSo2MgKg: number | null
   boxMassKg: number | null // Tara — storage_intake.box_mass_kg for this serial, entered by Ombor at intake
+  state: SerialState
 }
 
 export interface ChiqimReportRow {
@@ -137,6 +174,7 @@ export interface ChiqimReportRow {
   so2MgKg: number | null
   voidInfo: VoidedBarcodeInfo | null // populated only when palletStatus === 'bekor_qilingan'
   boxMassKg: null // Tara — finished goods never carry their own box mass (already deducted upstream at the raw stage); always null, kept here so ReportTableRow can read row.boxMassKg without a kind check
+  state: SerialState
 }
 
 // Raw dispatch (2026-07-31) — one row per raw_dispatch_lines entry, the
@@ -160,6 +198,7 @@ export interface RawDispatchReportRow {
   boxMassKg: number | null
   dateBasis: string | null // §3.2.3: chiqim_requests.request_date, same basis as pallet rows
   palletStatus: 'jonatilgan' // raw_dispatch_lines only exists once committed at Ombor's finish click — always departed
+  state: SerialState
 }
 
 // Old-KN collections (2026-08-05) -- the fourth report_rows kind, mirroring
@@ -180,9 +219,70 @@ export interface OldKnReportRow {
   boxMassKg: null // old-KN has no box mass concept
   dateBasis: string | null // §3.2.3: chiqim_requests.request_date, same basis as raw dispatch
   palletStatus: 'jonatilgan' // a collection row only exists once committed -- always departed
+  // old-KN pool collections have no serial/order lineage at all (confirmed
+  // in report_old_kn_rows' own SQL: serial is a NULL literal) — state is
+  // genuinely inapplicable here, not just zero, matching "blank not zero."
+  state: null
 }
 
-export type ReportRow = KirimReportRow | ChiqimReportRow | RawDispatchReportRow | OldKnReportRow
+// MOYKAGA (2026-08-15) — one moyka_sends entry, dated by sent_date.
+// Internal movement, no waybill/gate weighing at all — plate/driver are
+// structurally absent (always null), not just empty, matching
+// OldKnReportRow's own boxMassKg:null convention for the same reason.
+export interface MoykaSendReportRow {
+  kind: 'moyka_send'
+  key: string // moyka_sends.id — stable row key
+  serial: string
+  orderId: string
+  typeId: string
+  ownerId: string
+  plate: null
+  driver: null
+  weightKg: number // moyka_sends.qty_kg
+  boxMassKg: null
+  dateBasis: string | null // §3.2.3 extended: sent_date
+  palletStatus: null // no pallet concept for a send event
+  state: SerialState
+}
+
+// MOYKADAN (2026-08-15) — one finished_pallets entry, dated by
+// received_date. Carries a real pallet_status/lab verdict (same pallet a
+// later CHIQIM row for the same barcode2 would show) — this is the
+// PRODUCTION event; a later dispatch of the same pallet is a separate row.
+// Deliberately unfiltered by status at the row level (voided/consumed/
+// storage-loss pallets still get a row here, matching report_chiqim_rows'
+// own philosophy) — see DECISIONS.md for why this can make
+// weightKg-summed-across-rows and state.moykadanChiqgan diverge once a
+// real excluded pallet exists.
+export interface MoykaOutputReportRow {
+  kind: 'moyka_output'
+  key: string // 'moyka-output-' || barcode2 — NOT bare barcode2, see migration 0073's own comment (collides with report_chiqim_rows' row_key otherwise)
+  serial: string
+  barcode2: string
+  orderId: string
+  requestId: string
+  typeId: string
+  calibreId: string
+  ownerId: string
+  plate: null
+  driver: null
+  weightKg: number // finished_pallets.weight_kg
+  boxMassKg: null
+  dateBasis: string | null // §3.2.3 extended: received_date
+  palletStatus: Exclude<PalletStatusFilter, ''>
+  labVerdict: 'o_tdi' | 'qayta_yuvish' | null
+  moisturePct: number | null
+  so2MgKg: number | null
+  state: SerialState
+}
+
+export type ReportRow =
+  | KirimReportRow
+  | ChiqimReportRow
+  | RawDispatchReportRow
+  | OldKnReportRow
+  | MoykaSendReportRow
+  | MoykaOutputReportRow
 
 // §3.2.2 🔒 "a voided Barcode #2 must remain findable" — a voided pallet's
 // cycle was, by construction, the ACTIVE cycle at the moment it was voided
@@ -218,37 +318,84 @@ export interface ReportTotals {
   // analogous "out" side to split against, unlike taraIn/taraOut.
   totalDeclared: number
   totalHisobiy: number
+  // Moyka movement totals (2026-08-15) -- row sums for the 2 new kinds,
+  // deliberately NOT folded into kgIn/kgOut/net: internal movement, never
+  // left the factory, same reasoning as the blank waybill fields (approved
+  // explicitly — see DECISIONS.md). Labelled "(davrda)" on screen to stay
+  // distinct from the same-named state total below.
+  totalToMoyka: number
+  totalFromMoyka: number
+  // Serial-state totals (2026-08-15) -- summed once per DISTINCT serial in
+  // the filtered set, never once per row (a serial can own several rows —
+  // this is "the trap" the column design explicitly guards against).
+  // stateSerialCount is how many distinct serials that is — shown in the
+  // "Seriyalar bo'yicha (N ta seriya)" group label so a reader can never
+  // mistake it for a row count. totalToMoyka/totalFromMoyka above have a
+  // "(joriy)"-labelled twin here (stateMoykagaYuborilgan/
+  // stateMoykadanChiqgan) that can legitimately read a different number —
+  // see DECISIONS.md "Hisobot: Moyka rows...".
+  stateSerialCount: number
+  stateQabulQilingan: number
+  stateOmbordaQoldi: number
+  stateMoykagaYuborilgan: number
+  stateMoykada: number
+  stateMoykadanChiqgan: number
+  stateXomJonatilgan: number
+  stateOlibKetilgan: number
+}
+
+// Which real-world date each kind is governed by (§3.2.3, extended
+// 2026-08-15 to the two Moyka kinds — same rule, not a new mechanism: each
+// row is dated by its own event). chiqim/chiqim_raw/chiqim_old_kn all read
+// the identical chiqim_requests.request_date column, so they share one
+// label here.
+const KIND_DATE_BASIS_LABEL: Record<ReportRowKind, string> = {
+  kirim: 'kelish (buyurtma sanasi)',
+  chiqim: "so'rov sanasi",
+  chiqim_raw: "so'rov sanasi",
+  chiqim_old_kn: "so'rov sanasi",
+  moyka_send: 'Moykaga yuborilgan sana',
+  moyka_output: 'Moykadan chiqqan sana',
 }
 
 // §3.2.3 🔒 date basis label, shown on screen and in exports — printed
 // exactly once per direction selection, never silently varying per row.
-export function dateBasisLabel(direction: ReportDirection): string {
-  if (direction === 'kirim') return 'Sana asosi: kelish (darvoza 1-bosqich / buyurtma sanasi)'
-  if (direction === 'chiqim') return "Sana asosi: jo'natish (darvoza 2-bosqich)"
-  return "Sana asosi: har bir qator o'zining hodisasi bo'yicha (kirim — kelish, chiqim — jo'natish)"
+// Extended 2026-08-15 for the multi-select direction filter: names the
+// single basis when every checked kind shares one, otherwise falls back to
+// the same "each row on its own event" wording the old 'both' value used —
+// "two people producing two different numbers from the same screen" is
+// exactly what this label exists to prevent, whether 2 kinds are checked
+// or 6.
+export function dateBasisLabel(directions: ReportRowKind[]): string {
+  if (directions.length === 0) {
+    return "Sana asosi: har bir qator o'zining hodisasi bo'yicha (kirim — kelish, chiqim — so'rov, moykaga/moykadan — o'z sanasi)"
+  }
+  const distinctLabels = [...new Set(directions.map((d) => KIND_DATE_BASIS_LABEL[d]))]
+  if (distinctLabels.length === 1) {
+    return `Sana asosi: ${distinctLabels[0]}`
+  }
+  return "Sana asosi: har bir qator o'zining hodisasi bo'yicha"
 }
 
 export const WEIGHT_BASIS_LABEL = "Og'irlik asosi: effective_qty (darvoza netto / oraliq qiymat, §2.16)"
 
-// The flat shape report_rows (and therefore report_query_page/
-// report_chiqim_rows directly, for the voided-barcode exact-match lookup)
-// actually returns over the wire. Numeric columns are wrapped in Number(...)
-// defensively in the mapper below — PostgREST's `numeric` serialization
-// differs between plain table reads and RPC/function results, and this
-// avoids silently doing string concatenation instead of arithmetic if a
-// given code path happens to come back as text.
+// The flat shape report_query_page actually returns over the wire. Numeric
+// columns are wrapped in Number(...) defensively in the mapper below —
+// PostgREST's `numeric` serialization differs between plain table reads and
+// RPC/function results, and this avoids silently doing string concatenation
+// instead of arithmetic if a given code path happens to come back as text.
 export interface ReportDbRow {
-  kind: 'kirim' | 'chiqim' | 'chiqim_raw' | 'chiqim_old_kn'
+  kind: 'kirim' | 'chiqim' | 'chiqim_raw' | 'chiqim_old_kn' | 'moyka_send' | 'moyka_output'
   row_key: string
-  serial: string
+  serial: string | null
   barcode2: string | null
   order_id: string | null
   request_id: string | null
   owner_id: string
   type_id: string
   calibre_id: string | null
-  plate: string
-  driver: string
+  plate: string | null
+  driver: string | null
   date_basis: string | null
   date_basis_source: DateBasisSource
   qty_kg: number | string
@@ -266,25 +413,53 @@ export interface ReportDbRow {
   so2_mg_kg: number | string | null
   void_successor_barcodes: string[] | null
   box_mass_kg: number | string | null
+  // Serial-state columns (2026-08-15, report_query_page only — NOT on the
+  // bare report_chiqim_rows table read fetchVoidedBarcodeMatch uses, see
+  // useReportQuery.ts). All 7 come back together as NULL when the row has
+  // no serial (chiqim_old_kn) — mapState below checks one as a proxy for
+  // all.
+  state_qabul_qilingan?: number | string | null
+  state_omborda_qoldi?: number | string | null
+  state_moykaga_yuborilgan?: number | string | null
+  state_moykada?: number | string | null
+  state_moykadan_chiqgan?: number | string | null
+  state_xom_jonatilgan?: number | string | null
+  state_olib_ketilgan?: number | string | null
 }
 
-function num(v: number | string | null): number | null {
-  return v === null ? null : Number(v)
+function num(v: number | string | null | undefined): number | null {
+  return v === null || v === undefined ? null : Number(v)
+}
+
+function mapState(row: ReportDbRow): SerialState | null {
+  if (row.state_qabul_qilingan === null || row.state_qabul_qilingan === undefined) return null
+  return {
+    qabulQilingan: Number(row.state_qabul_qilingan),
+    ombordaQoldi: Number(row.state_omborda_qoldi),
+    moykagaYuborilgan: Number(row.state_moykaga_yuborilgan),
+    moykada: Number(row.state_moykada),
+    moykadanChiqgan: Number(row.state_moykadan_chiqgan),
+    xomJonatilgan: Number(row.state_xom_jonatilgan),
+    olibKetilgan: Number(row.state_olib_ketilgan),
+  }
 }
 
 export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
   if (row.kind === 'kirim') {
     const declaredQty = num(row.declared_qty) ?? 0
     const effectiveQtyKg = Number(row.qty_kg)
+    // Every kirim_lines row has a real serial by construction — state is
+    // never genuinely inapplicable here, unlike chiqim_old_kn (confirmed
+    // via report_kirim_rows' own SQL: serial is never null).
     return {
       kind: 'kirim',
       key: row.row_key,
-      serial: row.serial,
+      serial: row.serial ?? '',
       orderId: row.order_id ?? '',
       typeId: row.type_id,
       ownerId: row.owner_id,
-      plate: row.plate,
-      driver: row.driver,
+      plate: row.plate ?? '',
+      driver: row.driver ?? '',
       dateBasis: row.date_basis,
       dateBasisSource: row.date_basis_source,
       declaredQty,
@@ -299,6 +474,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       kirimMoisturePct: num(row.moisture_pct),
       kirimSo2MgKg: num(row.so2_mg_kg),
       boxMassKg: num(row.box_mass_kg),
+      state: mapState(row) ?? zeroState(),
     }
   }
 
@@ -306,16 +482,17 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
     return {
       kind: 'chiqim_raw',
       key: row.row_key,
-      serial: row.serial,
+      serial: row.serial ?? '',
       typeId: row.type_id,
       ownerId: row.owner_id,
       requestId: row.request_id ?? '',
-      plate: row.plate,
-      driver: row.driver,
+      plate: row.plate ?? '',
+      driver: row.driver ?? '',
       weightKg: Number(row.qty_kg),
       boxMassKg: num(row.box_mass_kg),
       dateBasis: row.date_basis,
       palletStatus: 'jonatilgan',
+      state: mapState(row) ?? zeroState(),
     }
   }
 
@@ -326,12 +503,55 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       typeId: row.type_id,
       ownerId: row.owner_id,
       requestId: row.request_id ?? '',
-      plate: row.plate,
-      driver: row.driver,
+      plate: row.plate ?? '',
+      driver: row.driver ?? '',
       weightKg: Number(row.qty_kg),
       boxMassKg: null,
       dateBasis: row.date_basis,
       palletStatus: 'jonatilgan',
+      state: null, // no serial, genuinely inapplicable — see OldKnReportRow's own comment
+    }
+  }
+
+  if (row.kind === 'moyka_send') {
+    return {
+      kind: 'moyka_send',
+      key: row.row_key,
+      serial: row.serial ?? '',
+      orderId: row.order_id ?? '',
+      typeId: row.type_id,
+      ownerId: row.owner_id,
+      plate: null,
+      driver: null,
+      weightKg: Number(row.qty_kg),
+      boxMassKg: null,
+      dateBasis: row.date_basis,
+      palletStatus: null,
+      state: mapState(row) ?? zeroState(),
+    }
+  }
+
+  if (row.kind === 'moyka_output') {
+    return {
+      kind: 'moyka_output',
+      key: row.row_key,
+      serial: row.serial ?? '',
+      barcode2: row.barcode2 ?? '',
+      orderId: row.order_id ?? '',
+      requestId: row.request_id ?? '',
+      typeId: row.type_id,
+      calibreId: row.calibre_id ?? '',
+      ownerId: row.owner_id,
+      plate: null,
+      driver: null,
+      weightKg: Number(row.qty_kg),
+      boxMassKg: null,
+      dateBasis: row.date_basis,
+      palletStatus: row.pallet_status ?? 'omborda',
+      labVerdict: row.lab_verdict,
+      moisturePct: num(row.moisture_pct),
+      so2MgKg: num(row.so2_mg_kg),
+      state: mapState(row) ?? zeroState(),
     }
   }
 
@@ -346,13 +566,13 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
     kind: 'chiqim',
     key: row.row_key,
     barcode2: row.barcode2 ?? '',
-    serial: row.serial,
+    serial: row.serial ?? '',
     typeId: row.type_id,
     calibreId: row.calibre_id ?? '',
     ownerId: row.owner_id,
     requestId: row.request_id ?? '',
-    plate: row.plate,
-    driver: row.driver,
+    plate: row.plate ?? '',
+    driver: row.driver ?? '',
     weightKg: Number(row.qty_kg),
     washCycle,
     palletStatus,
@@ -364,5 +584,25 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
     so2MgKg: num(row.so2_mg_kg),
     voidInfo,
     boxMassKg: null,
+    state: mapState(row) ?? zeroState(),
+  }
+}
+
+// Defensive fallback only — every kind that calls this always has a real
+// serial (confirmed per-kind above), so report_query_page's LEFT JOIN
+// LATERAL kirim_line_state(...) should never actually return null for
+// these rows. Falls back to zero rather than throwing if some future edge
+// case does produce null, rather than crashing the whole report render —
+// deliberately NOT used for chiqim_old_kn, whose `state: null` is a real,
+// permanent "inapplicable," not a defensive fallback.
+function zeroState(): SerialState {
+  return {
+    qabulQilingan: 0,
+    ombordaQoldi: 0,
+    moykagaYuborilgan: 0,
+    moykada: 0,
+    moykadanChiqgan: 0,
+    xomJonatilgan: 0,
+    olibKetilgan: 0,
   }
 }

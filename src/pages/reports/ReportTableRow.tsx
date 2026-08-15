@@ -1,9 +1,11 @@
-import type { ReportRow } from '../../lib/reportQuery'
+import type { ReportRow, SerialState } from '../../lib/reportQuery'
 import type { ReportColumnDef } from '../../lib/reportColumns'
 import { KirimRowDetail } from './KirimRowDetail'
 import { ChiqimRowDetail } from './ChiqimRowDetail'
 import { RawDispatchRowDetail } from './RawDispatchRowDetail'
 import { OldKnRowDetail } from './OldKnRowDetail'
+import { MoykaSendRowDetail } from './MoykaSendRowDetail'
+import { MoykaOutputRowDetail } from './MoykaOutputRowDetail'
 import { formatDate } from '../../lib/formatDate'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -15,6 +17,16 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 const td = 'px-3 py-2 align-top'
+
+// Serial-state column cell (2026-08-15) — blank, not zero, when `state` is
+// null (chiqim_old_kn — genuinely inapplicable, see reportQuery.ts).
+function StateCell({ value }: { value: number | undefined }) {
+  return (
+    <span className="whitespace-nowrap tabular-nums text-slate-700 dark:text-slate-300">
+      {value !== undefined ? `${value.toLocaleString()} kg` : '—'}
+    </span>
+  )
+}
 
 // §3.2.4 result row — desktop rework (Menejer/Rahbar are PC-only surfaces;
 // see ReportResultsTable.tsx's own header comment for why a real <table>
@@ -55,8 +67,22 @@ export function ReportTableRow({
   // measurement columns).
   const declared = row.kind === 'kirim' ? row.declaredQty : null
   const hisobiy = row.kind === 'kirim' ? row.hisobiyKg : null
-  const moisture = row.kind === 'kirim' ? row.kirimMoisturePct : row.kind === 'chiqim' ? row.moisturePct : null
-  const so2 = row.kind === 'kirim' ? row.kirimSo2MgKg : row.kind === 'chiqim' ? row.so2MgKg : null
+  const moisture =
+    row.kind === 'kirim'
+      ? row.kirimMoisturePct
+      : row.kind === 'chiqim' || row.kind === 'moyka_output'
+        ? row.moisturePct
+        : null
+  const so2 =
+    row.kind === 'kirim'
+      ? row.kirimSo2MgKg
+      : row.kind === 'chiqim' || row.kind === 'moyka_output'
+        ? row.so2MgKg
+        : null
+  // Serial-state columns (2026-08-15) — every row shows its PARENT SERIAL's
+  // own standing breakdown, blank (not zero) when genuinely inapplicable
+  // (chiqim_old_kn has no serial — see reportQuery.ts's OldKnReportRow).
+  const state: SerialState | null = row.state
 
   function cellContent(key: string): React.ReactNode {
     switch (key) {
@@ -69,7 +95,11 @@ export function ReportTableRow({
                 ? 'CHIQIM (xom)'
                 : row.kind === 'chiqim_old_kn'
                   ? 'CHIQIM (eski KN)'
-                  : 'CHIQIM'}
+                  : row.kind === 'moyka_send'
+                    ? 'MOYKAGA'
+                    : row.kind === 'moyka_output'
+                      ? 'MOYKADAN'
+                      : 'CHIQIM'}
           </span>
         )
       case 'date':
@@ -87,13 +117,13 @@ export function ReportTableRow({
       case 'calibre':
         return (
           <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">
-            {row.kind === 'chiqim' ? calibreLabel(row.calibreId) : '—'}
+            {row.kind === 'chiqim' || row.kind === 'moyka_output' ? calibreLabel(row.calibreId) : '—'}
           </span>
         )
       case 'barcode2':
         return (
           <span className="whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">
-            {row.kind === 'chiqim' ? row.barcode2 : '—'}
+            {row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.barcode2 : '—'}
           </span>
         )
       case 'netto':
@@ -160,6 +190,8 @@ export function ReportTableRow({
               <span className="text-slate-400">Xom</span>
             ) : row.kind === 'chiqim_old_kn' ? (
               <span className="text-slate-400">Eski KN</span>
+            ) : row.kind === 'moyka_send' ? (
+              <span className="text-slate-400">Moykaga</span>
             ) : row.palletStatus === 'bekor_qilingan' ? (
               <span className="font-medium text-red-600 dark:text-red-400">Bekor qilingan</span>
             ) : row.palletStatus !== 'jonatilgan' ? (
@@ -173,6 +205,20 @@ export function ReportTableRow({
             )}
           </span>
         )
+      case 'qabul_qilingan':
+        return <StateCell value={state?.qabulQilingan} />
+      case 'omborda_qoldi':
+        return <StateCell value={state?.ombordaQoldi} />
+      case 'moykaga_yuborilgan':
+        return <StateCell value={state?.moykagaYuborilgan} />
+      case 'moykada':
+        return <StateCell value={state?.moykada} />
+      case 'moykadan_chiqgan':
+        return <StateCell value={state?.moykadanChiqgan} />
+      case 'xom_jonatilgan':
+        return <StateCell value={state?.xomJonatilgan} />
+      case 'olib_ketilgan':
+        return <StateCell value={state?.olibKetilgan} />
       default:
         return null
     }
@@ -213,6 +259,10 @@ export function ReportTableRow({
               <RawDispatchRowDetail row={row} onOpenPassport={onOpenPassport} />
             ) : row.kind === 'chiqim_old_kn' ? (
               <OldKnRowDetail row={row} />
+            ) : row.kind === 'moyka_send' ? (
+              <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />
+            ) : row.kind === 'moyka_output' ? (
+              <MoykaOutputRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
             ) : (
               <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
             )}

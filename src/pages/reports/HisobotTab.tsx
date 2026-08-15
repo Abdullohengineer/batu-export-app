@@ -100,7 +100,7 @@ export function HisobotTab() {
 
   return (
     <div className="space-y-4">
-      <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(filters.direction)} visibleColumnKeys={visibleColumnKeys} />
+      <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(filters.directions)} visibleColumnKeys={visibleColumnKeys} />
 
       <HistoryView
         loading={loading}
@@ -124,8 +124,8 @@ export function HisobotTab() {
             statusValues={filters.status ? [filters.status] : []}
             onStatusValuesChange={(values) => setFilters({ ...filters, status: (values[0] ?? '') as PalletStatusFilter })}
             owners={owners}
-            direction={filters.direction}
-            onDirectionChange={(d) => setFilters({ ...filters, direction: d })}
+            directions={filters.directions}
+            onDirectionsChange={(d) => setFilters({ ...filters, directions: d })}
             serial={filters.serial}
             onSerialChange={(v) => setFilters({ ...filters, serial: v })}
             barcode2={filters.barcode2}

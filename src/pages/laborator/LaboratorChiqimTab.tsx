@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useLaboratorChiqim, type AwaitingSerial, type ChiqimLabResultRow } from '../../lib/useLaboratorChiqim'
+import { applySulfurClassification, sulfurChoiceFromFlag, type SulfurChoice } from '../../lib/classifySulfur'
 import { ChiqimTahlilForm, type ChiqimTahlilValues } from './ChiqimTahlilForm'
 import { ChiqimTahlilEditForm, type ChiqimTahlilEditValues } from './ChiqimTahlilEditForm'
 import { EntityNotes } from '../../components/EntityNotes'
@@ -40,6 +41,9 @@ export function LaboratorChiqimTab() {
 
   const [activeTahlil, setActiveTahlil] = useState<string | null>(null)
   const [seraValue, setSeraValue] = useState<Record<string, string>>({})
+  // Per-row override for the Sera-kiritish classification select (2026-08-15)
+  // -- see LaboratorKirimTab.tsx's identical comment.
+  const [seraClassification, setSeraClassification] = useState<Record<string, SulfurChoice>>({})
   const [seraSaving, setSeraSaving] = useState<string | null>(null)
   const [seraError, setSeraError] = useState<string | null>(null)
   const [expandedFinished, setExpandedFinished] = useState<string | null>(null)
@@ -56,8 +60,14 @@ export function LaboratorChiqimTab() {
   // §5.5.1: same conditionality as KIRIM. Non-sulfured -> verdict happens
   // right here, status goes straight to 'complete', skipping W2 entirely.
   // Sulfured -> status 'moisture_in', no verdict yet, moves to W2; verdict
-  // happens at Sera kiritish instead.
+  // happens at Sera kiritish instead. Classification (2026-08-15) is chosen
+  // live in the Tahlil form itself -- values.isSulfured is authoritative
+  // here, including for internal_reprocess (opening-stock re-wash) serials
+  // that never had a KIRIM check at all, where this IS the only chance the
+  // lab ever gets to classify the line (see DECISIONS.md).
   async function handleTahlil(item: AwaitingSerial, values: ChiqimTahlilValues) {
+    await applySulfurClassification(item.serial, item.is_sulfured, values.isSulfured)
+
     let photoPath: string | null = null
     if (values.photoFile) {
       const path = `${crypto.randomUUID()}.jpg`
@@ -66,7 +76,6 @@ export function LaboratorChiqimTab() {
       photoPath = path
     }
 
-    const isSulfured = item.target_so2_mg_kg !== null
     const { error } = await supabase.from('lab_results').insert({
       scope: 'chiqim',
       parent_serial: item.serial,
@@ -77,8 +86,8 @@ export function LaboratorChiqimTab() {
       sample_photo: photoPath,
       note: values.note || null,
       tested_by: profile?.id,
-      status: isSulfured ? 'moisture_in' : 'complete',
-      verdict: isSulfured ? null : values.verdict,
+      status: values.isSulfured ? 'moisture_in' : 'complete',
+      verdict: values.isSulfured ? null : values.verdict,
     })
     if (error) throw error
 
@@ -86,22 +95,42 @@ export function LaboratorChiqimTab() {
     refresh()
   }
 
+  function seraClassificationFor(row: ChiqimLabResultRow): SulfurChoice {
+    return seraClassification[row.id] ?? sulfurChoiceFromFlag(row.is_sulfured)
+  }
+
   // §5.5.3 W2 "Sera kiritish" — SO2 + verdict together, the sulfured line's
-  // final save. Reachable only for sulfured lines by construction (W2
-  // membership = status='moisture_in', which handleTahlil only sets when a
-  // sulfur target exists).
+  // final save. Reachable for sulfured lines by construction (W2 membership
+  // = status='moisture_in', which handleTahlil only sets when Tahlil
+  // resolved sulfured) -- but the lab can still correct the classification
+  // here too (2026-08-15): if flipped to natural, SO2 becomes optional; the
+  // verdict click stays mandatory either way, unchanged (§5.5.3's own
+  // "explicit click, never auto-derived" invariant already covers this
+  // form regardless of classification). so2_mg_kg has no carry-forward
+  // concern -- a W2 row has never had one set.
   async function handleSera(row: ChiqimLabResultRow, verdict: 'o_tdi' | 'qayta_yuvish') {
     setSeraError(null)
-    const value = parseFloat(seraValue[row.id] ?? '')
-    if (isNaN(value)) {
-      setSeraError('SO₂ ppm ni kiriting.')
-      return
+    const classification = seraClassificationFor(row)
+    const isSulfured = classification !== 'false'
+    let value: number | null = null
+    if (isSulfured) {
+      value = parseFloat(seraValue[row.id] ?? '')
+      if (isNaN(value)) {
+        setSeraError('SO₂ ppm ni kiriting.')
+        return
+      }
     }
     setSeraSaving(row.id)
     try {
+      await applySulfurClassification(row.serial, row.is_sulfured, isSulfured)
       const { error } = await supabase.from('lab_results').update({ so2_mg_kg: value, status: 'complete', verdict }).eq('id', row.id)
       if (error) throw error
       setSeraValue((m) => {
+        const next = { ...m }
+        delete next[row.id]
+        return next
+      })
+      setSeraClassification((m) => {
         const next = { ...m }
         delete next[row.id]
         return next
@@ -125,6 +154,8 @@ export function LaboratorChiqimTab() {
   // instant a new pallet is created.
   async function handleTahlilEdit(row: ChiqimLabResultRow, values: ChiqimTahlilEditValues) {
     setEditError(null)
+    await applySulfurClassification(row.serial, row.is_sulfured, values.isSulfured)
+
     let photoPath = row.sample_photo
     if (values.photoFile) {
       const path = `${crypto.randomUUID()}.jpg`
@@ -198,7 +229,6 @@ export function LaboratorChiqimTab() {
                     item={item}
                     ownerName={ownerName(item.owner_id)}
                     typeName={typeName(item.type_id)}
-                    requireVerdict={item.target_so2_mg_kg === null}
                     onCancel={() => setActiveTahlil(null)}
                     onSubmit={(v) => handleTahlil(item, v)}
                   />
@@ -240,36 +270,38 @@ export function LaboratorChiqimTab() {
               <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
                 Namligi {row.moisture_pct}% kiritildi · sera hali yo'q
               </div>
-              <div className="mt-2">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Oltingugurt (SO₂){' '}
-                  <span className="font-normal text-slate-400 dark:text-slate-500">
-                    (Talab: {row.target_so2_mg_kg} ppm)
-                  </span>
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <TextInput
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    placeholder="SO₂ ppm"
-                    value={seraValue[row.id] ?? ''}
-                    onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
-                    className="flex-1"
-                  />
+              <div className="mt-2 space-y-2">
+                {/* Classification, correctable here too (2026-08-15) -- see
+                    LaboratorKirimTab.tsx's identical block. */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mahsulot</label>
+                  <select
+                    required
+                    value={seraClassificationFor(row)}
+                    onChange={(e) => setSeraClassification((m) => ({ ...m, [row.id]: e.target.value as SulfurChoice }))}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    <option value="" disabled>
+                      Tanlang…
+                    </option>
+                    <option value="false">Naturel</option>
+                    <option value="true">Sulfatlangan</option>
+                  </select>
                 </div>
-                {/* The target is a ceiling, not an exact spec -- any reading
-                    under it is acceptable. Informational only, never blocks
-                    saving, same treatment as this form's own moisture
-                    soft-warn (ChiqimTahlilForm). */}
-                {(() => {
-                  const v = parseFloat(seraValue[row.id] ?? '')
-                  return !isNaN(v) && v > row.target_so2_mg_kg! ? (
-                    <div className="mt-1">
-                      <StatusNote tone="pending">Talabdan yuqori ({row.target_so2_mg_kg} ppm) — baribir saqlash mumkin.</StatusNote>
-                    </div>
-                  ) : null
-                })()}
+                {seraClassificationFor(row) !== 'false' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Oltingugurt (SO₂)</label>
+                    <TextInput
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      placeholder="SO₂ ppm"
+                      value={seraValue[row.id] ?? ''}
+                      onChange={(e) => setSeraValue((m) => ({ ...m, [row.id]: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
                 <div className="mt-2 flex gap-2">
                   <Button variant="success" size="md" className="flex-1" disabled={seraSaving === row.id} onClick={() => handleSera(row, 'o_tdi')}>
                     {seraSaving === row.id ? '…' : "O'tdi"}

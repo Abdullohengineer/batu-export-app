@@ -67,18 +67,21 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await page.locator('div:has(> label:text-is("Haydovchi ismi")) > input').fill('TEST Driver')
   await page.locator('div:has(> label:text-is("Buyurtmachi")) select').selectOption({ label: E2E_OWNER_NAME })
 
+  // Explicit natural/sulphured classification (2026-08-14), replacing the
+  // old numeric target inputs -- see DECISIONS.md "Client quality targets
+  // removed from Menejer/Laborator; explicit natural/sulphured flag". Each
+  // row now carries two selects in DOM order: [0] Tur, [1] Naturel/
+  // Sulfatlangan (`is_sulfured`) -- no ppm/percent field exists any more.
   const row1 = page.locator('form div.space-y-1.rounded-md').nth(0)
-  await row1.locator('select').selectOption({ label: 'Subxon' })
+  await row1.locator('select').nth(0).selectOption({ label: 'Subxon' })
   await row1.getByPlaceholder('Miqdori (kg)').fill('5000')
-  await row1.getByPlaceholder('—').fill('8')
-  await row1.getByPlaceholder('naturel').fill('50')
+  await row1.locator('select').nth(1).selectOption({ label: 'Sulfatlangan' })
 
   await page.getByRole('button', { name: "+ Tur qo'shish" }).click()
   const row2 = page.locator('form div.space-y-1.rounded-md').nth(1)
-  await row2.locator('select').selectOption({ label: 'Isfara' })
+  await row2.locator('select').nth(0).selectOption({ label: 'Isfara' })
   await row2.getByPlaceholder('Miqdori (kg)').fill('500')
-  await row2.getByPlaceholder('—').fill('9')
-  // SO2 target intentionally left blank — natural product.
+  await row2.locator('select').nth(1).selectOption({ label: 'Naturel' })
 
   await page.getByRole('button', { name: 'Saqlash' }).click()
 
@@ -88,27 +91,38 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await expect(savedPanel.locator('span.font-mono').nth(1)).toHaveText(/^\d{6}-\d{3}$/, { timeout: 10000 })
   const [subxonSerial, isfaraSerial] = await savedPanel.locator('span.font-mono').allTextContents()
 
-  // --- kirim-client-targets.spec.ts's core assertion, folded in here: a
-  // blank SO2 target persists as a real SQL null, not 0/''/undefined. ---
+  // --- Explicit natural/sulphured flag persists correctly (2026-08-14):
+  // Subxon (Sulfatlangan) -> is_sulfured=true, Isfara (Naturel) ->
+  // is_sulfured=false. Also confirms Menejer's form no longer writes the
+  // numeric target columns at all (both null on both lines) -- see
+  // DECISIONS.md "Client quality targets removed from Menejer/Laborator;
+  // explicit natural/sulphured flag". Supersedes the old kirim-client-
+  // targets.spec.ts assertion (targets were the natural/sulphured signal
+  // then; the flag is now, and targets are simply unwritten). ---
   {
     const result = await page.evaluate(async ({ subxon, isfara }) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
       const { data, error } = await w.supabase
         .from('kirim_lines')
-        .select('serial, target_moisture_pct, target_so2_mg_kg')
+        .select('serial, target_moisture_pct, target_so2_mg_kg, is_sulfured')
         .in('serial', [subxon, isfara])
       return { data, error: error?.message ?? null }
     }, { subxon: subxonSerial, isfara: isfaraSerial })
     expect(result.error).toBeNull()
-    const rows = result.data as { serial: string; target_moisture_pct: number; target_so2_mg_kg: number | null }[]
+    const rows = result.data as {
+      serial: string
+      target_moisture_pct: number | null
+      target_so2_mg_kg: number | null
+      is_sulfured: boolean | null
+    }[]
     const subxonLine = rows.find((r) => r.serial === subxonSerial)!
     const isfaraLine = rows.find((r) => r.serial === isfaraSerial)!
-    expect(subxonLine.target_moisture_pct).toBe(8)
-    expect(subxonLine.target_so2_mg_kg).toBe(50)
-    expect(isfaraLine.target_moisture_pct).toBe(9)
+    expect(subxonLine.is_sulfured).toBe(true)
+    expect(isfaraLine.is_sulfured).toBe(false)
+    expect(subxonLine.target_moisture_pct).toBeNull()
+    expect(subxonLine.target_so2_mg_kg).toBeNull()
+    expect(isfaraLine.target_moisture_pct).toBeNull()
     expect(isfaraLine.target_so2_mg_kg).toBeNull()
-    expect(typeof isfaraLine.target_so2_mg_kg).not.toBe('string')
-    expect(isfaraLine.target_so2_mg_kg).not.toBe(0)
   }
 
   // --- Qorovul: KIRIM gate, both stages, one truck-wide weighing covering
@@ -213,7 +227,10 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     const subxonW2 = w2.locator('div.rounded-md', { hasText: subxonSerial })
     await expect(subxonW2).toBeVisible()
     await expect(w3.locator('div.rounded-md', { hasText: subxonSerial })).toHaveCount(0)
-    await expect(subxonW2).toContainText('Talab: 50')
+    // No client target text anywhere on this active-input card any more
+    // (2026-08-14) -- see DECISIONS.md "Client quality targets removed
+    // from Menejer/Laborator; explicit natural/sulphured flag".
+    await expect(subxonW2).not.toContainText('Talab')
 
     const isfaraW1 = w1.locator('div.rounded-md', { hasText: isfaraSerial })
     await expect(isfaraW1).toBeVisible()
@@ -288,8 +305,9 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   // hard gate on Barcode #2 assignment moved to packing, so this verdict
   // must now happen BEFORE Ombor can pack -- it used to run after packing
   // and Tugallash, back when CHIQIM lab testing was scoped to a completed
-  // wash cycle. Subxon is sulfured, so ChiqimTahlilForm's requireVerdict is
-  // false (target_so2_mg_kg !== null) -- Tahlil only records moisture
+  // wash cycle. Subxon is sulfured (is_sulfured=true, set on Menejer's form
+  // above), so ChiqimTahlilForm's requireVerdict is false (item.is_sulfured
+  // === false) -- Tahlil only records moisture
   // (Saqlash, no verdict yet), the cycle moves to Sera kutilmoqda, and the
   // verdict happens at Sera kiritish alongside SO2 -- the same two-step
   // shape as the KIRIM check above. No more pallet <select> in this form

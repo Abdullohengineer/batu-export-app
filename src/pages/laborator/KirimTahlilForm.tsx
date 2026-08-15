@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { PhotoField } from '../../components/PhotoField'
 import type { AwaitingLine } from '../../lib/useLaboratorKirim'
+import { sulfurChoiceFromFlag, type SulfurChoice } from '../../lib/classifySulfur'
 import { Button } from '../../components/ui/Button'
 import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
@@ -9,6 +10,7 @@ import { StatusPill } from '../../components/ui/StatusPill'
 export interface TahlilValues {
   sampleDate: string
   moisturePct: number
+  isSulfured: boolean
   photoFile: File | null
   note: string
 }
@@ -42,17 +44,35 @@ export function KirimTahlilForm({
 }) {
   const [sampleDate, setSampleDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [moisture, setMoisture] = useState('')
+  const [classification, setClassification] = useState<SulfurChoice>(sulfurChoiceFromFlag(line.is_sulfured))
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isSulfured = line.target_so2_mg_kg !== null
+  // Classification moved here from Menejer's form (2026-08-15) -- the lab
+  // physically observes the product, and setting it on a form the lab can
+  // reopen (this one, or Edit/Sera kiritish afterward) makes a
+  // misclassification fixable in-app instead of requiring SQL. See
+  // DECISIONS.md "Natural/sulphured classification moved from Menejer to
+  // Laborator; audit trail".
+  //
+  // `!== 'false'` (not `=== 'true'`), deliberately: an unresolved ''
+  // selection (component just mounted, lab hasn't picked yet) must still
+  // read as sulfured -- the NULL-means-sulfured fail-safe applies to "not
+  // yet chosen" exactly as it applies to a stored NULL. Only an explicit
+  // Naturel choice ever flips this to false; the required <select> below
+  // additionally blocks submission entirely until a choice is made.
+  const isSulfured = classification !== 'false'
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
 
+    if (classification === '') {
+      setError('Mahsulot turini tanlang.')
+      return
+    }
     const moisturePct = parseFloat(moisture)
     if (!moisturePct && moisturePct !== 0) {
       setError('Namligi % ni kiriting.')
@@ -61,7 +81,7 @@ export function KirimTahlilForm({
 
     setSubmitting(true)
     try {
-      await onSubmit({ sampleDate, moisturePct, photoFile, note: note.trim() })
+      await onSubmit({ sampleDate, moisturePct, isSulfured: classification === 'true', photoFile, note: note.trim() })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {
@@ -101,17 +121,35 @@ export function KirimTahlilForm({
         </div>
       </div>
 
+      {/* Classification, moved here from Menejer's form (2026-08-15) -- the
+          first decision the lab makes on a fresh line, driving everything
+          else this form shows/requires. Required: the line can carry no
+          value forward until a deliberate choice is made. */}
+      <FormField label="Mahsulot">
+        <select
+          required
+          value={classification}
+          onChange={(e) => setClassification(e.target.value as SulfurChoice)}
+          className="w-full rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        >
+          <option value="" disabled>
+            Tanlang…
+          </option>
+          <option value="false">Naturel</option>
+          <option value="true">Sulfatlangan</option>
+        </select>
+      </FormField>
+
       <FormField label="Tahlil sanasi">
         <TextInput type="date" required value={sampleDate} onChange={(e) => setSampleDate(e.target.value)} />
       </FormField>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-          Namligi %{' '}
-          <span className="font-normal text-slate-400 dark:text-slate-500">
-            (Talab: {line.target_moisture_pct !== null ? `${line.target_moisture_pct}%` : "Talab yo'q"})
-          </span>
-        </label>
+        {/* No client target shown -- the lab enters and judges the reading
+            itself; nothing here should anchor it before it's taken. See
+            DECISIONS.md "Client quality targets removed from Menejer/
+            Laborator; explicit natural/sulphured flag". */}
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Namligi %</label>
         <div className="relative mt-1">
           <TextInput
             type="number"

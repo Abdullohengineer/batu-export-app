@@ -25,6 +25,12 @@ export interface AwaitingLine {
   gruzheny_kg: number | null // gate stage 1 weight — null means visible but not yet enterable
   target_moisture_pct: number | null
   target_so2_mg_kg: number | null
+  // Explicit natural/sulphured flag (2026-08-14), replacing the
+  // target_so2_mg_kg-is-null inference. null = not yet classified — every
+  // consumer must treat it as sulfured (show the field), never as natural.
+  // See DECISIONS.md "Client quality targets removed from Menejer/
+  // Laborator; explicit natural/sulphured flag".
+  is_sulfured: boolean | null
 }
 
 interface RawLabResult {
@@ -58,6 +64,7 @@ export interface LabResultRow {
   actual_qty: number | null
   target_moisture_pct: number | null
   target_so2_mg_kg: number | null
+  is_sulfured: boolean | null
 }
 
 export function useLaboratorKirim() {
@@ -77,7 +84,7 @@ export function useLaboratorKirim() {
       const [{ data: lines }, { data: intakes }, { data: weighings }, { data: results }] = await Promise.all([
         supabase
           .from('kirim_lines')
-          .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg'),
+          .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg, is_sulfured'),
         supabase.from('storage_intake').select('serial, actual_qty'),
         supabase.from('gate_weighings').select('order_id, gruzheny_kg').eq('dir', 'kirim'),
         supabase
@@ -139,6 +146,7 @@ export function useLaboratorKirim() {
             gruzheny_kg: gruzhenyByOrder.get(line.order_id) ?? null,
             target_moisture_pct: line.target_moisture_pct,
             target_so2_mg_kg: line.target_so2_mg_kg,
+            is_sulfured: line.is_sulfured,
           })
           continue
         }
@@ -152,6 +160,7 @@ export function useLaboratorKirim() {
           actual_qty: intakeBySerial.get(line.serial)?.actual_qty ?? null,
           target_moisture_pct: line.target_moisture_pct,
           target_so2_mg_kg: line.target_so2_mg_kg,
+          is_sulfured: line.is_sulfured,
         }
         if (result.status === 'moisture_in') sulfurRows.push(row)
         else finishedRows.push(row)

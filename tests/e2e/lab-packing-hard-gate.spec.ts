@@ -77,11 +77,16 @@ async function seedReadyForMoyka(page: Page, plate: string): Promise<string> {
   const serial = await page.evaluate(
     async ({ orderId, typeId }) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
-      // No target_so2_mg_kg -- a natural product, so its eventual CHIQIM
+      // is_sulfured: false -- an explicit natural classification (2026-08-14;
+      // see DECISIONS.md "Client quality targets removed from Menejer/
+      // Laborator; explicit natural/sulphured flag"), so its eventual CHIQIM
       // verdict happens in one step (no Sera kiritish detour needed here).
+      // Leaving this unset would now read as SULFURED (NULL-means-sulfured
+      // fail-safe), breaking testSerial()'s below assumption that the
+      // verdict buttons are on the Tahlil form itself.
       const { data: line, error } = await w.supabase
         .from('kirim_lines')
-        .insert({ order_id: orderId, type_id: typeId, declared_qty: 1000 })
+        .insert({ order_id: orderId, type_id: typeId, declared_qty: 1000, is_sulfured: false })
         .select('serial')
         .single()
       if (error) throw new Error(`kirim_lines insert: ${error.message}`)

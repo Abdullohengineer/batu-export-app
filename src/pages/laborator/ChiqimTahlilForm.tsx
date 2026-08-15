@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { PhotoField } from '../../components/PhotoField'
 import type { AwaitingSerial } from '../../lib/useLaboratorChiqim'
 import { formatDate } from '../../lib/formatDate'
+import { sulfurChoiceFromFlag, type SulfurChoice } from '../../lib/classifySulfur'
 import { Button } from '../../components/ui/Button'
 import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
@@ -11,22 +12,33 @@ export interface ChiqimTahlilValues {
   sampleDate: string
   sampledPallet: string
   moisturePct: number
+  isSulfured: boolean
   photoFile: File | null
   note: string
   verdict: 'o_tdi' | 'qayta_yuvish' | null
 }
 
-// §5.5.3 CHIQIM Tahlil form. Client target shown next to the moisture
-// input, greyed, soft-warn only (never blocks) if the reading exceeds it —
-// "misses the target" read as exceeding the client's maximum, the standard
-// quality-spec direction for both moisture and sulfur in this context.
+// §5.5.3 CHIQIM Tahlil form.
 //
-// `requireVerdict` controls whether this save is also the FINAL save for
-// this line: a natural product (no SO2 target) has nothing left to capture
-// after moisture, so its verdict happens right here; a sulfured product's
-// verdict happens later, in the Sera kiritish step, once SO2 is in. No SO2
-// field on this form either way — SO2 is only ever entered via Sera
-// kiritish, matching the KIRIM form's identical choice (see DECISIONS.md).
+// `requireVerdict` (derived internally from the live classification below,
+// not a prop -- 2026-08-15) controls whether this save is also the FINAL
+// save for this line: a natural product has nothing left to capture after
+// moisture, so its verdict happens right here; a sulfured product's verdict
+// happens later, in the Sera kiritish step, once SO2 is in. No SO2 field on
+// this form either way — SO2 is only ever entered via Sera kiritish,
+// matching the KIRIM form's identical choice (see DECISIONS.md).
+//
+// Classification moved here from Menejer's form, same reasoning and same
+// fail-safe as KirimTahlilForm.tsx -- see DECISIONS.md "Natural/sulphured
+// classification moved from Menejer to Laborator; audit trail". This is
+// also the form that reaches CHIQIM-first serials with zero KIRIM history
+// (opening-stock re-wash, `kirim_orders.origin = 'internal_reprocess'` --
+// architecturally excluded from ever reaching KirimTahlilForm at all, see
+// that DECISIONS.md entry) -- for those, this IS the only chance the lab
+// ever gets to classify the line, which is why `requireVerdict` can no
+// longer be computed by the caller before this form even mounts: the lab
+// may change the classification WHILE filling this out, and the verdict-vs-
+// defer branch below must react to that live, not to a stale snapshot.
 //
 // Laborator v2 (2026-07-28 — see DECISIONS.md "Lab moves inside Moyka,
 // wash-cycle concept removed"): testing now happens BEFORE any pallet
@@ -38,38 +50,51 @@ export function ChiqimTahlilForm({
   item,
   ownerName,
   typeName,
-  requireVerdict,
   onCancel,
   onSubmit,
 }: {
   item: AwaitingSerial
   ownerName: string
   typeName: string
-  requireVerdict: boolean
   onCancel: () => void
   onSubmit: (values: ChiqimTahlilValues) => Promise<void>
 }) {
   const [sampleDate, setSampleDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [sampledPallet, setSampledPallet] = useState('')
   const [moisture, setMoisture] = useState('')
+  const [classification, setClassification] = useState<SulfurChoice>(sulfurChoiceFromFlag(item.is_sulfured))
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const targetMoisturePct = item.target_moisture_pct
   const moisturePct = parseFloat(moisture)
-  const missesTarget = targetMoisturePct !== null && !isNaN(moisturePct) && moisturePct > targetMoisturePct
+  // `!== 'false'`, not `=== 'true'` -- see KirimTahlilForm.tsx's identical
+  // comment. An unresolved '' selection must still read as sulfured.
+  const isSulfured = classification !== 'false'
+  const requireVerdict = classification === 'false'
 
   async function submit(verdict: 'o_tdi' | 'qayta_yuvish' | null) {
     setError(null)
+    if (classification === '') {
+      setError('Mahsulot turini tanlang.')
+      return
+    }
     if (isNaN(moisturePct)) {
       setError('Namligi % ni kiriting.')
       return
     }
     setSubmitting(true)
     try {
-      await onSubmit({ sampleDate, sampledPallet: sampledPallet.trim(), moisturePct, photoFile, note: note.trim(), verdict })
+      await onSubmit({
+        sampleDate,
+        sampledPallet: sampledPallet.trim(),
+        moisturePct,
+        isSulfured: classification === 'true',
+        photoFile,
+        note: note.trim(),
+        verdict,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {
@@ -114,6 +139,23 @@ export function ChiqimTahlilForm({
         </div>
       </div>
 
+      {/* Classification, moved here from Menejer's form (2026-08-15) -- see
+          KirimTahlilForm.tsx's identical block. Required. */}
+      <FormField label="Mahsulot">
+        <select
+          required
+          value={classification}
+          onChange={(e) => setClassification(e.target.value as SulfurChoice)}
+          className="w-full rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        >
+          <option value="" disabled>
+            Tanlang…
+          </option>
+          <option value="false">Naturel</option>
+          <option value="true">Sulfatlangan</option>
+        </select>
+      </FormField>
+
       <FormField label="Namuna manbai (ixtiyoriy)">
         <TextInput
           type="text"
@@ -127,22 +169,14 @@ export function ChiqimTahlilForm({
         <TextInput type="date" required value={sampleDate} onChange={(e) => setSampleDate(e.target.value)} />
       </FormField>
 
-      {/* Not FormField here: the label carries a nested target-suffix span
-          ("Namligi % (Talab: X%)"), and the e2e suite's own
-          `label:text-is("Namligi %")` locator depends on "Namligi %" being
-          reachable as an exact match distinct from that suffix -- confirmed
-          against the live e2e contract before touching this, not assumed.
-          FormField's `label` prop only accepts a plain string, so it can't
-          reproduce this shape; TextInput alone (same input styling, same
-          surrounding div this already had) applies the system without
-          disturbing that structure. */}
+      {/* No client target shown -- the lab enters and judges the reading
+          itself; nothing here should anchor it before it's taken. See
+          DECISIONS.md "Client quality targets removed from Menejer/
+          Laborator; explicit natural/sulphured flag". Kept as a manual
+          label + TextInput (not FormField) only to preserve the e2e suite's
+          `label:text-is("Namligi %")` locator unchanged. */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-          Namligi %{' '}
-          <span className="font-normal text-slate-400 dark:text-slate-500">
-            (Talab: {targetMoisturePct !== null ? `${targetMoisturePct}%` : "Talab yo'q"})
-          </span>
-        </label>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Namligi %</label>
         <div className="relative mt-1">
           <TextInput
             type="number"
@@ -155,14 +189,9 @@ export function ChiqimTahlilForm({
           />
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
         </div>
-        {missesTarget && (
-          <div className="mt-1">
-            <StatusNote tone="pending">Talabdan yuqori ({targetMoisturePct}%) — baribir saqlash mumkin.</StatusNote>
-          </div>
-        )}
       </div>
 
-      {item.target_so2_mg_kg !== null && (
+      {isSulfured && (
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Oltingugurt (SO₂)</label>
           <div className="mt-1">

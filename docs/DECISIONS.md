@@ -3205,11 +3205,11 @@ on the serial passport (`SerialPassportModal.tsx`) and referenced on Menejer's o
 ("Mijoz nakladnoyasini biriktirish"). A Hisobot column also titled "Nakladnoy" but holding a
 *number* would sit one click away from that photo, on the identical row/serial, meaning
 something different. Per CLAUDE.md's own rule ("if ambiguous after inspection: stop, report, do
-not invent a design"), this was surfaced before implementation. Resolved: use **"E'lon
-qilingan"** instead — the term already established elsewhere in this app for this exact field
-(the serial passport's own "E'lon qilingan: 7,325 kg" line, §2.16's "Declared" row). Zero changes
-to the passport screen; zero new vocabulary invented — reuses a name that already means exactly
-this.
+not invent a design"), this was surfaced before implementation, with **"E'lon qilingan"**
+proposed as the recommended fix — the term already established elsewhere in this app for this
+exact field (the serial passport's own "E'lon qilingan: 7,325 kg" line, §2.16's "Declared" row).
+The user approved that proposal over the alternatives offered. Zero changes to the passport
+screen; zero new vocabulary invented — reuses a name that already means exactly this.
 
 **Premise correction, also found before writing code:** the task described the KIRIM-side view
 as "`report_kirim_rows_as_of`." That function exists, but it isn't a variant of the view Hisobot

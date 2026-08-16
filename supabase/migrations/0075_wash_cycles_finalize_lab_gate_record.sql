@@ -28,7 +28,7 @@
 -- NOT touched: a second, smaller instance of the same gap exists for
 -- "kirim_lines_is_sulfured_flag" (version 20260815031646 in Supabase's own
 -- migration history, no matching local file -- only the second of that
--- day's two applies, "wip_rows_is_sulfured_flag", became local file 0069).
+-- day's two applies, "wip_rows_is_sulfured_flag", became local file 0070).
 -- That one adds a column + backfills data, not an RLS policy -- lower risk
 -- if a fresh environment lacks it (a missing column fails loudly, not a
 -- silently-unguarded write path) -- and wasn't the policy asked about here.

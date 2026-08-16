@@ -26,7 +26,7 @@ import { FormField, TextInput } from '../../components/ui/FormField'
 // himself (declared/gate/lab figures are read-only here, per this task's
 // own scope); everything correct_kirim_line_tara returns, mapped from the
 // RPC's snake_case row shape (see supabase/migrations/
-// 0072_correct_kirim_line_tara_rpc.sql).
+// 0073_correct_kirim_line_tara_rpc.sql).
 //
 // 🔒 Shown as a page-level banner, NOT a per-card confirmation -- found
 // live during testing: Window 2's own membership is hasRawRemainder

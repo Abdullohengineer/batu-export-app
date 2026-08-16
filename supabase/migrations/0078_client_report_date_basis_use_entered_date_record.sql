@@ -1,0 +1,249 @@
+-- Historical record of a migration applied via the MCP apply_migration tool
+-- directly on 2026-07-30 (version 20260730063918, name
+-- "client_report_date_basis_use_entered_date") that was never pulled down
+-- into supabase/migrations/ afterward -- found during the 2026-08-16
+-- migration-history reconciliation (see DECISIONS.md "Rezka data layer:
+-- partial-send fix folded into stage 1, decisions 1-5 resolved,
+-- migration-history audit"). Same class of gap 0075 already fixed for
+-- wash_cycles_finalize_lab_gate; a client_report-specific twin of local
+-- 0039 (report_date_basis_use_entered_date) that never got its own file.
+--
+-- UNLIKE 0075, this migration's target object (get_client_report) was
+-- redefined repeatedly by many LATER migrations that already exist
+-- locally -- 0046, 0051, 0058, 0060, 0061, 0063, 0065, and most recently
+-- 0076 (the current, live, authoritative definition). Replaying this
+-- file's original `create or replace function get_client_report` here
+-- (positioned after 0076) would REGRESS a fresh rebuild back to this stale
+-- 2026-07-30 shape -- missing raw dispatch, old-stock, Rezka, and every
+-- other feature added since -- the opposite of a no-op.
+--
+-- This file therefore executes NOTHING. It exists only to close the
+-- tracking gap's documentation trail and preserve the original SQL for
+-- historical reference, inert, below.
+--
+-- Original statement, applied 2026-07-30, superseded by 0046 onward (0076 current):
+--
+-- create or replace function get_client_report(p_owner_id uuid, p_from date, p_to date)
+-- returns jsonb
+-- language sql stable
+-- as $function$
+-- with
+-- client_lines as (
+--   select
+--     kl.serial, kl.type_id, ko.plate, ko.driver, kl.target_moisture_pct, kl.target_so2_mg_kg,
+--     rkr.qty_kg as effective_qty, rkr.date_basis as arrival_date, rkr.provisional,
+--     (select coalesce(sum(ms.qty_kg), 0) from moyka_sends ms where ms.serial = kl.serial) as sent_actual_kg,
+--     least(
+--       (select coalesce(sum(ms.qty_kg), 0) from moyka_sends ms where ms.serial = kl.serial),
+--       rkr.qty_kg
+--     ) as sent_capped_kg,
+--     (select min(fp.received_date) from finished_pallets fp where fp.serial = kl.serial) as completed_date,
+--     wc.id as wash_cycle_id, wc.status as wash_cycle_status
+--   from kirim_lines kl
+--   join kirim_orders ko on ko.order_id = kl.order_id
+--   join report_kirim_rows rkr on rkr.serial = kl.serial
+--   left join wash_cycles wc on wc.serial = kl.serial
+--   where ko.owner_id = p_owner_id
+-- ),
+-- raw_opening_total as (
+--   select coalesce(sum(effective_qty), 0) as kg from client_lines
+--   where arrival_date < p_from and (completed_date is null or completed_date >= p_from)
+-- ),
+-- raw_received_total as (
+--   select coalesce(sum(effective_qty), 0) as kg from client_lines where arrival_date between p_from and p_to
+-- ),
+-- raw_processed_total as (
+--   select coalesce(sum(sent_capped_kg), 0) as kg from client_lines where completed_date between p_from and p_to
+-- ),
+-- raw_processed_actual_total as (
+--   select coalesce(sum(sent_actual_kg), 0) as kg from client_lines where completed_date between p_from and p_to
+-- ),
+-- capped_serials as (
+--   select serial, sent_actual_kg as actual_sent_kg, effective_qty as effective_qty_kg, sent_actual_kg - sent_capped_kg as overage_kg
+--   from client_lines
+--   where completed_date between p_from and p_to and sent_actual_kg > sent_capped_kg
+-- ),
+-- raw_types as (select distinct type_id from client_lines),
+-- raw_opening_by_type as (
+--   select type_id, coalesce(sum(effective_qty), 0) as kg from client_lines
+--   where arrival_date < p_from and (completed_date is null or completed_date >= p_from)
+--   group by type_id
+-- ),
+-- raw_received_by_type as (
+--   select type_id, coalesce(sum(effective_qty), 0) as kg from client_lines
+--   where arrival_date between p_from and p_to group by type_id
+-- ),
+-- raw_processed_by_type as (
+--   select type_id, coalesce(sum(sent_capped_kg), 0) as kg from client_lines
+--   where completed_date between p_from and p_to group by type_id
+-- ),
+-- loss_totals as (
+--   select cl.serial, cl.sent_actual_kg
+--   from client_lines cl
+--   where cl.wash_cycle_status = 'final' and cl.completed_date between p_from and p_to
+-- ),
+-- loss_output as (
+--   select
+--     coalesce(sum(fp.weight_kg) filter (where not c.is_numberless), 0) as calibre_kg,
+--     coalesce(sum(fp.weight_kg) filter (where c.is_numberless), 0) as konditirskiy_kg
+--   from loss_totals lt
+--   join finished_pallets fp on fp.serial = lt.serial
+--   join calibres c on c.id = fp.calibre_id
+-- ),
+-- loss_main as (
+--   select
+--     (select coalesce(sum(sent_actual_kg), 0) from loss_totals) as sent_kg,
+--     (select coalesce(calibre_kg, 0) from loss_output) as calibre_kg,
+--     (select coalesce(konditirskiy_kg, 0) from loss_output) as konditirskiy_kg
+-- ),
+-- client_pallets as (
+--   select
+--     fp.barcode2, fp.serial, fp.calibre_id, fp.weight_kg, fp.received_date,
+--     (
+--       select cr.request_date
+--       from dispatch_manifest dm
+--       join gate_weighings cgw on cgw.request_id = dm.request_id and cgw.dir = 'chiqim'
+--       join chiqim_requests cr on cr.id = dm.request_id
+--       where dm.barcode2 = fp.barcode2 and cgw.completed_at is not null
+--       order by cgw.completed_at desc nulls last
+--       limit 1
+--     ) as departure_date
+--   from finished_pallets fp
+--   join kirim_lines kl on kl.serial = fp.serial
+--   join kirim_orders ko on ko.order_id = kl.order_id
+--   where ko.owner_id = p_owner_id and fp.status = 'in_stock'
+-- ),
+-- finished_opening_total as (
+--   select coalesce(sum(weight_kg), 0) as kg from client_pallets
+--   where received_date < p_from and (departure_date is null or departure_date >= p_from)
+-- ),
+-- finished_produced_total as (
+--   select coalesce(sum(weight_kg), 0) as kg from client_pallets where received_date between p_from and p_to
+-- ),
+-- finished_dispatched_total as (
+--   select coalesce(sum(weight_kg), 0) as kg from client_pallets where departure_date between p_from and p_to
+-- ),
+-- finished_calibres as (select distinct calibre_id from client_pallets),
+-- finished_opening_by_calibre as (
+--   select calibre_id, sum(weight_kg) as kg from client_pallets
+--   where received_date < p_from and (departure_date is null or departure_date >= p_from) group by calibre_id
+-- ),
+-- finished_produced_by_calibre as (
+--   select calibre_id, sum(weight_kg) as kg from client_pallets where received_date between p_from and p_to group by calibre_id
+-- ),
+-- finished_dispatched_by_calibre as (
+--   select calibre_id, sum(weight_kg) as kg from client_pallets where departure_date between p_from and p_to group by calibre_id
+-- ),
+-- quality_record as (
+--   select
+--     cl.serial, cl.type_id, cl.plate, cl.driver, cl.arrival_date, cl.target_moisture_pct, cl.target_so2_mg_kg,
+--     (
+--       select jsonb_build_object('moisturePct', lr.moisture_pct, 'so2MgKg', lr.so2_mg_kg, 'sampleDate', lr.sample_date)
+--       from lab_results lr where lr.scope = 'kirim' and lr.parent_serial = cl.serial
+--       order by lr.created_at desc limit 1
+--     ) as intake_lab,
+--     (
+--       select jsonb_build_object('moisturePct', lr.moisture_pct, 'so2MgKg', lr.so2_mg_kg, 'verdict', lr.verdict, 'sampleDate', lr.sample_date)
+--       from lab_results lr where lr.scope = 'chiqim' and lr.wash_cycle_id = cl.wash_cycle_id
+--       order by lr.created_at desc limit 1
+--     ) as delivered_lab
+--   from client_lines cl
+--   where cl.arrival_date between p_from and p_to
+--      or cl.completed_date between p_from and p_to
+--      or exists (select 1 from client_pallets cp where cp.serial = cl.serial and cp.departure_date between p_from and p_to)
+-- ),
+-- period_dispatch_ids as (
+--   select distinct cr.id as request_id
+--   from chiqim_requests cr
+--   join gate_weighings cgw on cgw.request_id = cr.id and cgw.dir = 'chiqim'
+--   where cr.owner_id = p_owner_id and cgw.completed_at is not null and cr.request_date between p_from and p_to
+-- )
+-- select jsonb_build_object(
+--   'owner', (select jsonb_build_object('id', id, 'name', name) from owners where id = p_owner_id),
+--   'period', jsonb_build_object('from', p_from, 'to', p_to),
+--   'raw', jsonb_build_object(
+--     'openingKg', (select kg from raw_opening_total),
+--     'receivedKg', (select kg from raw_received_total),
+--     'processedKg', (select kg from raw_processed_total),
+--     'processedActualSentKg', (select kg from raw_processed_actual_total),
+--     'processedOverageKg', (select kg from raw_processed_actual_total) - (select kg from raw_processed_total),
+--     'cappedSerials', (
+--       select coalesce(jsonb_agg(
+--         jsonb_build_object('serial', cs.serial, 'actualSentKg', cs.actual_sent_kg, 'effectiveQtyKg', cs.effective_qty_kg, 'overageKg', cs.overage_kg)
+--         order by cs.serial
+--       ), '[]'::jsonb)
+--       from capped_serials cs
+--     ),
+--     'closingKg', (select kg from raw_opening_total) + (select kg from raw_received_total) - (select kg from raw_processed_total),
+--     'processedBreakdown', jsonb_build_object(
+--       'calibreKg', (select calibre_kg from loss_main),
+--       'konditirskiyKg', (select konditirskiy_kg from loss_main),
+--       'lossKg', (select sent_kg - calibre_kg - konditirskiy_kg from loss_main),
+--       'lossPct', case when (select sent_kg from loss_main) > 0
+--                  then round((select sent_kg - calibre_kg - konditirskiy_kg from loss_main) / (select sent_kg from loss_main) * 100, 1)
+--                  else 0 end
+--     ),
+--     'byType', (
+--       select coalesce(jsonb_agg(
+--         jsonb_build_object(
+--           'typeId', rt.type_id,
+--           'openingKg', coalesce(rot.kg, 0), 'receivedKg', coalesce(rrt.kg, 0), 'processedKg', coalesce(rpt.kg, 0),
+--           'closingKg', coalesce(rot.kg, 0) + coalesce(rrt.kg, 0) - coalesce(rpt.kg, 0)
+--         )
+--       ), '[]'::jsonb)
+--       from raw_types rt
+--       left join raw_opening_by_type rot on rot.type_id = rt.type_id
+--       left join raw_received_by_type rrt on rrt.type_id = rt.type_id
+--       left join raw_processed_by_type rpt on rpt.type_id = rt.type_id
+--     )
+--   ),
+--   'finished', jsonb_build_object(
+--     'openingKg', (select kg from finished_opening_total),
+--     'producedKg', (select kg from finished_produced_total),
+--     'dispatchedKg', (select kg from finished_dispatched_total),
+--     'closingKg', (select kg from finished_opening_total) + (select kg from finished_produced_total) - (select kg from finished_dispatched_total),
+--     'byCalibre', (
+--       select coalesce(jsonb_agg(
+--         jsonb_build_object(
+--           'calibreId', fc.calibre_id,
+--           'openingKg', coalesce(fo.kg, 0), 'producedKg', coalesce(fp2.kg, 0), 'dispatchedKg', coalesce(fd.kg, 0),
+--           'closingKg', coalesce(fo.kg, 0) + coalesce(fp2.kg, 0) - coalesce(fd.kg, 0)
+--         )
+--       ), '[]'::jsonb)
+--       from finished_calibres fc
+--       left join finished_opening_by_calibre fo on fo.calibre_id = fc.calibre_id
+--       left join finished_produced_by_calibre fp2 on fp2.calibre_id = fc.calibre_id
+--       left join finished_dispatched_by_calibre fd on fd.calibre_id = fc.calibre_id
+--     )
+--   ),
+--   'qualityRecord', (
+--     select coalesce(jsonb_agg(
+--       jsonb_build_object(
+--         'serial', qr.serial, 'typeId', qr.type_id, 'plate', qr.plate, 'driver', qr.driver,
+--         'arrivalDate', qr.arrival_date, 'targetMoisturePct', qr.target_moisture_pct, 'targetSo2MgKg', qr.target_so2_mg_kg,
+--         'intakeLab', qr.intake_lab, 'deliveredLab', qr.delivered_lab
+--       ) order by qr.arrival_date
+--     ), '[]'::jsonb)
+--     from quality_record qr
+--   ),
+--   'dispatches', (
+--     select coalesce(jsonb_agg(
+--       jsonb_build_object(
+--         'requestId', cr.id, 'requestDate', cr.request_date, 'plate', cr.plate, 'driver', cr.driver,
+--         'departedAt', cgw.completed_at,
+--         'pallets', (
+--           select coalesce(jsonb_agg(
+--             jsonb_build_object('barcode2', dm.barcode2, 'serial', fp.serial, 'calibreId', fp.calibre_id, 'weightKg', fp.weight_kg)
+--             order by dm.barcode2
+--           ), '[]'::jsonb)
+--           from dispatch_manifest dm join finished_pallets fp on fp.barcode2 = dm.barcode2
+--           where dm.request_id = cr.id
+--         )
+--       ) order by cgw.completed_at desc
+--     ), '[]'::jsonb)
+--     from period_dispatch_ids pdi
+--     join chiqim_requests cr on cr.id = pdi.request_id
+--     join gate_weighings cgw on cgw.request_id = cr.id and cgw.dir = 'chiqim'
+--   )
+-- );
+-- $function$;

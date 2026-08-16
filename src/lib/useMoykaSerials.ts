@@ -43,10 +43,14 @@ export interface MoykaSerial {
   provisionalVarianceFlag: boolean // §2.15.2 edge case: sent while provisional, later landed materially different
   sent: number // Σ moyka_sends.qty_kg for the serial -- derived, not stored (§2.15)
   rawDispatched: number // Σ raw_dispatch_lines.net_kg for the serial -- the second exit (raw dispatch build)
-  available: number // max(0, inputKg − sent − rawDispatched) — floored: a serial can be over-consumed
-  // relative to a just-arrived, lower gate net (see DECISIONS.md "Weight authority & effective quantity");
-  // never shown negative. Generalized (raw dispatch build) to subtract BOTH exits, not moyka_sends alone --
-  // the single figure every consumer (Moyka send screen, CHIQIM raw picker, later Rezka) reads.
+  rezkaSent: number // Σ rezka_sends.qty_kg for the serial -- the third exit (2026-08-16, Rezka data layer)
+  available: number // max(0, inputKg − sent − rawDispatched − rezkaSent) — floored: a serial can be
+  // over-consumed relative to a just-arrived, lower gate net (see DECISIONS.md "Weight authority &
+  // effective quantity"); never shown negative. Generalized (raw dispatch build, then Rezka) to subtract
+  // every exit, not moyka_sends alone -- the single figure every consumer (Moyka send screen, CHIQIM raw
+  // picker, Rezka's own send screen once it exists) reads. Without this, a serial partially sent to
+  // Rezka would still show its full pre-Rezka balance as available to send to Moyka too -- the exact
+  // double-commit risk this generalization exists to prevent (see DECISIONS.md "Rezka data layer").
   sends: MoykaSend[] // full per-send history, chronological — for the detail view
   rawDispatches: RawDispatchEvent[] // full per-raw-dispatch history, chronological — for the detail view
 }
@@ -79,10 +83,16 @@ export function useMoykaSerials() {
     const requestId = ++requestIdRef.current
     setLoading(true)
     try {
-      const [{ data: intakes }, { data: sends }, { data: rawDispatches }, { data: closeouts }] = await Promise.all([
+      const [{ data: intakes }, { data: sends }, { data: rawDispatches }, { data: rezkaSends }, { data: closeouts }] = await Promise.all([
         supabase.from('storage_intake').select('serial, actual_qty, box_mass_kg'),
         supabase.from('moyka_sends').select('id, serial, sent_date, qty_kg'),
         supabase.from('raw_dispatch_lines').select('id, serial, loaded_at, weight_kg, box_mass_kg, net_kg'),
+        // Rezka's own exit (2026-08-16, see DECISIONS.md "Rezka data
+        // layer") -- a third draw against the same raw balance, same shape
+        // as moyka_sends/raw_dispatch_lines. Without this, a serial partly
+        // sent to Rezka would still show its full pre-Rezka balance as
+        // available here, letting Ombor send the same kilograms to both.
+        supabase.from('rezka_sends').select('id, serial, qty_kg'),
         // Old-stock closeout (2026-08-05, see DECISIONS.md "Old-stock
         // reconciliation"): this hook computes raw balance independently of
         // stock_on_hand_rows (does not read it at all) -- a real, standing
@@ -137,6 +147,11 @@ export function useMoykaSerials() {
         rawDispatchesBySerial.set(r.serial, list)
       }
 
+      const rezkaSentBySerial = new Map<string, number>()
+      for (const r of rezkaSends ?? []) {
+        rezkaSentBySerial.set(r.serial, (rezkaSentBySerial.get(r.serial) ?? 0) + r.qty_kg)
+      }
+
       const combined: MoykaSerial[] = (intakes ?? [])
         .map((intake): MoykaSerial | null => {
           const line = lineBySerial.get(intake.serial)
@@ -154,6 +169,7 @@ export function useMoykaSerials() {
           const input = eq?.value ?? intake.actual_qty
           const sentTotal = serialSends.reduce((sum, s) => sum + s.qty_kg, 0)
           const rawDispatchedTotal = serialRawDispatches.reduce((sum, r) => sum + r.net_kg, 0)
+          const rezkaSentTotal = rezkaSentBySerial.get(intake.serial) ?? 0
           const isOldStock = order.origin === 'opening_stock'
           // Old-stock closeout: an all-or-nothing exclusion, not a partial
           // subtraction, matching stock_on_hand_rows' own raw_rows CTE --
@@ -178,7 +194,8 @@ export function useMoykaSerials() {
             provisionalVarianceFlag: eq?.provisionalVarianceFlag ?? false,
             sent: sentTotal,
             rawDispatched: rawDispatchedTotal,
-            available: closedOut ? 0 : Math.max(0, input - sentTotal - rawDispatchedTotal),
+            rezkaSent: rezkaSentTotal,
+            available: closedOut ? 0 : Math.max(0, input - sentTotal - rawDispatchedTotal - rezkaSentTotal),
             sends: serialSends,
             rawDispatches: serialRawDispatches,
           }

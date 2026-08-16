@@ -11,7 +11,7 @@ import { supabase } from './supabase'
 // (KIRIM/CHIQIM Tahlil, both Edit forms, both Sera-kiritish cards) goes
 // through this one function, which itself goes through the
 // classify_kirim_line_sulfur() RPC (security definer,
-// supabase/migrations/0070_classify_kirim_line_sulfur_rpc.sql) rather than
+// supabase/migrations/0071_classify_kirim_line_sulfur_rpc.sql) rather than
 // a client-side update+insert. Deliberately not a kirim_lines UPDATE
 // policy: that would grant Laborator write access to every column on the
 // table (declared_qty, type_id, ...), not just this one. Deliberately not

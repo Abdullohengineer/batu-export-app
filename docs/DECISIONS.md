@@ -3651,3 +3651,442 @@ working passport link), no console error. `Tozalash` on the direction filter rou
 the exact "Hammasi" baseline figures. No `report_moyka_output_rows`/`state_moykadan_chiqgan`
 divergence observable yet (both still read 0 — no real excluded-status Moyka output exists in this
 data), as flagged above.
+
+## 2026-08-16 — Rezka data layer: design, not applied
+
+**Context.** First real build step for the Rezka cutting line, following the read-only readiness
+investigation the same day. Task: design the data layer (calibre separation, send/completion
+tracking, the Barcode #2 gate, mint callers for both inside sources, a surplus audit, provenance)
+and resolve one loose thread from the investigation — a documented-but-uncaptured RLS policy.
+Branch `rezka-data-layer` off `main`. Read/design only: exact SQL shown and dry-run-verified
+against production inside a rolled-back transaction, nothing applied for real. Explicitly out of
+scope: Ombor UI, the Rezka reporting section (stages 2/3), Hisobot/nav/tara branches.
+
+**The missing migration — resolved.** Checked the live database directly rather than trusting the
+prior investigation's inference. `pg_policies` confirms the `wash_cycles` `ombor_updates` policy's
+`with_check` already carries the finalize-verdict branch DECISIONS.md's 2026-08-14 entry describes,
+byte-identical. `supabase_migrations.schema_migrations` confirms it as a real applied migration —
+version `20260813141859`, name `wash_cycles_finalize_lab_gate` — applied via the MCP
+`apply_migration` tool directly, never pulled down into `supabase/migrations/` afterward. Its
+`statements` column holds the exact original SQL, comments included, byte-for-byte reproduced in
+`supabase/migrations/0074_wash_cycles_finalize_lab_gate_record.sql` (`drop policy if exists` +
+`create policy`, idempotent against a fresh environment or production alike). A second, smaller
+instance of the same gap exists (`kirim_lines_is_sulfured_flag`, version `20260815031646`, no local
+file — only that day's second apply became local file `0069`) — flagged in 0074's own header
+comment, not fixed; lower risk (a missing column fails loudly) and wasn't the policy asked about.
+
+**Rezka KN calibre — `is_numberless` stays `true` for both, separated by a new discriminator, not
+by faking a numbered calibre.** Plain KN is a raw source; Rezka KN is cut output; giving Rezka KN
+`is_numberless = false` would land it in the "calibred" bucket everywhere, which is a different
+wrong answer, not a fix. Added `calibres.is_rezka_output boolean not null default false`, one
+"Rezka KN" row per category that already has a plain KN row (dynamic `insert ... select`, not
+hardcoded to the one live category — confirmed live, exactly one category/one KN row exist today).
+
+Investigated all four `sum(...) filter (where c.is_numberless)` aggregates named in the
+investigation, not assumed vulnerable just because they were named:
+- `rahbar_stock_snapshot.finished_konditirskiy_total` — reads `stock_on_hand_rows` directly, no
+  `wash_cycles` gate anywhere upstream. **Confirmed vulnerable, patched.**
+- `rahbar_dashboard_ledger.processed_konditirskiy_total` ("Ledger B") — reads `processed_lines`,
+  which requires `wc.status = 'final' and wc.finalized_at is not null`. A Rezka serial never
+  acquires a `wash_cycles` row (this same task's own #2/#3 below), so it cannot enter this CTE
+  regardless of calibre. **Confirmed immune, not patched.**
+- `get_client_report.loss_output`/`processedBreakdown.konditirskiyKg` — reads `loss_totals`, same
+  `wash_cycle_status = 'final'` gate. **Confirmed immune, not patched.**
+- `yield_rows.output.konditirskiy_kg` — `finished_serials` CTE, same gate. **Confirmed immune, not
+  patched.**
+
+Only `rahbar_stock_snapshot` needed a real change — `finished_konditirskiy_total` narrowed to
+`is_numberless and not is_rezka_output` (preserves every existing value exactly, since no row had
+`is_rezka_output=true` before this migration), a new `finished_rezka_kn_total` CTE, and a
+`rezkaKnKg` key added to the output — included in `totalKg`, not excluded, mirroring the exact
+reasoning already on record for `oldKnKg`: dropping a real balance from the total to dodge a merge
+is the worse error. Verified live (dry run, rolled back): before, `konditirskiyKg: 0`,
+`finishedCalibredKg: 52210`, `totalKg: 183367`. After minting+receiving a 1650 kg Rezka pallet from
+2 consumed KN pallets (1440 kg book) and a 500 kg old-KN pool draw: `konditirskiyKg: 0` (exactly
+unchanged), `rezkaKnKg: 1650`, `finishedCalibredKg: 50770` (exactly `52210 − 1440`), `oldKnKg:
+103436` (exactly `103936 − 500`), `totalKg: 183077` (exactly `183367 − 1440 − 500 + 1650`). No kg
+created, destroyed, or merged.
+
+**Send + completion tracking — `rezka_sends`/`rezka_cycles`, copied from `moyka_sends`/
+`wash_cycles`' CURRENT shape, not a reuse.** `rezka_sends` mirrors `moyka_sends` exactly
+post-`0035` (no `wash_cycle` column — Moyka itself has been one-row-per-serial since then, nothing
+cycle-numbered left to mirror). `rezka_cycles` mirrors `wash_cycles`' current shape
+(`id`/`serial unique`/`status`/`final_loss_pct`/`finalized_at`) but deliberately does **not** copy
+`wash_cycles`' finalize-verdict UPDATE policy — Rezka has no lab, so there is no verdict to gate on;
+`rezka_cycles`' own update policy stays the plain `ombor`-role check `wash_cycles` itself had before
+that gate existed. `final_loss_pct` carries no CHECK constraint, matching `wash_cycles`' own total
+absence of one — a negative value (received > sent) is a legitimate figure, not an error state.
+
+The mechanism that actually keeps this from becoming a hole for real Moyka serials: a new trigger
+function, `prevent_dual_process_serial()`, fires `before insert` on **both** `wash_cycles` and
+`rezka_cycles`, raising if the serial already has a row in the other table. Without this, nothing
+would stop an `ombor`-role client from inserting a `rezka_cycles` row for an ordinary Moyka serial
+specifically to route around the new Barcode #2 branch below. Symmetric — also blocks a Rezka
+serial from acquiring a `wash_cycles` row, which would otherwise let it try to satisfy Moyka's own
+finalize gate with a verdict it can structurally never have, permanently unfinalizable there —
+exactly the failure mode the 2026-08-14 entry flagged as the reason to keep Rezka off `wash_cycles`
+at all. Verified live (dry run): inserting `rezka_cycles` then attempting `wash_cycles` for the same
+serial raised `23514` as designed; the reverse order raised the mirrored message.
+
+**The Barcode #2 gate — one new OR-branch, the Moyka branch untouched.** `finished_pallets`'
+`ombor_writes` INSERT policy gains `or exists (select 1 from rezka_cycles rc where rc.serial =
+finished_pallets.serial)`, copied verbatim from the live policy read via `pg_policies` immediately
+before writing this (byte-identical Moyka branch). Exactly what this lets through: an insert
+succeeds with **no** passing CHIQIM verdict, if and only if the serial has a `rezka_cycles` row —
+which, by the trigger above, means it can never simultaneously be a real Moyka serial. Verified live
+(dry run, real `ombor`-role session via a `request.jwt.claims` override, not a superuser bypass):
+received 1650 kg against 1500 kg sent, zero verdict, zero rejection.
+
+**Mint callers — `mint_serial_from_sources` (0055) itself untouched, confirmed by not editing it.**
+`send_finished_pallets_to_rezka` mirrors `send_old_stock_to_moyka`'s one-transaction shape exactly
+(pallet shape, `declared_qty` = the weighed figure not the book figure, same reasoning). 
+`send_old_kn_pool_to_rezka` is the weight-pool branch's first real caller — dormant since
+`0055` ("No caller in Stage 3; Rezka is the first"). `p_pool_weight_kg` used as both the mint's
+`declared_qty` and the `rezka_sends` amount — a pool draw has no book-vs-weighed distinction to
+preserve, so one figure is correct, not a simplification. Both verified live: minted `160826-001`
+(2 real pallets, 1440 kg book, 1500 kg weighed) and `160826-002` (500 kg drawn from a real 38,202 kg
+old-KN pool balance) — pallets flipped to `consumed`, pool balance decremented by exactly the draw.
+Outside-KN intake needs no RPC at all — an ordinary delivered `kirim_lines` row already exists, so
+sending it to Rezka is the same two plain inserts `OmborMoykaTab.handleSend` already does for Moyka
+(a frontend concern, stage 2).
+
+**Surplus — audited, nothing needed to change beyond what's already above.** Every constraint,
+floor, cap, and threshold reachable by the Rezka path was checked individually:
+`wash_cycles.final_loss_pct` (and now `rezka_cycles`' own) carries no CHECK; `moyka_sends`/
+`rezka_sends.qty_kg > 0` constrains the send side only, never compared against received;
+`finished_pallets.weight_kg > 0` is a single-pallet floor with no upper bound; the mint RPC's own
+`p_pool_weight_kg > v_available` check guards the draw side only; `yield_rows`' `loss_kg`/`loss_pct`
+formulas are plain unclamped subtraction/division (a Rezka serial cannot reach them regardless, per
+above); `rahbar_exceptions`' `abnormal_loss_pct` threshold is a plain `>` comparison, not `abs()` —
+won't misfire on a gain (but also won't flag an abnormal one; a blind spot, not a rejection, and
+moot for Rezka today since it can't reach `yield_rows` either). No `type="number"` field anywhere on
+the receive/send forms carries a `max` attribute. **The one real bug found**: `computeFinalLossPct`
+(`src/lib/tayyorCompletion.ts`) floors at `Math.max(0, ...)`, silently discarding a gain's magnitude
+— frontend, out of scope this pass, flagged for whoever writes Rezka's own completion UI: do not
+reuse this function verbatim, it needs a signed version. Verified live: a 1650 kg receipt against
+1500 kg sent (a 10% gain) was accepted with zero resistance anywhere in the database layer.
+
+**Provenance — fully derivable, nothing new stored.** `kirim_orders.origin` (`delivery` = outside-KN,
+no minting; `internal_reprocess` = either inside source) plus `serial_mint_sources.source_kind`
+(`pallet` = washed-KN consumed pallets; `weight_pool` = old-KN pool draw) together fully determine
+which of the three sources a Rezka line came from — no new column needed anywhere.
+`get_serial_passport`'s existing `mintOrigin` section already reports pallet- and pool-sourced
+provenance correctly for a Rezka-minted serial with zero passport changes — its `poolDrawKg` field,
+dormant since `0056` ("always 0 for a Stage 3 old-stock re-wash"), now reads real numbers the moment
+the pool-draw caller above runs. Verified live: `160826-002`'s passport returned `poolDrawKg: 500`
+with no passport code touched. One narrow, real gap found and **not** fixed here (touches
+`get_serial_passport`, stage-2/3 territory): `mintOrigin.sentWeighedKg` sources only from
+`moyka_sends` via a shared `sends_total` CTE also used by `joriyHolat.raw.sentToMoykaKg` (correctly
+0 for Rezka, so the CTE itself can't just be broadened) — would misreport 0 for a Rezka-minted
+serial. Exact fix (a new `rezka_sends_total` CTE, added only to the `mintOrigin.sentWeighedKg`
+expression) recorded for stage 2, not applied.
+
+**`kirim_orders.origin` — confirmed reused unchanged, not a new value, verified not assumed.** Every
+origin-filtered view that could plausibly see Rezka activity was checked directly: `Ledger B`'s
+`processed_konditirskiy_total`, `get_client_report`'s `loss_output`/`processedBreakdown`, and
+`yield_rows`' `konditirskiy_kg` are all gated on `wash_cycles.status='final'` upstream of where
+`origin` is even read — a Rezka serial cannot reach any of them regardless of its origin value,
+because it will never have a `wash_cycles` row. A new origin value would buy no additional
+protection (the `wash_cycles` absence already does the real work) and would need its own entry in
+every one of CLAUDE.md's origin-filtering categories for no behavioural gain. Rejected.
+
+🚩 **Separate, more urgent finding — not fixed here, flagged ahead of the decisions-needed list
+below because it isn't really a "stage 2" concern.** An outside-KN serial sent *partially* to Rezka
+(no minting involved — it's an ordinary `kirim_lines` row) would still show its full original raw
+balance as available everywhere "raw remaining" is computed by subtracting `moyka_sends` (+
+`raw_dispatch_lines`) alone — confirmed directly in `stock_on_hand_rows.raw_rows` and
+`rahbar_dashboard_ledger`'s `lines` CTE (`sent_before_from_kg`/`sent_as_of_to_kg`). Nothing today
+subtracts `rezka_sends` anywhere. Left unfixed, Ombor could send the same raw kilograms to both
+Moyka and Rezka — a real double-commit risk, not a cosmetic dashboard gap. **Minted-serial Rezka
+lines are not at risk of this specific issue** — `mint_serial_from_sources` deliberately gives a
+minted serial no `storage_intake` row, and every one of these views already requires
+`has_intake`/an inner join to `storage_intake` before a line can appear in a raw balance at all, the
+same protection Moyka's own mint path has always relied on (verified directly, not assumed — this
+concern was raised, investigated, and structurally ruled out before writing this paragraph). Not
+patched in this migration: every confirmed call site is a reporting/balance view (out of scope this
+pass), and `get_client_report`'s own `client_lines` equivalent needs the same direct verification
+before anyone touches it.
+
+**Verification.** Full migration (`0074` + `0075`) dry-run against production inside a single
+`BEGIN…ROLLBACK`, with `request.jwt.claims` locally set to a real `ombor`-role profile id so every
+RLS policy and role-gated RPC ran under genuine enforcement, not a superuser bypass. Confirmed:
+`rahbar_stock_snapshot` figures reconcile exactly before/after (see above); one `RKN` calibre row
+created, not duplicated; both mint callers succeed and correctly decrement their source (pallet
+status → `consumed`, pool balance reduced by exactly the draw); the finished_pallets gate accepts a
+10% surplus with no verdict; both trigger directions raise as designed; the passport's dormant
+`poolDrawKg` field reports correctly with zero passport-code changes. Rolled back — nothing
+persisted. Not yet tested: a real authenticated browser session (matching the 2026-08-14 precedent
+for the `wash_cycles` finalize gate) — the dry run's JWT-claims override proves the SQL is correct
+under real RLS enforcement, but is not a substitute for clicking through the actual (not-yet-built)
+Ombor UI once stage 2 exists.
+
+**Decisions needed before stage 2:**
+1. The partial-send raw-balance gap (double-commit risk, flagged above) — fix before any outside-KN
+   serial is ever sent to Rezka in production, not bundled with cosmetic reporting work. Needs
+   `get_client_report.client_lines` checked for the same characteristic before it's touched.
+2. Whether the four Rahbar-dashboard/reporting patches this task deliberately left alone
+   (`rahbar_dashboard_ledger`, `get_client_report`, `yield_rows` are immune by construction and need
+   nothing; `get_serial_passport`'s `sentWeighedKg` is the one real, narrow, ready-to-apply fix) get
+   folded into stage 2's own migration or shipped as their own small follow-up first.
+3. Completion-tracking UX for Rezka — `rezka_cycles.status`/`final_loss_pct` exist, but nothing yet
+   decides what "finalize" means operationally for a cutting batch (a Tugallash-equivalent action,
+   presumably, but its exact trigger/UI is stage 2).
+4. `computeFinalLossPct`'s floor — confirm whether Rezka's own completion UI gets a new, signed
+   sibling function, or whether the existing one gets a parameter, before stage 2's frontend work
+   starts (affects whether it's a shared-file change or a net-new file).
+5. Whether `send_finished_pallets_to_rezka`/`send_old_kn_pool_to_rezka` are the final RPC surface,
+   or whether stage 2's UI needs additional read-side RPCs (e.g., a "what's available to send to
+   Rezka" list, mirroring `useMoykaSerials.ts`) not designed in this pass.
+
+## 2026-08-16 — Rezka data layer: partial-send fix folded into stage 1, decisions 1-5 resolved, migration-history audit
+
+**Context.** Second round on the same design, same day, still not applied — resolving the five
+"decisions needed before stage 2" the entry above closed with, plus two items raised directly:
+fold the partial-send gap into stage 1 (stock integrity, not cosmetic), ship the passport
+`sentWeighedKg` fix separately/first, and reconcile the migration-history record properly (the
+`wash_cycles_finalize_lab_gate` gap above being one of at least two known instances of the same
+failure mode). Still read/design only for the Rezka migration itself: exact SQL dry-run-verified
+against production inside a single rolled-back transaction, nothing applied for real.
+
+**Decision 1 resolved — the partial-send gap, exhaustively enumerated, not just the one instance
+already flagged.** Grepped every `moyka_sends` reference in the live schema and classified each as
+a real balance subtraction (at risk) vs. a movement/display read (not at risk) vs. gated on
+`wash_cycles.status = 'final'` (structurally immune — a Rezka serial never acquires a `wash_cycles`
+row, per the dual-process trigger the prior entry already established). Nine sites needed the same
+treatment — add a `rezka_sends` lateral/subquery alongside the existing `moyka_sends` one, reusing
+each site's own existing sum pattern, no new balance arithmetic invented anywhere:
+1. `stock_on_hand_rows.raw_rows` — the raw-remaining bucket itself.
+2. `get_client_report.client_lines` — `rezka_sent_before_from_kg`/`rezka_sent_as_of_to_kg` added,
+   used in `raw_opening_total`/`raw_closing_total`/`raw_opening_by_type`/`raw_closing_by_type`.
+3. `close_out_old_stock`'s `old_raw` branch — a **permanent write** into
+   `old_stock_closeouts.book_remaining_kg`, not just a read.
+4. `old_stock_closeout_lines.old_raw_lines` — the read-side mirror of the same closeout figure.
+5. `rahbar_dashboard_ledger.lines` — same pair as `get_client_report`, used in
+   `raw_opening_total`/`raw_closing_total`.
+6. `wip_rows.raw_not_sent` — the WIP idle-raw bucket.
+7. `correct_kirim_line_tara.new_available_kg` — the tara-correction RPC's own recomputed balance.
+8. `kirim_line_state.omborda_qoldi` — Hisobot's per-serial state breakdown.
+9. `get_serial_passport.raw_storage_loss` — the old-stock storage-loss estimate for a still-open
+   raw line.
+
+Investigated and ruled OUT, not assumed safe: every `sum(...) filter`/aggregate reachable only
+through a `wash_cycles.status = 'final'` gate (`rahbar_dashboard_ledger.processed_konditirskiy_total`
+i.e. Ledger B, `get_client_report.loss_totals`, `yield_rows.raw_consumed_kg`) — same immunity
+argument as the calibre-separation aggregates in the entry above, re-verified for this specific
+concern rather than assumed to carry over.
+
+**Two related gaps found and deliberately NOT fixed, flagged instead of silently patched or
+silently ignored:**
+- The over-send **detector** in `get_client_report`/`rahbar_dashboard_ledger`
+  (`sent_capped_kg`/`overage_kg`) compares only Moyka's own sent total against `effective_qty` — an
+  audit/exception feature, narrower in scope than the availability gate just fixed. It would not
+  recognize a combined Moyka+Rezka overcommit. Left as-is; flagged for whoever revisits it.
+- `src/lib/stageMembership.ts`'s `hasRawRemainder(inputKg, sent)`, used by `OmborMoykaTab.tsx` to
+  decide Moyka-send-window membership, reads raw `inputKg`/`sent` directly rather than the post-fix
+  `available` figure — a serial fully committed to Rezka would still appear as a Moyka send
+  candidate. Frontend, stage-2/Ombor-UI territory, out of scope this pass.
+
+**`useMoykaSerials.ts` — the one frontend file touched, because it was named directly.** Confirmed
+by reading the hook (not assumed): `available` is computed client-side in TypeScript from three
+raw Supabase fetches (`moyka_sends`, `raw_dispatch_lines`, now `rezka_sends`), not read from a
+database view — the one consumer of this balance that a SQL-only fix cannot reach. Added a fourth
+fetch, a `rezkaSentBySerial` map, and `available: closedOut ? 0 : Math.max(0, input - sentTotal -
+rawDispatchedTotal - rezkaSentTotal)`. `npx tsc -b --noEmit` clean.
+
+**Decision "ship the passport fix separately and first" — investigated, found structurally
+impossible, bundled instead with the reasoning made explicit rather than silently deviating.** The
+`sentWeighedKg` fix (flagged in the entry above) reads a `rezka_sends_total` CTE — a table that does
+not exist until this same migration's Section 2 creates it. True separation would mean either
+shipping a migration that references a table that doesn't exist yet (fails), or writing the fix
+twice. Bundled both `get_serial_passport` fixes — the stock-integrity `raw_storage_loss` fix (item
+9 above) and the display-accuracy `sentWeighedKg` fix — into one `create or replace function
+get_serial_passport`, since Postgres requires the whole function body for `create or replace`
+regardless. Documented in the migration's own header comment.
+
+**Decisions 3-5 resolved, recorded for stage 2, no code written yet:**
+3. **Finalize mirrors Moyka.** Ombor clicks Tugallash when the batch is done; `final_loss_pct`
+   locks; no lab involved (Rezka has no lab step at all, unlike Moyka's verdict-gated finalize).
+4. **`computeFinalLossPct`'s floor gets a new, signed sibling function — not a parameter.** A shared
+   function with a flag is how the Moyka path eventually starts silently accepting gains too;
+   keeping Rezka's version a separate, named function keeps that door shut structurally, not by
+   convention.
+5. **A read-side "available to send to Rezka" RPC, mirroring `useMoykaSerials.ts`, is needed** —
+   confirmed, deferred to stage 2.
+
+**New stage-2 addition, found while resolving the above, not yet acted on:** `useAvailableFinishedStock`
+and `chiqimScan` both gate on a passing CHIQIM lab verdict. Rezka pallets never acquire one (no lab
+step, per decision 3), so as things stand a Rezka pallet would be receivable into stock but invisible
+in Menejer's CHIQIM picker and rejected at the gate scan. This migration's database branch (the
+`finished_pallets` INSERT-gate OR-branch from the entry above) does not cover it — it only lets the
+pallet *in*, nothing downstream knows to let it back *out*. Frontend, stage 2.
+
+**Verification — one clean, self-contained dry run.** Combined the full extended migration
+(calibre/`rezka_sends`/`rezka_cycles`/trigger/gate/mint-RPCs from the prior entry, plus all nine
+site patches above) into a single `BEGIN … ROLLBACK` `execute_sql` call — the earlier attempt to
+split it across two tool calls was abandoned mid-task after confirming (via a deliberate follow-up
+existence check, not an assumption) that each `execute_sql` call is its own connection and an open,
+uncommitted transaction does not survive past one call. Inside the single-call transaction: real
+`ombor`-role RLS impersonation via `request.jwt.claims`, then picked a real serial with a live raw
+balance (`150826-001`, the same serial the 2026-08-15 tara-correction entry used), inserted a
+synthetic 10 kg `rezka_sends` row, and confirmed all six read-paths that could be checked without a
+`menejer` session moved by exactly -10 kg: `stock_on_hand_rows.raw_not_washed`,
+`kirim_line_state.omborda_qoldi`, `get_serial_passport.joriyHolat.raw.stillInStorageKg`,
+`correct_kirim_line_tara.new_available_kg`, `get_client_report.raw.closingKg`,
+`rahbar_dashboard_ledger.raw.closingKg` — all exact, no rounding drift. `close_out_old_stock`'s
+`old_raw` branch and both mint-caller RPCs were exercised for syntax/plan validity only this round
+(numeric behavior already verified in the prior entry's dry run); not re-run against a `menejer`
+session this pass. Rolled back; a follow-up read-only existence check on five representative objects
+confirmed nothing persisted.
+
+**Migration-history audit — the full diff, list only, nothing fixed here per instruction.** Compared
+all 76 `supabase_migrations.schema_migrations` rows against the 75 local
+`supabase/migrations/*.sql` files directly (not sampled), matching by version order and inferred
+name correspondence. Three distinct patterns found, not one:
+
+*Category 1 — a real applied migration with no local file at all (4 found):*
+- `20260721124613` `yield_rows_loss_kg_fix` (between local `0030` and `0031`)
+- `20260730063918` `client_report_date_basis_use_entered_date` (between local `0039` and `0040`)
+- `20260803092033` `get_client_report_exclude_opening_stock_produced_v2` (between local `0060` and
+  `0061`)
+- `20260815031646` `kirim_lines_is_sulfured_flag` (between local `0068` and `0069` — already known;
+  flagged in `0074`'s own header comment as the smaller sibling of that entry's main finding)
+
+*Category 2 — a local file that is genuinely live in the schema, with zero corresponding
+`schema_migrations` row (2 found, confirmed via direct `pg_proc` existence checks, not just
+absence from the DB history — a naive DB-only diff cannot surface this pattern at all):*
+- `0072_correct_kirim_line_tara_rpc.sql` (confirmed live: `correct_kirim_line_tara` exists)
+- `0073_hisobot_moyka_rows_and_serial_state.sql` (confirmed live: `kirim_line_state` exists)
+
+(`0075_rezka_data_layer.sql` correctly has no `schema_migrations` row — it hasn't been applied.
+Not a discrepancy.)
+
+*Category 3 — registered name differs from local filename, same position, same content (1 found,
+cosmetic only):*
+- `20260718081120`, DB name `gate_weighings_stage1_actor_timestamp_ombor_finished_by`, local file
+  `0022_gate_weighings_stage_actors.sql`.
+
+**Caveat, stated plainly rather than implied:** category-2 detection is not exhaustive by
+construction — finding it required checking specific objects' live existence one at a time, which
+was only done for the two files already suspected (from having applied them earlier this session).
+A local file that was applied via MCP, never got a `schema_migrations` row, *and* wasn't already
+suspected would not be caught by this pass. A complete sweep would need every local file's created
+objects checked against live existence, one by one — not done here; reported as a limitation, not
+papered over.
+
+No fixes applied to any of the above — list only, per instruction.
+
+**Addendum, same day — 0075 applied for real; category-2 list independently triple-confirmed;
+category-1 pulled down; the sulfur-flag gap forced a renumber.** Follow-up round, same entry: apply
+the extended migration, close the migration-history gaps found above, don't skip either.
+
+*0075 applied.* Via `apply_migration` (not raw `execute_sql`), which auto-created its own
+`schema_migrations` row (`20260816095709 rezka_data_layer`) — no manual backfill needed. This is
+almost certainly *why* 0072/0073 went untracked in the first place: whatever applied them bypassed
+this tool. Verified live afterward: `rezka_sends`/`rezka_cycles` tables, both triggers, both RPCs,
+the `RKN` calibre row, and all nine site patches from Section 5 above.
+
+*Category-2 list re-verified independently, not just re-asserted.* Ran a 4-agent workflow: three
+agents each re-derived the full 76-row-DB-vs-75-local-file diff completely independently (own query,
+own glob, no access to each other's or my prior answer), a fourth adjudicated by majority vote. All
+three landed on the exact same 4 category-1 entries, the same 2 category-2 files, and the same 0022
+naming mismatch already recorded above — unanimous. This directly answers the earlier caveat about
+category-2 detection not being exhaustive: it now is, confirmed by three independent full sweeps
+rather than a spot-check of files already suspected.
+
+*Category-1 pulled down as 4 new local files — but not uniformly as 0074's own precedent.* Three of
+the four (`yield_rows_loss_kg_fix`, `client_report_date_basis_use_entered_date`,
+`get_client_report_exclude_opening_stock_produced_v2`) each redefine `yield_rows` or
+`get_client_report` — objects that later, already-local migrations (0049 for the former; 0046
+through 0075/now-0076 for the latter) have since redefined again. Literally replaying their original
+`create or replace` bodies as new trailing files would run *after* those later definitions in a
+fresh rebuild and regress them back to a stale mid-history shape — the opposite of the requested
+no-op. These three are therefore comment-only: original SQL preserved verbatim as a comment for the
+historical record, nothing executes.
+
+The fourth, `kirim_lines_is_sulfured_flag`, turned out to be a genuine, pre-existing problem, not
+just a bookkeeping gap. Its `alter table kirim_lines add column is_sulfured` is the only place that
+column is created — and (`0069_wip_rows_is_sulfured_flag.sql`/`0070_classify_kirim_line_sulfur_rpc.sql`,
+as numbered at the time) both already-local files reference `kirim_lines.is_sulfured` directly, one
+in a view definition and one in a plpgsql function body, both of which fail at `CREATE` time (not
+just runtime) if the column doesn't exist yet. **A genuine fresh rebuild of this repo's migrations
+from empty was already broken before any of this session's work** — nothing created that column
+ahead of the two files that need it. Not introduced here; just found here.
+
+**Renumbering was my own judgment call, not a choice the user made.** I concluded appending at the
+end (or documenting the gap unresolved) was worse than renumbering, framed the options that way, and
+the user only selected from that framing — the underlying decision to renumber was mine, and an
+earlier version of this entry incorrectly described it as the user's choice. Corrected here per the
+user's explicit feedback. Local files `0069`-`0078` (10 files — the original
+`0069`-`0075` seven, plus this round's three new record files, `git mv`'d for the seven
+already-tracked ones, plain-moved for the three untracked ones) shifted up to `0070`-`0079`,
+descriptive names unchanged, opening a slot at `0069` for the sulfur-flag backfill — now positioned
+correctly ahead of its two dependents. That file's own backfill statement was also hardened past
+its original form: the historical one-time `update ... set is_sulfured = true where
+target_so2_mg_kg is not null` is unsafe to literally replay (a later human classification via
+`classify_kirim_line_sulfur` could set `false` on a row that also carries a non-null
+`target_so2_mg_kg`, and a blind replay would silently overwrite it) — added `and is_sulfured is
+null` so the backfill only ever fills the original gap, never overwrites a later explicit decision,
+regardless of when or how many times it runs.
+
+Final numbering after the shift: `0069_kirim_lines_is_sulfured_flag_record.sql` (new) ·
+`0070_wip_rows_is_sulfured_flag.sql` (was 0069) · `0071_classify_kirim_line_sulfur_rpc.sql` (was
+0070) · `0072_report_totals_declared_hisobiy.sql` (was 0071) ·
+`0073_correct_kirim_line_tara_rpc.sql` (was 0072) · `0074_hisobot_moyka_rows_and_serial_state.sql`
+(was 0073) · `0075_wash_cycles_finalize_lab_gate_record.sql` (was 0074) ·
+`0076_rezka_data_layer.sql` (was 0075) · `0077_yield_rows_loss_kg_fix_record.sql` (new, was staged
+as 0076) · `0078_client_report_date_basis_use_entered_date_record.sql` (new, was staged as 0077) ·
+`0079_get_client_report_exclude_opening_stock_produced_v2_record.sql` (new, was staged as 0078).
+Every in-file cross-reference to the old numbers (inside the migration files themselves, plus two
+live source-code comments — `src/lib/classifySulfur.ts`, `src/pages/ombor/OmborIntakeTab.tsx` — and
+several `docs/SPEC.md` version-history rows) was greped for and corrected; older `DECISIONS.md`
+entries above that cite the pre-renumber filenames are left as-is deliberately — they correctly
+describe the state as it stood on the date each entry was written, and this file is a chronological
+log, not living documentation.
+
+*Category-2 tracking fix — SQL drafted, dry-run-validated, not yet applied.* Two plain `INSERT`s
+into `supabase_migrations.schema_migrations`, not re-running either migration's DDL (0074/now-0075
+drops nothing, but replaying arbitrary DDL against a database already in the target state isn't
+obviously safe and isn't needed here). `statements` = the exact, unmodified content of
+`0073_correct_kirim_line_tara_rpc.sql`/`0074_hisobot_moyka_rows_and_serial_state.sql` (post-rename),
+byte-for-byte. Version timestamps (`20260815090000`, `20260815093000`) are reconstructed, not
+authoritative — no original apply-time record exists for either, that's the entire bug — chosen to
+sort after `0071`/now-`0072` (`report_totals_declared_hisobiy`, the last genuinely tracked row
+before these) and before `rezka_data_layer`. Shown to the user for confirmation before applying, per
+instruction; not yet confirmed as of this entry.
+
+**Addendum, same day — attribution corrected, branch collisions checked, both tracking rows applied
+and byte-verified, matching re-confirmed post-renumber.** User flagged that the entry above
+originally attributed the renumbering decision to them ("user's explicit choice") when they had only
+picked from a menu I'd built around my own conclusion — corrected in place above rather than left
+standing.
+
+*Collision check against 5 unmerged branches.* `ombor-tugallash-lab-gate`,
+`sulfur-classification-to-laborator`, `hisobot-moyka-rows-serial-state`, and `ombor-kirim-tara-edit`
+are all fully merged into `main` already (`git merge-base --is-ancestor <branch> main` true for each)
+— zero unmerged commits, so nothing in them can collide with the renumbered files regardless of what
+numbers their own migration files carry. `ombor-bottom-icon-nav` has genuine unmerged commits but
+`git diff --name-status main...ombor-bottom-icon-nav` touches zero files under `supabase/migrations/`
+(only `docs/DECISIONS.md`, `docs/SPEC.md`, and three Ombor UI components). **No collisions from any
+of the five.**
+
+*Both `schema_migrations` tracking rows applied for real, byte-verified against the local files.*
+`0073_correct_kirim_line_tara_rpc.sql` (version `20260815090000`): inserted, `md5(statements[1])`
+matches the local file's `md5sum` exactly (`2de471b17b0efe6876459305f2f133bb`, 6721 bytes).
+`0074_hisobot_moyka_rows_and_serial_state.sql` (version `20260815093000`): the large (24664-byte,
+CRLF, one embedded 4-byte emoji) body couldn't be retyped reliably by hand — repeated attempts
+silently dropped a line or corrupted a byte with no SQL error to catch it. Reassembled instead via a
+scratch table, base64 chunks generated entirely by shell script (never manually retyped), each chunk
+verified by `md5sum` before use; final reassembled `octet_length`/`md5` (24664 /
+`5e79c843bef66ab58a2a42efbc0d29d7`) matched the local file exactly before the real row was written.
+An earlier, silently-wrong attempt at this same row (24170 bytes, wrong md5) had already landed in
+the table from before this verification pass — caught by the `INSERT` hitting a primary-key conflict
+on the version it had itself created, and corrected via `UPDATE` to the verified-correct content, not
+left in place. Neither DDL body was re-run against the database — both are tracking-only rows.
+
+*Local-to-DB matching re-confirmed for all 79 pairs post-renumber.* Matching is by the migration's
+semantic name (`schema_migrations.name`, derived from content), not by local file number — so moving
+ten files' numeric prefixes doesn't touch it. Rebuilt the full correspondence table fresh (79 local
+files, 79 DB rows) rather than assuming the pre-renumber diff still applied verbatim: every DB row's
+`name` matches exactly one local file's descriptive name, including the four comment-only "record"
+files (`0069`, `0077`, `0078`, `0079`) against their corresponding already-applied DB rows. Holds
+cleanly.

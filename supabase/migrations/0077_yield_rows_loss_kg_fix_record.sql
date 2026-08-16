@@ -1,0 +1,119 @@
+-- Historical record of a migration applied via the MCP apply_migration tool
+-- directly on 2026-07-21 (version 20260721124613, name "yield_rows_loss_kg_fix")
+-- that was never pulled down into supabase/migrations/ afterward -- found
+-- during the 2026-08-16 migration-history reconciliation (see DECISIONS.md
+-- "Rezka data layer: partial-send fix folded into stage 1, decisions 1-5
+-- resolved, migration-history audit"), same class of gap 0075 already fixed
+-- for wash_cycles_finalize_lab_gate.
+--
+-- UNLIKE 0075, this migration's target object (yield_rows) was touched
+-- again by a LATER migration that already exists locally: 0049
+-- (opening_stock_yield_rows_exclusion) is the current, live, authoritative
+-- definition. Replaying this file's original `create or replace view
+-- yield_rows` here (positioned after 0076, i.e. after 0049) would REGRESS
+-- a fresh rebuild back to this stale 2026-07-21 shape -- the opposite of a
+-- no-op, and the opposite of what pulling this down is supposed to do.
+--
+-- This file therefore executes NOTHING. It exists only to close the
+-- tracking gap's documentation trail and preserve the original SQL for
+-- historical reference, inert, below.
+--
+-- Original statement, applied 2026-07-21, superseded by 0049:
+--
+-- create or replace view yield_rows
+-- with (security_invoker = true) as
+-- with serial_base as (
+--   select
+--     kl.serial, kl.type_id, ko.owner_id, ko.plate, ko.driver,
+--     rkr.qty_kg as effective_qty,
+--     (select coalesce(sum(ms.qty_kg), 0) from moyka_sends ms where ms.serial = kl.serial and ms.wash_cycle = 1) as raw_consumed_kg,
+--     (select max(wc.cycle_no) from wash_cycles wc where wc.serial = kl.serial) as current_cycle_no,
+--     (select max(wc.cycle_no) from wash_cycles wc where wc.serial = kl.serial and wc.status = 'final') as last_final_cycle_no
+--   from kirim_lines kl
+--   join kirim_orders ko on ko.order_id = kl.order_id
+--   join report_kirim_rows rkr on rkr.serial = kl.serial
+--   where ko.plate not like 'TEST-%'
+-- ),
+-- finished_serials as (
+--   select * from serial_base sb
+--   where sb.last_final_cycle_no is not null
+--     and sb.last_final_cycle_no = sb.current_cycle_no
+--     and not exists (
+--       select 1 from wash_cycles wc
+--       join lab_results lr on lr.scope = 'chiqim' and lr.wash_cycle_id = wc.id and lr.verdict = 'qayta_yuvish'
+--       where wc.serial = sb.serial
+--         and not exists (select 1 from wash_cycles wc2 where wc2.serial = wc.serial and wc2.cycle_no = wc.cycle_no + 1)
+--     )
+-- ),
+-- cycles as (
+--   select
+--     fs.serial, wc.cycle_no,
+--     (select min(fp.received_date) from finished_pallets fp where fp.serial = fs.serial and fp.wash_cycle = wc.cycle_no) as completed_date,
+--     (select coalesce(sum(ms.qty_kg), 0) from moyka_sends ms where ms.serial = fs.serial and ms.wash_cycle = wc.cycle_no) as sent_kg,
+--     (select coalesce(sum(fp.weight_kg), 0) from finished_pallets fp join calibres c on c.id = fp.calibre_id
+--        where fp.serial = fs.serial and fp.wash_cycle = wc.cycle_no and not c.is_numberless) as all_calibre_kg,
+--     (select coalesce(sum(fp.weight_kg), 0) from finished_pallets fp join calibres c on c.id = fp.calibre_id
+--        where fp.serial = fs.serial and fp.wash_cycle = wc.cycle_no and c.is_numberless) as all_konditirskiy_kg,
+--     (select coalesce(sum(fp.weight_kg), 0) from finished_pallets fp join calibres c on c.id = fp.calibre_id
+--        where fp.serial = fs.serial and fp.wash_cycle = wc.cycle_no and fp.status = 'in_stock' and not c.is_numberless) as live_calibre_kg,
+--     (select coalesce(sum(fp.weight_kg), 0) from finished_pallets fp join calibres c on c.id = fp.calibre_id
+--        where fp.serial = fs.serial and fp.wash_cycle = wc.cycle_no and fp.status = 'in_stock' and c.is_numberless) as live_konditirskiy_kg
+--   from finished_serials fs
+--   join wash_cycles wc on wc.serial = fs.serial
+--   where wc.status = 'final'
+-- ),
+-- rollup as (
+--   select serial, max(completed_date) as completed_date, max(cycle_no) as max_cycle_no,
+--     sum(sent_kg) as total_sent_kg,
+--     sum(all_calibre_kg) as total_all_calibre_kg, sum(all_konditirskiy_kg) as total_all_konditirskiy_kg,
+--     sum(live_calibre_kg) as live_calibre_kg, sum(live_konditirskiy_kg) as live_konditirskiy_kg
+--   from cycles group by serial
+-- ),
+-- calibre_breakdown as (
+--   select fs.serial, fp.calibre_id, sum(fp.weight_kg) as kg
+--   from finished_serials fs
+--   join finished_pallets fp on fp.serial = fs.serial
+--   join wash_cycles wc on wc.serial = fp.serial and wc.cycle_no = fp.wash_cycle
+--   where wc.status = 'final' and fp.status = 'in_stock'
+--   group by fs.serial, fp.calibre_id
+-- ),
+-- lab_readings as (
+--   select fs.serial,
+--     (select lr.moisture_pct from lab_results lr where lr.scope = 'kirim' and lr.parent_serial = fs.serial order by lr.created_at desc limit 1) as intake_moisture_pct,
+--     (select lr.moisture_pct from lab_results lr join wash_cycles wc on wc.id = lr.wash_cycle_id
+--        where lr.scope = 'chiqim' and wc.serial = fs.serial order by wc.cycle_no desc, lr.created_at desc limit 1) as delivered_moisture_pct
+--   from finished_serials fs
+-- )
+-- select
+--   fs.serial, fs.type_id, fs.owner_id, fs.plate, fs.driver,
+--   fs.effective_qty as raw_received_kg,
+--   fs.raw_consumed_kg,
+--   (fs.raw_consumed_kg - fs.effective_qty) as raw_overage_kg,
+--   r.completed_date,
+--   r.max_cycle_no,
+--   (r.max_cycle_no > 1) as rewashed,
+--   r.live_calibre_kg, r.live_konditirskiy_kg,
+--   (r.live_calibre_kg + r.live_konditirskiy_kg) as output_kg,
+--   (r.total_sent_kg - r.total_all_calibre_kg - r.total_all_konditirskiy_kg) as loss_kg,
+--   case when fs.raw_consumed_kg > 0 then round((r.total_sent_kg - r.total_all_calibre_kg - r.total_all_konditirskiy_kg) / fs.raw_consumed_kg * 100, 1) else 0 end as loss_pct,
+--   case when fs.raw_consumed_kg > 0 then round((r.live_calibre_kg + r.live_konditirskiy_kg) / fs.raw_consumed_kg * 100, 1) else 0 end as gross_yield_pct,
+--   lab.intake_moisture_pct, lab.delivered_moisture_pct,
+--   (lab.intake_moisture_pct is not null and lab.delivered_moisture_pct is not null) as dry_matter_available,
+--   case when lab.intake_moisture_pct is not null then round(fs.raw_consumed_kg * (1 - lab.intake_moisture_pct / 100), 1) end as dry_matter_in_kg,
+--   case when lab.delivered_moisture_pct is not null then round((r.live_calibre_kg + r.live_konditirskiy_kg) * (1 - lab.delivered_moisture_pct / 100), 1) end as dry_matter_out_kg,
+--   case when lab.intake_moisture_pct is not null and lab.delivered_moisture_pct is not null
+--          and fs.raw_consumed_kg * (1 - lab.intake_moisture_pct / 100) > 0
+--        then round((fs.raw_consumed_kg * (1 - lab.intake_moisture_pct / 100) - (r.live_calibre_kg + r.live_konditirskiy_kg) * (1 - lab.delivered_moisture_pct / 100))
+--                   / (fs.raw_consumed_kg * (1 - lab.intake_moisture_pct / 100)) * 100, 1)
+--   end as true_loss_pct,
+--   (
+--     select coalesce(jsonb_agg(jsonb_build_object('calibreId', cb.calibre_id, 'kg', cb.kg,
+--       'pct', case when (r.live_calibre_kg + r.live_konditirskiy_kg) > 0 then round(cb.kg / (r.live_calibre_kg + r.live_konditirskiy_kg) * 100, 1) else 0 end)
+--       order by cb.kg desc), '[]'::jsonb)
+--     from calibre_breakdown cb where cb.serial = fs.serial
+--   ) as calibre_mix
+-- from finished_serials fs
+-- join rollup r on r.serial = fs.serial
+-- join lab_readings lab on lab.serial = fs.serial;
+--
+-- grant select on yield_rows to authenticated;

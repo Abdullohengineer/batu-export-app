@@ -48,7 +48,7 @@
 -- ============================================================
 -- 1. kirim_line_state(p_serial) -- the 7 serial-state figures
 -- ============================================================
--- Reuses kirim_line_effective_qty (0072) for "Qabul qilingan" rather than
+-- Reuses kirim_line_effective_qty (0073) for "Qabul qilingan" rather than
 -- re-deriving it a third time. "Moykadan chiqgan" / "Moykada" / "Olib
 -- ketilgan" all read from ONE base_pallets CTE using the exact exclusion
 -- set rahbar_dashboard_ledger's own `pallets` CTE uses (confirmed, not

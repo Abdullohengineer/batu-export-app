@@ -63,6 +63,27 @@ export function OmborHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
 
+  // Periodic refresh (2026-08-15) — the effect above only catches up when
+  // the operator switches tabs. Someone who stays on one screen the whole
+  // time (e.g. camped on Skladga KIRIM at the scale) would otherwise see
+  // the other three sections' badge counts quietly drift wrong for as long
+  // as they stay put — a badge that lies is worse than no badge. Same 4
+  // refresh() calls as above, just time-triggered instead of
+  // route-triggered; 60s (the "lightest" end of the requested 30-60s
+  // window) since a badge is an ambient heads-up, not a real-time counter.
+  // Mount-once interval, not tied to location, so it keeps running
+  // regardless of which section is active.
+  useEffect(() => {
+    const id = setInterval(() => {
+      refreshIntake()
+      refreshMoykaSerials()
+      refreshMoykaOutput()
+      refreshChiqim()
+    }, 60_000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // "Items waiting" per section = that section's own Window 1 (the queue
   // Ombor still has to act on), same predicate its tab already renders:
   // OmborIntakeTab.tsx's `!l.intake`, OmborMoykaTab.tsx's `hasRawRemainder`
@@ -70,10 +91,17 @@ export function OmborHome() {
   // Mahsulot's "chiqishi kutilmoqda" window), useOmborChiqimRequests' own
   // pre-filtered `open`. Hisobotlar has no queue concept (confirmed during
   // investigation) — no `count`, so OmborIconNav renders no badge there.
+  // Nav-bar labels are one word each (2026-08-15) — the full section name
+  // (SECTIONS' own `label`, below) already shows in the header; the nav
+  // bar's job is thumb-sized icons in a single row, and vertical space is
+  // the scarcest thing on a phone held by someone standing at a scale.
+  // Two-word labels wrapped to a second line here before this change,
+  // making the whole bar taller for no benefit. See DECISIONS.md "Ombor
+  // bottom icon nav: one-word labels + periodic badge refresh."
   const items: OmborNavItem[] = [
     {
       to: '/ombor',
-      label: 'Skladga KIRIM',
+      label: 'KIRIM',
       end: true,
       icon: <KirimIcon />,
       tone: 'kirim',
@@ -81,28 +109,28 @@ export function OmborHome() {
     },
     {
       to: '/ombor/moyka',
-      label: 'Moykaga Chiqarish',
+      label: 'Moykaga',
       icon: <MoykaIcon />,
       tone: 'moyka',
       count: moykaSerials.filter((s) => hasRawRemainder(s.inputKg, s.sent)).length,
     },
     {
       to: '/ombor/tayyor',
-      label: 'Tayyor Mahsulot',
+      label: 'Tayyor',
       icon: <TayyorIcon />,
       tone: 'moyka',
       count: awaitingTugallash.length,
     },
     {
       to: '/ombor/chiqim',
-      label: 'Skladdan CHIQIM',
+      label: 'CHIQIM',
       icon: <ChiqimIcon />,
       tone: 'chiqim',
       count: openChiqim.length,
     },
     {
       to: '/ombor/hisobotlar',
-      label: 'Hisobotlar',
+      label: 'Hisobot',
       icon: <HisobotlarIcon />,
       tone: 'neutral',
     },

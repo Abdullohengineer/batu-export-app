@@ -4164,3 +4164,197 @@ logic, out of scope for a data-only, no-schema-changes correction.
 **Out of scope, not touched:** the receive-form app-side change (one barcode per calibre group), a
 print-N-copies button for Barcode #2 (scoped separately in the same session, not built), Rezka, the
 Ombor nav branch.
+## 2026-08-15 — Ombor bottom icon nav
+**Context:** replace Ombor's horizontally-scrolling top-tab bar with a bottom icon bar — one-handed
+phone use on a factory floor, so every section is reachable with the primary hand's thumb and all
+5 fit without horizontal scroll. Frontend/nav-shell only; no query changes; section content and
+behaviour must stay untouched.
+
+**`RoleTabs`/`RoleShell` are shared with Qorovul and Laborator** (confirmed via their own header
+comments before touching either) — editing them in place would reach both other roles' nav, out
+of scope by the task's own "no changes to any other role." Built a new, Ombor-local component
+(`OmborIconNav.tsx`) instead. `RoleShell`'s `nav` prop already no-ops when omitted
+(`{nav && <div>...}`), so `OmborHome.tsx` simply stops passing one — no `RoleShell` edit needed at
+all. The active section's name goes in `RoleShell`'s existing `title` prop instead, computed from
+`useLocation()` against the same 5 routes, mirroring `NavLink`'s own `end`-vs-prefix matching —
+this fully replaces the previous static "Ombor menejeri" title, per the task's literal wording
+("the active section's name shows as a header").
+
+**No icon library exists in this app** (checked before writing any icon: no `lucide-react`/
+`@heroicons/react`/`react-icons`/etc. in `package.json`, zero icon-package imports anywhere in
+`src/`). Every existing small glyph is either a bare Unicode character or, in exactly one place
+(`AppNavShell.tsx`'s hamburger/close), a hand-written inline SVG — matched that style: 24×24
+viewBox, `stroke="currentColor"`, no fill, so each icon inherits its `NavLink`'s tone colour
+automatically (`src/pages/ombor/omborNavIcons.tsx`).
+
+**Colour mapping — reused this app's existing tone families, not new shades:**
+- Skladga KIRIM (entering) — emerald, this app's existing `ok`-tone family.
+- Skladdan CHIQIM (departing) — red, this app's existing `problem`-tone family, and the same
+  colour `RahbarHome.tsx`'s own palette already assigns to `departed` ("material that left the
+  factory" — confirmed live, that file's own comment reads "black, not red" for `loss`, i.e. the
+  *only* thing red means there is departure, nothing else).
+- Moykaga Chiqarish + Tayyor Mahsulot (both still inside the factory, pre-dispatch) — blue,
+  this app's existing `info` tone. Matches the task's explicit reasoning: "nothing has left the
+  factory — matching why yo'qotish is black rather than red elsewhere," confirmed against
+  `RahbarHome.tsx`'s real `loss: slate-700 // "black, not red"` precedent before choosing this.
+- Hisobotlar — plain neutral slate. Not named in the task's 3-bucket colour rule (KIRIM/CHIQIM/
+  Moyka) because it isn't material movement at all — a reports screen, not a queue. Judgment call,
+  not blocked on: the two named rules cover material direction; Hisobotlar simply falls outside
+  that axis, and slate is this app's existing catch-all for non-status numbers/screens.
+
+**Count badges — reuse the section's own existing hook/filter, no new query, one accepted
+tradeoff:** each movement icon's badge reads that section's own **Window 1** (the queue Ombor
+still has to act on), via the identical hook + filter its own tab component already renders with:
+`useIntakeLines()` + `!l.intake` (Skladga KIRIM), `useMoykaSerials()` + `hasRawRemainder`
+(Moykaga Chiqarish "Yuborishga tayyor"), `useMoykaOutput()`'s own pre-filtered `serials`
+(Tayyor Mahsulot "chiqishi kutilmoqda" — the hook already returns exactly this set), and
+`useOmborChiqimRequests()`'s own pre-filtered `open`. Hisobotlar has no queue concept (confirmed
+during investigation — its only hook, `useIntakeHistory`, returns a user-filtered history report,
+not a pending-items list) — no `count`, so the bar renders no badge there; a genuine 0 also
+renders no badge, matching the standard notification-badge convention (a "0" badge is noise, not
+information).
+
+Which window backs the badge for the two sections with two windows (Moyka, Tayyor) wasn't
+specified by the task — chose Window 1 consistently across all four movement sections ("items
+waiting" = work still ahead of Ombor), not Window 2 (informational/already-done), since that's
+the literal reading of "items waiting in that section."
+
+**Stated tradeoff, not hidden:** since each section's own hook only lives inside its own tab
+component (mounted/unmounted as the `<Outlet/>` child swaps) and `OmborHome` itself never
+unmounts as the operator moves between tabs, badging every icon (not just the active one) means
+running all 4 of these hooks a second time, in the nav shell, permanently — in addition to
+whichever one the active tab separately mounts for itself. This is the same query each section
+already runs (nothing new, per the task's explicit constraint, "drawn from whatever each section
+already queries"), not a leaner custom count query, and it's the only way to badge every tab
+without lifting state into `OmborHome` and rewiring each section to read from context instead of
+its own hook — which would touch section internals ("Section content and behaviour unchanged" is
+the task's own requirement). None of these 4 hooks re-fetch on their own after mount (no realtime
+subscription, confirmed reading each one) and `OmborHome` never remounts on a tab switch, so
+without further work every badge would go stale the instant an action changed its own section's
+count, until a full page reload — added one `useEffect` keyed on `location.pathname` that re-runs
+all 4 hooks' own `refresh()` on every navigation (skipping the very first mount, via a ref, since
+each hook already fetches once on its own mount) — the natural, cheap moment to catch up, not a
+poll, not a new query.
+
+**Testing:** at a real 375×812 viewport, logged in as the `TEST Ombor` account. Confirmed via
+direct DOM measurement (not just visual inspection): `nav.scrollWidth === nav.clientWidth === 375`
+and `document.documentElement.scrollWidth === 375` on every one of the 5 routes — no horizontal
+scroll anywhere, on the bar or the page. **Found and fixed a real legibility bug during this
+pass:** the first implementation used `truncate` (ellipsis) on the label — measured
+`scrollWidth > clientWidth` (clipped) on 4 of 5 labels at 75px-wide columns (e.g. "Moykaga
+Chiqarish" needs ~100px, had 75px). Fixed by letting labels wrap to two lines instead
+(`break-words`, no `whitespace-nowrap`) — re-measured after the fix: `scrollWidth === clientWidth`
+on all 5, zero clipping, bar height grew from ~53px to ~64px to fit, `pb-24` content clearance
+still comfortably covers it. Confirmed badge counts against each section's own rendered list by
+counting DOM elements directly: Skladga KIRIM badge 1 = 1 pending row; Moykaga Chiqarish badge 9 =
+9 "+ Moykaga yuborish" buttons under "1 · Yuborishga tayyor"; Tayyor Mahsulot badge 8 = 8 serials
+under "1 · Moykada — chiqishi kutilmoqda"; Skladdan CHIQIM showed no badge, and its Window 1
+correctly read "Ochiq so'rov yo'q." (genuinely empty). Confirmed the header text updates to match
+the active section on every one of the 5 routes ("Skladga KIRIM" → "Moykaga Chiqarish" →
+"Tayyor Mahsulot" → "Skladdan CHIQIM" → "Hisobotlar"). Confirmed dark mode (after a reload, since
+`prefers-color-scheme` is a load-time media query, same as this app's existing convention) renders
+the correct dark-tinted active background and readable text colour. **Confirmed the existing
+e2e suite's navigation locators still resolve**, since 11 assertions across `full-chain.spec.ts`,
+`lab-packing-hard-gate.spec.ts`, `lab-relocation-loss-verification.spec.ts`, and
+`chiqim-undo-scan.spec.ts` click these links via `page.getByRole('link', { name: '...' })`
+(substring match, no `exact: true`) — the badge digit now renders inside the same link, ahead of
+the label; ran a throwaway, read-only spec (deleted after, never committed) logging in as Ombor
+and asserting `getByRole('link', { name })` resolves + navigates correctly for all 5 labels — all
+passed, confirming the badge prefix doesn't break substring name matching. Confirmed no section's
+own content changed: `OmborIntakeTab.tsx`/`OmborMoykaTab.tsx`/`OmborTayyorTab.tsx`/
+`OmborChiqimTab.tsx`/`OmborHisobotlar.tsx` were not touched at all — every list, form, and action
+inside each tab renders and reads identically to before this change, by construction (only
+`OmborHome.tsx` and the two new nav files changed). `npx tsc -b --noEmit` and `npm run lint` clean.
+
+**Also corrected in the same edit:** SPEC.md §5's `**Nav:**` line described "4 sections +
+universal 'Skanerlash' lookup (scan any #1/#2 → read-only serial history)" — live code has 5
+routed tabs (§5.1–§5.4 + Hisobotlar) and no separate "Skanerlash" nav entry exists or ever did in
+what's live today. Pre-existing discrepancy, not something this task was asked to fix, but noted
+and corrected here since this edit already touches that exact line (CLAUDE.md: update SPEC.md
+inline when a build reveals it's wrong, log why here — not left silently side-by-side with
+contradicting live behaviour).
+
+**Out of scope, not touched:** Hisobot work, Rezka, anything behavioural inside any section — see
+above, confirmed by construction (no section file touched).
+
+---
+
+## 2026-08-20 — Ombor bottom icon nav: one-word labels + periodic badge refresh
+**Context:** `ombor-bottom-icon-nav` (v1.35, 2026-08-15) was rebased onto current `main` — 12
+commits ahead by then, touching `docs/SPEC.md`/`docs/DECISIONS.md` (version-number/changelog
+collisions with two other branches that had since merged: `ombor-kirim-tara-edit` at v1.33,
+`hisobot-moyka-rows-serial-state` at v1.34 — resolved as a union merge, keeping every entry, same
+precedent as the v1.28 entry) but not `OmborHome.tsx`/`OmborIconNav.tsx`/`omborNavIcons.tsx`
+themselves — those three applied clean, no conflict, confirming no other branch touched Ombor's
+nav in the meantime. Two follow-up fixes requested on top of the rebase, Ombor-frontend-only, no
+query/data-logic changes beyond the badge refresh itself: shorten the nav labels (they wrapped to
+two lines, adding height the badge/icon bar didn't need), and stop badges from going stale on a
+screen the operator never leaves.
+
+**Labels shortened to one word each** — Skladga KIRIM → **KIRIM**, Moykaga Chiqarish →
+**Moykaga**, Tayyor Mahsulot → **Tayyor**, Skladdan CHIQIM → **CHIQIM**, Hisobotlar → **Hisobot**.
+Only the nav `items` array's own `label` field changed — `OmborHome.tsx`'s separate `SECTIONS`
+array (which feeds `RoleShell`'s `title` prop, i.e. the page header) keeps the full two-word
+names untouched, exactly per the task's own reasoning ("the full section name already shows in
+the header"). `Hisobotlar` → `Hisobot` drops the plural "-lar" rather than truncating further
+("Hisobot" is still a real, standalone Uzbek word — "report," singular — not a clipped fragment);
+every other shortening is a straight substring of the original.
+
+**Re-measured at 375px in a real browser, not by calculation.** A throwaway, unauthenticated
+preview route (`/__preview-nav`, one temp component importing the real `OmborIconNav` with
+realistic + worst-case props — including a 3-digit `99+` badge) + Playwright against the
+pre-installed Chromium, same "throwaway, read-only, deleted after" methodology the original
+v1.33 commit used for its own badge/locator verification. Both the temp route (`App.tsx`) and the
+temp component (`__PreviewNav.tsx`) were removed before committing — confirmed via `git status`/
+`git diff` showing only `OmborHome.tsx` changed. Measured at 375px and 320px:
+- `nav.scrollWidth === nav.clientWidth === document.body.scrollWidth === window.innerWidth` at
+  both widths — no horizontal scroll, all 5 items fit one row.
+- Every label's `offsetHeight === scrollHeight` (13px, one line) — no wrapping, including the
+  longest label (`Moykaga`, 7 characters) and the worst-case badge (`99+`, which doesn't affect
+  label width since the badge is a separate absolutely-positioned element).
+- Screenshot confirms the same visually: 5 icons + one-word labels + badges, one row, no clipping.
+
+**Active-state background re-confirmed, not just re-read from the source.** The task noted the
+distinct-tinted-background requirement was stated in SPEC.md's v1.33/v1.35 text but never
+independently re-verified in an earlier report. Read `OmborIconNav.tsx` directly:
+`toneClasses[tone].active` sets both a `bg-*` class (e.g. `bg-emerald-50`, `dark:bg-emerald-950/40`)
+and a text colour, applied via `NavLink`'s `isActive` render prop — not a colour-only change. Then
+confirmed live in the same browser check: the active item's computed `backgroundColor` reads a
+real colour (`oklch(0.979 0.021 166.113)`, i.e. `emerald-50`) while every inactive item's
+`backgroundColor` reads `rgba(0, 0, 0, 0)` (transparent) — active is genuinely a distinct filled
+box, not merely differently-coloured text/icon on the same transparent background.
+
+**Periodic badge refresh — a second, time-triggered path alongside the existing route-triggered
+one, not a replacement.** Before this, the 4 badge-source hooks (`useIntakeLines`,
+`useMoykaSerials`, `useMoykaOutput`, `useOmborChiqimRequests`) only re-ran on navigation (the
+existing `useEffect` keyed on `location.pathname`) — since none of them subscribe to realtime
+changes and `OmborHome` itself never remounts, an operator who stayed on one screen the whole
+shift (the literal scenario at a factory scale) would see the other three sections' counts freeze
+at whatever they were on last visit, with no visual indication they might be wrong. Added a
+second, independent `useEffect` — `setInterval(..., 60_000)`, mounted once (empty dependency
+array, not keyed on route), calling the same 4 `refresh()` functions, cleared on unmount. 60s
+chosen as the "lightest" end of the requested 30–60s window: each `refresh()` is the same
+Supabase read every tab-switch already triggers (not a new query), and a badge is an ambient
+heads-up rather than a value anything else in the app depends on, so the wider interval was
+preferred over the tighter one — did not attempt to profile actual query cost against this
+project's Supabase plan (no live credentials in this session — see "No live/Supabase-authenticated
+verification" below), so if 60s later proves to still be too frequent for the real hardware/
+network, that's a tuning knob (the interval constant), not a redesign; the task's own fallback
+("if a timer proves costly, drop badges entirely rather than shipping stale ones") was not
+triggered because nothing in this session's testing surfaced a cost signal to act on.
+
+**No live/Supabase-authenticated verification.** This session had no `.env.test` (gitignored, not
+present in a fresh clone) and no Supabase MCP connection, so the four badge-source hooks were
+never exercised against real data, and the periodic timer's actual network behaviour (query cost,
+real device battery/perf impact) was not observed running against production Supabase. What *was*
+verified directly: `npx tsc -b` and `npm run lint` both clean on the full rebased branch plus
+these two fixes; the interval/cleanup logic follows the same pattern (`useEffect` + cleanup
+function) already used one function above it in the same file for the route-triggered refresh,
+which is exercised by this app's existing test suite. Live badge-count-matches-section-contents
+and live 60s-update confirmation, called for in the task's own testing section, still needs a
+real login against the actual Supabase project — flagged explicitly, not silently skipped.
+
+**Out of scope, not touched:** any section's own file (`OmborIntakeTab`/`OmborMoykaTab`/
+`OmborTayyorTab`/`OmborChiqimTab`/`OmborHisobotlar`), `OmborIconNav.tsx`/`omborNavIcons.tsx`
+themselves (both diff-clean from the rebase — no change needed for either fix), any other role,
+any query or RPC. `OmborHome.tsx` is the only source file this session's own commit touches.

@@ -49,6 +49,7 @@ export function ReportTableRow({
   typeName,
   calibreLabel,
   onOpenPassport,
+  onOpenOldKnRequest,
 }: {
   row: ReportRow
   visibleColumns: ReportColumnDef[]
@@ -58,6 +59,7 @@ export function ReportTableRow({
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
   onOpenPassport: (serial: string) => void
+  onOpenOldKnRequest: (requestId: string) => void
 }) {
   const qty = row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg
   // Blank, not zero, wherever a figure doesn't exist for this row kind —
@@ -258,7 +260,7 @@ export function ReportTableRow({
             ) : row.kind === 'chiqim_raw' ? (
               <RawDispatchRowDetail row={row} onOpenPassport={onOpenPassport} />
             ) : row.kind === 'chiqim_old_kn' ? (
-              <OldKnRowDetail row={row} />
+              <OldKnRowDetail row={row} onOpenOldKnRequest={onOpenOldKnRequest} />
             ) : row.kind === 'moyka_send' ? (
               <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />
             ) : row.kind === 'moyka_output' ? (

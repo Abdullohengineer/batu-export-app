@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { sortByDateDesc } from './sortByDate'
 
 export interface FinishedChiqimLine {
+  id: string
   type_id: string
   // Raw dispatch pool rework (2026-08-01, see DECISIONS.md "Raw dispatch
   // serial pool"): line_kind replaces the old raw_serial-is-not-null
@@ -10,8 +11,13 @@ export interface FinishedChiqimLine {
   // rawSerialPool — this is a receipt/history view, so it shows the full
   // pool rather than degrading to a bare "Xom" with no detail, matching
   // how a finished line's reservedPallets are already shown elsewhere.
+  //
+  // Widened to all five kinds (was 'finished' | 'raw' only, a latent gap
+  // predating opening-stock Stage 2 — old_washed/old_kn/old_raw lines were
+  // already flowing through this query untyped-correctly). See
+  // ChiqimRequestDetail.tsx's lineLabel for the matching render branches.
   calibre_id: string | null
-  line_kind: 'finished' | 'raw'
+  line_kind: 'finished' | 'raw' | 'old_washed' | 'old_kn' | 'old_raw'
   qty_kg: number | null
   rawSerialPool: string[]
 }
@@ -49,6 +55,35 @@ export interface FinishedChiqimRequest {
   lines: FinishedChiqimLine[]
   weighing: FinishedChiqimWeighing | null
 }
+
+// Shared between useFinishedChiqimRequests (bulk, Menejer's own W2 list) and
+// useChiqimRequestById below (single, the Hisobot old-KN passport drill-down)
+// so the two queries' row shapes can never drift apart.
+type RawLine = {
+  id: string
+  type_id: string
+  calibre_id: string | null
+  line_kind: FinishedChiqimLine['line_kind']
+  qty_kg: number | null
+  request_id: string
+  chiqim_line_raw_serials: { serial: string }[] | null
+}
+
+function toLine(l: RawLine): FinishedChiqimLine {
+  return {
+    id: l.id,
+    type_id: l.type_id,
+    calibre_id: l.calibre_id,
+    line_kind: l.line_kind,
+    qty_kg: l.qty_kg,
+    rawSerialPool: (l.chiqim_line_raw_serials ?? []).map((s) => s.serial),
+  }
+}
+
+const CHIQIM_LINE_SELECT = 'id, type_id, calibre_id, line_kind, qty_kg, request_id, chiqim_line_raw_serials(serial)'
+const GATE_WEIGHING_SELECT =
+  'id, request_id, gruzheny_kg, pustoy_kg, net_kg, stage1_created_by, stage1_completed_at, ' +
+  'stage1_plate_photo, stage1_scale_photo, stage2_created_by, stage2_scale_photo, departure_doc_photo, completed_at'
 
 // Menejer's CHIQIM second window (§3.1) — widened from a finished-only
 // view (Step 7 prompt 4) to every status, matching the universal second-
@@ -94,16 +129,8 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
             'id, request_date, plate, driver, owner_id, status, created_by, created_at, ' +
               'ombor_finished_at, ombor_finished_by, voided_at',
           ),
-        supabase
-          .from('chiqim_lines')
-          .select('type_id, calibre_id, line_kind, qty_kg, request_id, chiqim_line_raw_serials(serial)'),
-        supabase
-          .from('gate_weighings')
-          .select(
-            'id, request_id, gruzheny_kg, pustoy_kg, net_kg, stage1_created_by, stage1_completed_at, ' +
-              'stage1_plate_photo, stage1_scale_photo, stage2_created_by, stage2_scale_photo, departure_doc_photo, completed_at',
-          )
-          .eq('dir', 'chiqim'),
+        supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT),
+        supabase.from('gate_weighings').select(GATE_WEIGHING_SELECT).eq('dir', 'chiqim'),
       ])
 
       // Cast explicitly, same reason as useGateHistory.ts: without generated
@@ -114,29 +141,13 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
       // concatenation for the first time.
       const weighingRows = (weighings ?? []) as unknown as (FinishedChiqimWeighing & { request_id: string })[]
       const reqRows = (reqs ?? []) as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing'>[]
-      type RawLine = {
-        type_id: string
-        calibre_id: string | null
-        line_kind: 'finished' | 'raw'
-        qty_kg: number | null
-        request_id: string
-        chiqim_line_raw_serials: { serial: string }[] | null
-      }
       const lineRows = (lines ?? []) as unknown as RawLine[]
 
       const combined: FinishedChiqimRequest[] = reqRows
         .filter((r) => !r.plate.startsWith('TEST-'))
         .map((r) => ({
           ...r,
-          lines: lineRows
-            .filter((l) => l.request_id === r.id)
-            .map((l) => ({
-              type_id: l.type_id,
-              calibre_id: l.calibre_id,
-              line_kind: l.line_kind,
-              qty_kg: l.qty_kg,
-              rawSerialPool: (l.chiqim_line_raw_serials ?? []).map((s) => s.serial),
-            })),
+          lines: lineRows.filter((l) => l.request_id === r.id).map(toLine),
           weighing: weighingRows.find((w) => w.request_id === r.id) ?? null,
         }))
 
@@ -151,4 +162,66 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
   }, [refresh, refreshKey])
 
   return { requests, loading, refresh }
+}
+
+// Single-request sibling of useFinishedChiqimRequests above, same three
+// tables/columns (CHIQIM_LINE_SELECT/GATE_WEIGHING_SELECT), scoped by id
+// instead of fetched in bulk. Built for the Hisobot old-KN passport
+// drill-down (ChiqimRequestDetail.tsx via OldKnRequestPassportModal.tsx) —
+// a Hisobot row can be arbitrarily far back in history, so this fetches
+// exactly the one request rather than pulling every chiqim_requests row the
+// bulk hook above does for Menejer's own (small, current-session-scale) W2
+// list. Not scoped to any status/line_kind — "all info" for the request,
+// whatever it turns out to contain.
+export function useChiqimRequestById(requestId: string | null) {
+  const [request, setRequest] = useState<FinishedChiqimRequest | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!requestId) {
+      setRequest(null)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    ;(async () => {
+      try {
+        const [{ data: req, error: reqErr }, { data: lines }, { data: weighings }] = await Promise.all([
+          supabase
+            .from('chiqim_requests')
+            .select(
+              'id, request_date, plate, driver, owner_id, status, created_by, created_at, ' +
+                'ombor_finished_at, ombor_finished_by, voided_at',
+            )
+            .eq('id', requestId)
+            .single(),
+          supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT).eq('request_id', requestId),
+          supabase.from('gate_weighings').select(GATE_WEIGHING_SELECT).eq('dir', 'chiqim').eq('request_id', requestId),
+        ])
+        if (reqErr) throw reqErr
+        if (cancelled) return
+
+        const reqRow = req as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing'>
+        const lineRows = (lines ?? []) as unknown as RawLine[]
+        const weighingRows = (weighings ?? []) as unknown as (FinishedChiqimWeighing & { request_id: string })[]
+
+        setRequest({
+          ...reqRow,
+          lines: lineRows.map(toLine),
+          weighing: weighingRows[0] ?? null,
+        })
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "So'rovni yuklashda xatolik yuz berdi.")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [requestId])
+
+  return { request, loading, error }
 }

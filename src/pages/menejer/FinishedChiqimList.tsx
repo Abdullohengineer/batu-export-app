@@ -7,7 +7,8 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useProfileNames } from '../../lib/useProfileNames'
 import { useFinishedChiqimRequests } from '../../lib/useFinishedChiqimRequests'
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
-import { GatePhoto } from '../../components/GatePhoto'
+import { useOldKnCollectionsByRequest } from '../../lib/useOldKnCollectionsByRequest'
+import { ChiqimRequestDetail } from '../../components/ChiqimRequestDetail'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { FormField, TextInput } from '../../components/ui/FormField'
@@ -63,6 +64,7 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   const { requests, loading, refresh } = useFinishedChiqimRequests(refreshKey)
   const [expanded, setExpanded] = useState<string | null>(null)
   const { lines: manifestLines, loading: manifestLoading } = useDispatchManifestLines(expanded)
+  const { collections: oldKnCollections } = useOldKnCollectionsByRequest(expanded)
   const [confirmingVoid, setConfirmingVoid] = useState<string | null>(null)
   const [voiding, setVoiding] = useState(false)
   const [voidError, setVoidError] = useState<string | null>(null)
@@ -79,14 +81,6 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   }
   function calibreLabel(id: string) {
     return calibres.find((c) => c.id === id)?.label ?? id
-  }
-  // Raw dispatch pool rework (2026-08-01) — a line's own display label,
-  // whichever kind it is; mirrors OmborChiqimTab.tsx's identical helper.
-  // A raw line now names its whole pool (possibly several serials), not
-  // one pinned serial — shown in full since this is a receipt/history
-  // view, matching how a finished line's reservedPallets are shown here.
-  function lineLabel(line: { calibre_id: string | null; line_kind: 'finished' | 'raw'; rawSerialPool: string[] }) {
-    return line.line_kind === 'raw' ? `Xom · ${line.rawSerialPool.join(', ') || '—'}` : calibreLabel(line.calibre_id ?? '')
   }
   function actorName(id: string | null) {
     return id ? (names[id] ?? id) : '—'
@@ -222,68 +216,19 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
 
               {isExpanded && (
                 <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
-                  <div>
-                    <div className="font-medium text-slate-700 dark:text-slate-300">Menejer</div>
-                    <div className="text-slate-500 dark:text-slate-400">
-                      {actorName(request.created_by)} · {fmt(request.created_at)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="font-medium text-slate-700 dark:text-slate-300">Ombor</div>
-                    <div className="text-slate-500 dark:text-slate-400">
-                      {actorName(request.ombor_finished_by)} · {fmt(request.ombor_finished_at)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="font-medium text-slate-700 dark:text-slate-300">Qorovul — Bo'sh vazn (kirish)</div>
-                    <div className="text-slate-500 dark:text-slate-400">
-                      {actorName(w?.stage1_created_by ?? null)} · {fmt(w?.stage1_completed_at ?? null)} ·{' '}
-                      {w?.pustoy_kg?.toLocaleString() ?? '—'} kg
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-3">
-                      <GatePhoto path={w?.stage1_plate_photo ?? null} label="Moshina raqami rasmi" />
-                      <GatePhoto path={w?.stage1_scale_photo ?? null} label="Tarozi rasmi (kirish)" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="font-medium text-slate-700 dark:text-slate-300">Qorovul — Yuk bilan vazn (chiqish)</div>
-                    <div className="text-slate-500 dark:text-slate-400">
-                      {actorName(w?.stage2_created_by ?? null)} · {fmt(w?.completed_at ?? null)} ·{' '}
-                      {w?.gruzheny_kg?.toLocaleString() ?? '—'} kg
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-3">
-                      <GatePhoto path={w?.stage2_scale_photo ?? null} label="Tarozi rasmi (chiqish)" />
-                      <GatePhoto path={w?.departure_doc_photo ?? null} label="Chiqish hujjati rasmi" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="font-medium text-slate-700 dark:text-slate-300">Yuk tarkibi</div>
-                    {request.lines.map((line, i) => (
-                      <div key={i} className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-                        <span>
-                          {typeName(line.type_id)} · {lineLabel(line)}
-                        </span>
-                        <span>{line.qty_kg === null ? '—' : `${line.qty_kg.toLocaleString()} kg (so'rov)`}</span>
-                      </div>
-                    ))}
-                    {manifestLoading && <p className="mt-1 text-xs text-slate-400">Yuklanmoqda…</p>}
-                    {!manifestLoading && manifestLines.length > 0 && (
-                      <ul className="mt-1 space-y-0.5">
-                        {manifestLines.map((m) => (
-                          <li key={m.id} className="flex items-center justify-between text-xs">
-                            <span className="font-mono text-slate-600 dark:text-slate-400">
-                              {m.barcode2} · {typeName(m.type_id)} · {calibreLabel(m.calibre_id)}
-                            </span>
-                            <span className="text-slate-600 dark:text-slate-400">{m.weight_kg.toLocaleString()} kg</span>
-                          </li>
-                        ))}
-                      </ul>
+                  <ChiqimRequestDetail
+                    request={request}
+                    manifestLines={manifestLines}
+                    manifestLoading={manifestLoading}
+                    oldKnCollectionsByLine={Object.fromEntries(
+                      request.lines
+                        .filter((l) => l.line_kind === 'old_kn')
+                        .map((l) => [l.id, oldKnCollections.filter((c) => c.chiqim_line_id === l.id)]),
                     )}
-                  </div>
+                    typeName={typeName}
+                    calibreLabel={calibreLabel}
+                    actorName={actorName}
+                  />
 
                   {/* "Correcting mistaken entries" — same boundary as the
                       void action right below (ombor_finished_at IS NULL,

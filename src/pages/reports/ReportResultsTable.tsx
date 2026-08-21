@@ -37,6 +37,7 @@ export function ReportResultsTable({
   typeName,
   calibreLabel,
   onOpenPassport,
+  onOpenOldKnRequest,
 }: {
   rows: ReportRow[]
   visibleColumnKeys: Set<string>
@@ -46,6 +47,7 @@ export function ReportResultsTable({
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
   onOpenPassport: (serial: string) => void
+  onOpenOldKnRequest: (requestId: string) => void
 }) {
   const visibleColumns = REPORT_COLUMNS.filter((c) => visibleColumnKeys.has(c.key))
 
@@ -75,6 +77,7 @@ export function ReportResultsTable({
                 typeName={typeName}
                 calibreLabel={calibreLabel}
                 onOpenPassport={onOpenPassport}
+                onOpenOldKnRequest={onOpenOldKnRequest}
               />
             ))}
           </tbody>
@@ -92,6 +95,7 @@ export function ReportResultsTable({
             typeName={typeName}
             calibreLabel={calibreLabel}
             onOpenPassport={onOpenPassport}
+            onOpenOldKnRequest={onOpenOldKnRequest}
           />
         ))}
       </div>

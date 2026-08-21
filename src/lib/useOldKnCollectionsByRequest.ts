@@ -7,6 +7,7 @@ export interface OldKnCollection {
   pool_id: string
   collected_kg: number
   collected_at: string
+  created_by: string | null
 }
 
 // Opening stock, Stage 2 (2026-08-02) — old_kn's own post-finish display,
@@ -26,7 +27,7 @@ export function useOldKnCollectionsByRequest(requestId: string | null) {
     try {
       const { data } = await supabase
         .from('old_kn_collections')
-        .select('id, chiqim_line_id, pool_id, collected_kg, collected_at, chiqim_lines!inner(request_id)')
+        .select('id, chiqim_line_id, pool_id, collected_kg, collected_at, created_by, chiqim_lines!inner(request_id)')
         .eq('chiqim_lines.request_id', requestId)
       setCollections(
         (data ?? []).map((row) => ({
@@ -35,6 +36,7 @@ export function useOldKnCollectionsByRequest(requestId: string | null) {
           pool_id: row.pool_id,
           collected_kg: row.collected_kg,
           collected_at: row.collected_at,
+          created_by: row.created_by,
         })),
       )
     } finally {

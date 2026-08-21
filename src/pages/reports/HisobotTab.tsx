@@ -12,6 +12,7 @@ import { dateBasisLabel, defaultReportFilters, type PalletStatusFilter } from '.
 import { REPORT_COLUMNS, defaultVisibleColumnKeys } from '../../lib/reportColumns'
 import { ReportResultsTable } from './ReportResultsTable'
 import { SerialPassportModal } from './SerialPassportModal'
+import { OldKnRequestPassportModal } from './OldKnRequestPassportModal'
 import { Button } from '../../components/ui/Button'
 import { StatusNote } from '../../components/ui/StatusNote'
 
@@ -54,6 +55,11 @@ export function HisobotTab() {
   // KIRIM or CHIQIM, always resolving to that row's PARENT serial (see
   // KirimRowDetail.tsx/ChiqimRowDetail.tsx). Not a route; local modal state.
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
+  // Eski KN (old Konditirskiy) has no serial, so it can't use the drill-down
+  // above -- its own passport-style drill-down is scoped to the CHIQIM
+  // request itself instead. See OldKnRowDetail.tsx's trigger button and
+  // OldKnRequestPassportModal.tsx.
+  const [oldKnRequestId, setOldKnRequestId] = useState<string | null>(null)
 
   // §3.3: includeInactive=true -- resolves ids on historical rows, and the
   // filter bar (ReportFilterBar, below) must still be able to select a
@@ -211,6 +217,7 @@ export function HisobotTab() {
           typeName={typeName}
           calibreLabel={calibreLabel}
           onOpenPassport={setPassportSerial}
+          onOpenOldKnRequest={setOldKnRequestId}
         />
       </HistoryView>
 
@@ -218,6 +225,15 @@ export function HisobotTab() {
         <SerialPassportModal
           serial={passportSerial}
           onClose={() => setPassportSerial(null)}
+          typeName={typeName}
+          calibreLabel={calibreLabel}
+        />
+      )}
+
+      {oldKnRequestId && (
+        <OldKnRequestPassportModal
+          requestId={oldKnRequestId}
+          onClose={() => setOldKnRequestId(null)}
           typeName={typeName}
           calibreLabel={calibreLabel}
         />

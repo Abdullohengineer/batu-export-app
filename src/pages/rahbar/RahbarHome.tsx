@@ -56,6 +56,8 @@ function fmt(v: number): string {
 const C = {
   raw: '#d97706', // amber-600
   rawBg: '#fef3c7', // amber-100
+  moyka: '#0369a1', // sky-700 -- in-process, between raw and finished
+  moykaBg: '#e0f2fe', // sky-100
   calibre: '#059669', // emerald-600
   calibreBg: '#d1fae5', // emerald-100
   kn: '#9333ea', // purple-600
@@ -74,9 +76,9 @@ function typeColor(i: number): string {
 
 // ---- small presentational helpers ------------------------------------
 
-function Tile({ label, value, unit, caption, tone }: { label: string; value: number; unit?: string; caption: string; tone: 'raw' | 'calibre' | 'kn' | 'oldKn' | 'neutral' }) {
-  const bg = tone === 'raw' ? C.rawBg : tone === 'calibre' ? C.calibreBg : tone === 'kn' ? C.knBg : tone === 'oldKn' ? C.oldKnBg : '#f4efe6'
-  const fg = tone === 'raw' ? C.raw : tone === 'calibre' ? C.calibre : tone === 'kn' ? C.kn : tone === 'oldKn' ? C.oldKn : '#5d5140'
+function Tile({ label, value, unit, caption, tone }: { label: string; value: number; unit?: string; caption: string; tone: 'raw' | 'moyka' | 'calibre' | 'kn' | 'oldKn' | 'neutral' }) {
+  const bg = tone === 'raw' ? C.rawBg : tone === 'moyka' ? C.moykaBg : tone === 'calibre' ? C.calibreBg : tone === 'kn' ? C.knBg : tone === 'oldKn' ? C.oldKnBg : '#f4efe6'
+  const fg = tone === 'raw' ? C.raw : tone === 'moyka' ? C.moyka : tone === 'calibre' ? C.calibre : tone === 'kn' ? C.kn : tone === 'oldKn' ? C.oldKn : '#5d5140'
   return (
     <div className="rounded-xl p-4" style={{ background: bg }}>
       <div className="text-xs font-semibold uppercase tracking-wide opacity-75" style={{ color: fg }}>
@@ -153,8 +155,8 @@ function Bar({ label, value, max, color, pctOfLabel }: { label: string; value: n
   )
 }
 
-function Silo({ rawKg, calibreKg, knKg, oldKnKg }: { rawKg: number; calibreKg: number; knKg: number; oldKnKg: number }) {
-  const reconcilable = rawKg + calibreKg + knKg
+function Silo({ rawKg, moykaKg, calibreKg, knKg, oldKnKg }: { rawKg: number; moykaKg: number; calibreKg: number; knKg: number; oldKnKg: number }) {
+  const reconcilable = rawKg + moykaKg + calibreKg + knKg
   const total = reconcilable + oldKnKg
   if (total <= 0) return <p className="text-sm text-slate-400">Ma'lumot yo'q.</p>
   const seg = (v: number) => (v / total) * 100
@@ -164,6 +166,11 @@ function Silo({ rawKg, calibreKg, knKg, oldKnKg }: { rawKg: number; calibreKg: n
         {rawKg > 0 && (
           <div className="flex items-center justify-center text-xs font-semibold text-white" style={{ width: `${seg(rawKg)}%`, background: C.raw }}>
             {seg(rawKg) > 8 ? fmt(rawKg) : ''}
+          </div>
+        )}
+        {moykaKg > 0 && (
+          <div className="flex items-center justify-center text-xs font-semibold text-white" style={{ width: `${seg(moykaKg)}%`, background: C.moyka }}>
+            {seg(moykaKg) > 8 ? fmt(moykaKg) : ''}
           </div>
         )}
         {calibreKg > 0 && (
@@ -187,6 +194,7 @@ function Silo({ rawKg, calibreKg, knKg, oldKnKg }: { rawKg: number; calibreKg: n
       </div>
       <div className="space-y-2 text-sm">
         <LegendRow color={C.raw} name="Xom — yuvilmagan" kg={rawKg} pct={seg(rawKg)} />
+        <LegendRow color={C.moyka} name="Moykada — yuvilmoqda" kg={moykaKg} pct={seg(moykaKg)} />
         <LegendRow color={C.calibre} name="Tayyor — kalibrli" kg={calibreKg} pct={seg(calibreKg)} />
         <LegendRow color={C.kn} name="Konditirskiy" kg={knKg} pct={seg(knKg)} />
         <LegendRow color={C.oldKn} name="Eski KN (havza) — pool stock, alohida" kg={oldKnKg} pct={seg(oldKnKg)} dashed />
@@ -361,7 +369,7 @@ export function RahbarHome() {
   const processedMax = Math.max(1, ...processedByCalibre.map((r) => r.kg), ...processedKn.map((r) => r.kg))
   const dispatchedMax = Math.max(1, ...dispatchedByCalibre.map((r) => r.kg), ...dispatchedKnRows.map((r) => r.kg))
 
-  const grandTotal = snapshot ? snapshot.rawKg + snapshot.finishedCalibredKg + snapshot.konditirskiyKg + snapshot.oldKnKg : 0
+  const grandTotal = snapshot ? snapshot.rawKg + snapshot.moykadaKg + snapshot.finishedCalibredKg + snapshot.konditirskiyKg + snapshot.oldKnKg : 0
 
   return (
     <div className="space-y-4">
@@ -417,9 +425,10 @@ export function RahbarHome() {
       {snapLoading || !snapshot ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <Tile label="Jami zaxira" value={grandTotal} unit="kg" caption="Hozirgi holat — omborda bor, barcha turkum" tone="neutral" />
           <Tile label="Xom · yuvilmagan" value={snapshot.rawKg} unit="kg" caption="Hozirgi holat — yuvishga tayyor" tone="raw" />
+          <Tile label="Moykada" value={snapshot.moykadaKg} unit="kg" caption="Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan" tone="moyka" />
           <Tile
             label="Tayyor · kalibrli"
             value={snapshot.finishedCalibredKg}
@@ -450,7 +459,7 @@ export function RahbarHome() {
           <div className="grid gap-8 md:grid-cols-2">
             <div>
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Holat bo'yicha</p>
-              <Silo rawKg={snapshot.rawKg} calibreKg={snapshot.finishedCalibredKg} knKg={snapshot.konditirskiyKg} oldKnKg={snapshot.oldKnKg} />
+              <Silo rawKg={snapshot.rawKg} moykaKg={snapshot.moykadaKg} calibreKg={snapshot.finishedCalibredKg} knKg={snapshot.konditirskiyKg} oldKnKg={snapshot.oldKnKg} />
             </div>
             <div>
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Tur bo'yicha</p>
@@ -527,7 +536,7 @@ export function RahbarHome() {
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Jami zaxira</div>
                       <div className="mt-0.5 text-xs text-slate-400">
-                        Xom {fmt(snapshot.rawKg)} · kalibrli {fmt(snapshot.finishedCalibredKg)} · KN {fmt(snapshot.konditirskiyKg)} · Eski KN havza {fmt(snapshot.oldKnKg)}
+                        Xom {fmt(snapshot.rawKg)} · moykada {fmt(snapshot.moykadaKg)} · kalibrli {fmt(snapshot.finishedCalibredKg)} · KN {fmt(snapshot.konditirskiyKg)} · Eski KN havza {fmt(snapshot.oldKnKg)}
                       </div>
                     </div>
                     <div className="text-3xl font-extrabold tabular-nums text-slate-900 dark:text-slate-100">

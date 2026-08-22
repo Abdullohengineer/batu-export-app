@@ -64,9 +64,7 @@ function AppRoutes() {
         <Route index element={<RahbarHome />} />
         <Route path="hisobotlar" element={<HisobotTab />} />
         <Route path="qoldiq" element={<StockOnHandTab />} />
-        <Route path="kutilmoqda" element={<WipTab />} />
         <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
-        <Route path="hosildorlik" element={<YieldTab />} />
       </Route>
 
       <Route

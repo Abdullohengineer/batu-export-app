@@ -26,6 +26,12 @@ export interface RahbarStockSnapshot {
   finishedCalibredKg: number
   konditirskiyKg: number
   oldKnKg: number
+  // Material already sent to Moyka but not yet returned as finished output
+  // (2026-08-22) -- deducted from rawKg the moment it's sent, not yet
+  // counted in finishedCalibredKg/konditirskiyKg until Moyka actually
+  // returns it. Point-in-time, same "right now" basis as every other field
+  // here -- not the period-scoped moykadaSnapshot the ledger RPC returns.
+  moykadaKg: number
   oldKnNote: string
   totalKg: number
   byType: StockByType[]

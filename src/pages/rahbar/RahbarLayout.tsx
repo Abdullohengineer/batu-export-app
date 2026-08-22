@@ -6,14 +6,15 @@ import { AppNavShell, type NavItem } from '../../components/AppNavShell'
 //
 // Diqqat talab / Sozlamalar / Foydalanuvchilar moved to Menejer (see
 // DECISIONS.md "Boshqaruv moved to Menejer") -- Rahbar is now fully
-// read-only, 6 destinations remain, all reporting/oversight screens.
+// read-only. Kutilayotgan ishlar / Hosildorlik removed 2026-08-22 per
+// explicit request -- Menejer keeps both (/menejer/kutilmoqda,
+// /menejer/hosildorlik), sharing the same WipTab/YieldTab components,
+// untouched. 4 destinations remain.
 const NAV_ITEMS: NavItem[] = [
   { to: '/rahbar', label: 'Bosh sahifa', end: true },
   { to: '/rahbar/hisobotlar', label: 'Hisobotlar' },
   { to: '/rahbar/qoldiq', label: "Ombor qoldig'i" },
-  { to: '/rahbar/kutilmoqda', label: 'Kutilayotgan ishlar' },
   { to: '/rahbar/mijoz-hisoboti', label: 'Mijoz hisoboti' },
-  { to: '/rahbar/hosildorlik', label: 'Hosildorlik' },
 ]
 
 export function RahbarLayout() {

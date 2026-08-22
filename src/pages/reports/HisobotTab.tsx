@@ -88,7 +88,7 @@ export function HisobotTab() {
     setExporting(true)
     setExportError(null)
     try {
-      await downloadReportExcel(filters, { ownerName, typeName, calibreLabel }, totals)
+      await downloadReportExcel(filters, { ownerName, typeName, calibreLabel }, totals, visibleColumnKeys)
     } catch (err) {
       // §requirement 5: the export's own safety cap must fail loudly, never
       // silently hand back a truncated file.

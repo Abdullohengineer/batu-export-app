@@ -440,6 +440,12 @@ $function$;
 --    active serials are WIP, not yield yet"). Loss basis mirrors
 --    yield_rows: actual (uncapped) moyka_sends total minus real output --
 --    "per serial, judging the process, not a period balance sheet".
+--
+--    Nakladnoy photo links (kirim doc_photo + chiqim departure_doc_photo)
+--    were built and then dropped, same day, per explicit user decision --
+--    see DECISIONS.md "Client role: nakladnoy photo links dropped" --
+--    after the storage.objects RLS gap flagged in the original build was
+--    confirmed not fixable in this pass. Numeric data only, kept.
 -- ============================================================
 create or replace function client_serial_summary(p_serial text)
 returns jsonb
@@ -447,7 +453,7 @@ language sql
 stable
 as $function$
   with owned as (
-    select kl.serial, ko.owner_id, ko.doc_photo, ko.order_date, ko.plate as kirim_plate
+    select kl.serial, ko.owner_id, ko.order_date
     from kirim_lines kl
     join kirim_orders ko on ko.order_id = kl.order_id
     where kl.serial = p_serial and ko.owner_id = my_owner_id()
@@ -468,30 +474,6 @@ as $function$
     where fp.status not in ('bekor_qilindi', 'storage_loss')
       and not exists (select 1 from serial_mint_sources sms where sms.source_barcode2 = fp.barcode2)
     group by fp.calibre_id
-  ),
-  chiqim_request_ids as (
-    select distinct dm.request_id
-    from dispatch_manifest dm
-    join finished_pallets fp on fp.barcode2 = dm.barcode2
-    join owned o on o.serial = fp.serial
-    union
-    select distinct cl.request_id
-    from raw_dispatch_lines rdl
-    join chiqim_lines cl on cl.id = rdl.chiqim_line_id
-    join owned o on o.serial = rdl.serial
-  ),
-  chiqim_nakladnoys as (
-    select cr.id as request_id, cr.request_date, cr.plate, gw.departure_doc_photo
-    from chiqim_request_ids cri
-    join chiqim_requests cr on cr.id = cri.request_id
-    left join lateral (
-      select gw2.departure_doc_photo
-      from gate_weighings gw2
-      where gw2.dir = 'chiqim' and gw2.request_id = cr.id
-      order by gw2.completed_at desc nulls last
-      limit 1
-    ) gw on true
-    where gw.departure_doc_photo is not null
   )
   select case when (select count(*) from owned) = 0 then null else jsonb_build_object(
     'serial', p_serial,
@@ -504,16 +486,6 @@ as $function$
     'knKg', (select kn_kg from split),
     'lossKg', case when (select status from wc) = 'final'
       then greatest(0, (select kg from sent) - (select calibre_kg from split) - (select kn_kg from split))
-      else null end,
-    'kirimNakladnoy', case when (select doc_photo from owned) is not null
-      then jsonb_build_object('photoUrl', (select doc_photo from owned), 'date', (select order_date from owned), 'plate', (select kirim_plate from owned))
-      else null end,
-    'chiqimNakladnoys', (
-      select coalesce(jsonb_agg(
-        jsonb_build_object('requestId', cn.request_id, 'date', cn.request_date, 'plate', cn.plate, 'photoUrl', cn.departure_doc_photo)
-        order by cn.request_date desc
-      ), '[]'::jsonb)
-      from chiqim_nakladnoys cn
-    )
+      else null end
   ) end;
 $function$;

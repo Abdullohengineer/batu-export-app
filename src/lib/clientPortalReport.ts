@@ -132,16 +132,12 @@ export interface ClientCalibreBreakdown {
   weightKg: number
 }
 
-export interface ClientNakladnoy {
-  photoUrl: string
-  date: string
-  plate: string
-}
-
-export interface ClientChiqimNakladnoy extends ClientNakladnoy {
-  requestId: string
-}
-
+// Nakladnoy photo links (kirim doc_photo + chiqim departure_doc_photo) were
+// built and then dropped, same day, per explicit user decision: Supabase
+// Storage's own RLS (kirim-photos/gate-photos/etc.) has no per-owner
+// scoping, so exposing photo links here couldn't be made safe without
+// first fixing that separately (see DECISIONS.md "Client role: nakladnoy
+// photo links dropped"). Numeric data only — calibre/КН/loss breakdown.
 export interface ClientSerialSummary {
   serial: string
   orderDate: string | null
@@ -149,8 +145,6 @@ export interface ClientSerialSummary {
   byCalibre: ClientCalibreBreakdown[]
   knKg: number
   lossKg: number | null // null = wash not yet finished, not a real figure yet
-  kirimNakladnoy: ClientNakladnoy | null
-  chiqimNakladnoys: ClientChiqimNakladnoy[]
 }
 
 interface ClientSerialSummaryDb {
@@ -160,8 +154,6 @@ interface ClientSerialSummaryDb {
   byCalibre: { calibreId: string; weightKg: number | string }[]
   knKg: number | string
   lossKg: number | string | null
-  kirimNakladnoy: { photoUrl: string; date: string; plate: string } | null
-  chiqimNakladnoys: { requestId: string; photoUrl: string; date: string; plate: string }[]
 }
 
 export async function fetchClientSerialSummary(serial: string): Promise<ClientSerialSummary | null> {
@@ -176,7 +168,5 @@ export async function fetchClientSerialSummary(serial: string): Promise<ClientSe
     byCalibre: d.byCalibre.map((c) => ({ calibreId: c.calibreId, weightKg: Number(c.weightKg) })),
     knKg: Number(d.knKg),
     lossKg: d.lossKg === null ? null : Number(d.lossKg),
-    kirimNakladnoy: d.kirimNakladnoy,
-    chiqimNakladnoys: d.chiqimNakladnoys,
   }
 }

@@ -9,8 +9,13 @@
 // the service_role key (never exposed to the browser).
 //
 // Actions (POST body: { action: 'create-user' | 'reset-password', ... }):
-//   create-user:    { phone, password, role, full_name }
+//   create-user:    { phone, password, role, full_name, owner_id? }
 //   reset-password: { phone, new_password } or { user_id, new_password }
+//
+// owner_id (2026-08-26, client portal): required when role='client' —
+// links the new login to one `owners` row (profiles.owner_id, see
+// supabase/migrations/0083_client_role_rls_and_reporting.sql). Ignored for
+// every other role — a staff account has no owner concept.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -19,7 +24,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 // rejects secrets with the SUPABASE_ prefix (see docs/DECISIONS.md).
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 
-const ALLOWED_ROLES = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator']
+const ALLOWED_ROLES = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator', 'client']
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -73,12 +78,15 @@ Deno.serve(async (req) => {
   }
 
   if (body.action === 'create-user') {
-    const { phone, password, role, full_name } = body as Record<string, string>
+    const { phone, password, role, full_name, owner_id } = body as Record<string, string>
     if (!phone || !password || !role || !full_name) {
       return json({ error: 'phone, password, role, full_name are required' }, 400)
     }
     if (!ALLOWED_ROLES.includes(role)) {
       return json({ error: `role must be one of ${ALLOWED_ROLES.join(', ')}` }, 400)
+    }
+    if (role === 'client' && !owner_id) {
+      return json({ error: 'owner_id is required for role=client' }, 400)
     }
 
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
@@ -96,6 +104,7 @@ Deno.serve(async (req) => {
       role,
       full_name,
       active: true,
+      owner_id: role === 'client' ? owner_id : null,
     })
     if (insertErr) {
       // Roll back the orphaned auth user so retrying with the same phone

@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { UserRole } from '../../lib/useProfile'
+import { useOwners } from '../../lib/useOwners'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { FormField, TextInput } from '../../components/ui/FormField'
 
-const ROLES: UserRole[] = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator']
+const ROLES: UserRole[] = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator', 'client']
 
 export function UsersAdminPage() {
   return (
@@ -25,8 +26,13 @@ function CreateUserForm() {
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [role, setRole] = useState<UserRole>('menejer')
+  const [ownerId, setOwnerId] = useState('')
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; message: string } | null>(null)
   const [loading, setLoading] = useState(false)
+  // includeInactive: a deactivated client still needs its portal login
+  // manageable (matches useOwners.ts's own rationale for every other
+  // resolution/selection call site).
+  const { owners } = useOwners(true)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -34,7 +40,14 @@ function CreateUserForm() {
     setLoading(true)
 
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'create-user', phone, password, role, full_name: fullName },
+      body: {
+        action: 'create-user',
+        phone,
+        password,
+        role,
+        full_name: fullName,
+        ...(role === 'client' ? { owner_id: ownerId } : {}),
+      },
     })
 
     setLoading(false)
@@ -46,6 +59,7 @@ function CreateUserForm() {
     setPhone('')
     setPassword('')
     setFullName('')
+    setOwnerId('')
   }
 
   return (
@@ -75,6 +89,24 @@ function CreateUserForm() {
           ))}
         </select>
       </FormField>
+
+      {role === 'client' && (
+        <FormField label="Mijoz (buyurtmachi)">
+          <select
+            value={ownerId}
+            onChange={(e) => setOwnerId(e.target.value)}
+            required
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          >
+            <option value="">— tanlang —</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      )}
 
       {status && <StatusNote tone={status.kind === 'error' ? 'problem' : 'ok'}>{status.message}</StatusNote>}
 

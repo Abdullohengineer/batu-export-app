@@ -47,19 +47,33 @@ function NavList({ navItems, onNavigate }: { navItems: NavItem[]; onNavigate?: (
   )
 }
 
-function UserFooter() {
+function UserFooter({ logoutLabel }: { logoutLabel: string }) {
   const { profile } = useAuth()
   return (
     <div className="flex items-center justify-between gap-2 border-t border-slate-200 pt-3 dark:border-slate-800">
       <span className="truncate text-sm text-slate-500 dark:text-slate-400">{profile?.full_name ?? profile?.phone}</span>
       <Button variant="secondary" size="md" className="shrink-0" onClick={() => supabase.auth.signOut()}>
-        Chiqish
+        {logoutLabel}
       </Button>
     </div>
   )
 }
 
-export function AppNavShell({ title, navItems, children }: { title: string; navItems: NavItem[]; children: ReactNode }) {
+// logoutLabel (additive, default 'Chiqish' — every existing caller
+// unchanged): the client portal (Global Export) is Russian-only end to
+// end, so it passes "Выйти" rather than leaving one stray Uzbek string in
+// an otherwise fully-translated screen.
+export function AppNavShell({
+  title,
+  navItems,
+  children,
+  logoutLabel = 'Chiqish',
+}: {
+  title: string
+  navItems: NavItem[]
+  children: ReactNode
+  logoutLabel?: string
+}) {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   return (
@@ -73,7 +87,7 @@ export function AppNavShell({ title, navItems, children }: { title: string; navI
         <span className="px-1 text-sm font-semibold text-slate-900 dark:text-slate-100">BATU EXPORT — {title}</span>
         <NavList navItems={navItems} />
         <div className="mt-auto">
-          <UserFooter />
+          <UserFooter logoutLabel={logoutLabel} />
         </div>
       </aside>
 
@@ -109,7 +123,7 @@ export function AppNavShell({ title, navItems, children }: { title: string; navI
               </div>
               <NavList navItems={navItems} onNavigate={() => setDrawerOpen(false)} />
               <div className="mt-auto">
-                <UserFooter />
+                <UserFooter logoutLabel={logoutLabel} />
               </div>
             </div>
           </div>

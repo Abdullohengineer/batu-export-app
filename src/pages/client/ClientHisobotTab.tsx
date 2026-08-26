@@ -1,0 +1,216 @@
+import { useEffect, useState } from 'react'
+import { useAuth } from '../../lib/AuthProvider'
+import { useProductTypes } from '../../lib/useProductTypes'
+import { FilterField } from '../../components/report/ReportFilterBar'
+import {
+  CLIENT_DIRECTION_OPTIONS,
+  defaultClientReportFilters,
+  directionLabel,
+  fetchClientReportRows,
+  type ClientReportFilters,
+  type ClientReportRow,
+} from '../../lib/clientPortalReport'
+import { formatDate } from '../../lib/formatDate'
+import { defaultDateRange } from '../../lib/dateRange'
+import { ClientSerialSummaryModal } from './ClientSerialSummaryModal'
+
+const pillClass =
+  'rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+
+function kg(v: number | null): string {
+  return v === null ? '—' : `${Math.round(v).toLocaleString()} кг`
+}
+
+function isoToday(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+function isoFirstOfMonth(): string {
+  const d = new Date()
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
+}
+
+// Global Export's own restricted Hisobot equivalent (task: "a view section
+// like hisobot, but without passport"). Filters: Направление (5 of the
+// internal engine's 6 kinds — no MOYKAGA), date range, Вид продукта,
+// Серия search. Deliberately NO buyurtmachi (this client only ever sees
+// its own data), NO Holat/lab-verdict/driver/plate/calibre/Barcode #2
+// filters — all explicitly excluded per the task. Reuses ReportFilterBar's
+// exported FilterField (labels are caller-supplied, so it's already
+// language-neutral) rather than the whole ReportFilterBar, which is
+// Uzbek-label-hardcoded end to end and internal-screen-coupled.
+export function ClientHisobotTab() {
+  const { profile } = useAuth()
+  const { productTypes } = useProductTypes(true)
+  const defaultRange = defaultDateRange(30)
+  const [filters, setFilters] = useState<ClientReportFilters>(
+    defaultClientReportFilters(defaultRange.from, isoToday())
+  )
+  const [rows, setRows] = useState<ClientReportRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [openSerial, setOpenSerial] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    fetchClientReportRows(filters)
+      .then((data) => {
+        if (!cancelled) setRows(data)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message ?? 'Ошибка загрузки')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [filters])
+
+  function typeName(id: string): string {
+    return productTypes.find((t) => t.id === id)?.name ?? '—'
+  }
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+        {profile?.full_name ?? 'Отчёт'}
+      </h1>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterField
+          label="Направление"
+          allLabel="Все"
+          options={CLIENT_DIRECTION_OPTIONS}
+          selected={filters.directions}
+          onChange={(vals) =>
+            setFilters((f) => ({ ...f, directions: vals as ClientReportFilters['directions'] }))
+          }
+          multi
+          compact
+        />
+
+        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: isoToday(), to: isoToday() }))} className={pillClass}>
+          Сегодня
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilters((f) => ({ ...f, from: defaultDateRange(7).from, to: isoToday() }))}
+          className={pillClass}
+        >
+          7 дней
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilters((f) => ({ ...f, from: isoFirstOfMonth(), to: isoToday() }))}
+          className={pillClass}
+        >
+          Этот месяц
+        </button>
+        <label className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">
+          <input
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
+            className={pillClass}
+          />
+          —
+          <input
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
+            className={pillClass}
+          />
+        </label>
+
+        <FilterField
+          label="Вид продукта"
+          allLabel="Все"
+          options={productTypes.map((t) => ({ value: t.id, label: t.name }))}
+          selected={filters.typeId ? [filters.typeId] : []}
+          onChange={(vals) => setFilters((f) => ({ ...f, typeId: vals[0] ?? '' }))}
+          multi={false}
+          compact
+        />
+
+        <input
+          type="text"
+          value={filters.serial}
+          onChange={(e) => setFilters((f) => ({ ...f, serial: e.target.value }))}
+          placeholder="Поиск по серии"
+          className={`${pillClass} w-44`}
+        />
+      </div>
+
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
+
+      {!loading && !error && (
+        <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
+          <table className="w-full min-w-[1200px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                <th className="px-3 py-2">Направление</th>
+                <th className="px-3 py-2">Дата</th>
+                <th className="px-3 py-2">Серия</th>
+                <th className="px-3 py-2">Вид</th>
+                <th className="px-3 py-2 text-right">Нетто, кг</th>
+                <th className="px-3 py-2 text-right">Накладная, кг</th>
+                <th className="px-3 py-2 text-right">Готовый продукт, кг</th>
+                <th className="px-3 py-2 text-right">КН, кг</th>
+                <th className="px-3 py-2 text-right">Остаток (готовый продукт), кг</th>
+                <th className="px-3 py-2 text-right">Остаток (сырьё), кг</th>
+                <th className="px-3 py-2 text-right">Отгрузка (готовый продукт), кг</th>
+                <th className="px-3 py-2 text-right">Отгрузка (сырьё) — возврат, кг</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={13} className="px-3 py-6 text-center text-slate-400">
+                    Ничего не найдено
+                  </td>
+                </tr>
+              )}
+              {rows.map((row) => (
+                <tr key={row.key} className="border-b border-slate-100 align-top dark:border-slate-800">
+                  <td className="px-3 py-2">{directionLabel(row.kind)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.dateBasis)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{row.serial ?? '—'}</td>
+                  <td className="px-3 py-2">{typeName(row.typeId)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.nettoKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.nakladnayaKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.gotoviyProduktKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.knKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.ostatokGotoviyKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.ostatokSyroyeKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.otgruzkaGotoviyKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.otgruzkaSyroyeKg)}</td>
+                  <td className="px-3 py-2">
+                    {row.serial && (
+                      <button
+                        type="button"
+                        onClick={() => setOpenSerial(row.serial)}
+                        aria-label="Подробнее"
+                        className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+                        </svg>
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {openSerial && <ClientSerialSummaryModal serial={openSerial} onClose={() => setOpenSerial(null)} />}
+    </div>
+  )
+}

@@ -31,6 +31,8 @@ import { LaboratorHome } from './pages/laborator/LaboratorHome'
 import { LaboratorKirimTab } from './pages/laborator/LaboratorKirimTab'
 import { LaboratorChiqimTab } from './pages/laborator/LaboratorChiqimTab'
 import { LaboratorTarixTab } from './pages/laborator/LaboratorTarixTab'
+import { ClientLayout } from './pages/client/ClientLayout'
+import { ClientHisobotTab } from './pages/client/ClientHisobotTab'
 
 function App() {
   return (
@@ -125,6 +127,17 @@ function AppRoutes() {
         <Route index element={<LaboratorKirimTab />} />
         <Route path="chiqim" element={<LaboratorChiqimTab />} />
         <Route path="tarix" element={<LaboratorTarixTab />} />
+      </Route>
+
+      <Route
+        path="/client"
+        element={
+          <RoleRoute allow={['client']}>
+            <ClientLayout />
+          </RoleRoute>
+        }
+      >
+        <Route index element={<ClientHisobotTab />} />
       </Route>
 
       <Route path="*" element={<Navigate to={homePath} replace />} />

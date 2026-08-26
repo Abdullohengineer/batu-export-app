@@ -4761,3 +4761,29 @@ non-result the pre-change version also gave under an unsimulated connection); th
 loss computation itself was already thoroughly verified against the `TEST-RLS-001` fixture in
 the immediately-prior entry and is untouched by this change, only the two removed fields are
 new here. `npx tsc -b --noEmit`, `npm test` (82/82), `npm run build` all clean after the edit.
+
+## 2026-08-26 — `admin-users` Edge Function never actually deployed; Global Export's real login created
+
+PR #107 merged (user's own action, not this session's). User then reported "i can't create
+client from Rol on creating new user." Root cause, confirmed directly: `admin-users`'s *source*
+was updated in that PR (`ALLOWED_ROLES` gained `'client'`, `owner_id` handling added) and
+committed to git, but an Edge Function's deployed code is a separate artifact from its source
+file — nothing in this project's workflow re-deploys it on merge, and this session never called
+`deploy_edge_function` after editing it. `get_edge_function('admin-users')` confirmed the live
+function was still version 14, `ALLOWED_ROLES = ['rahbar', 'menejer', 'qorovul', 'ombor',
+'laborator']` verbatim — `'client'` was never actually reachable, in production, despite the
+merged PR. Fixed by deploying the current local source as-is (`deploy_edge_function`, same
+`verify_jwt: false` as the existing live config) — now version 15, `ALLOWED_ROLES` includes
+`'client'`. `Foydalanuvchilar`'s Rol dropdown/owner picker should work end-to-end from here.
+
+**Global Export's real login created** (name **Global**, phone-login `998911110101`, password
+`0101` — all values given directly by the user), `role='client'`, `owner_id` = the real Global
+Export Company row (confirmed by joining back to `owners` after insert: `owner_name = "Global
+Export Company"`). Created directly via SQL (same `auth.users`+`profiles` insert shape the Edge
+Function itself performs — `phoneToAuthEmail`, `email_confirm`/`email_confirmed_at` set,
+`crypt()`-hashed password) rather than through the now-fixed Edge Function, since this session
+has no menejer session JWT to call it with. **This is real, permanent production data — not a
+TEST- fixture, not cleaned up.** Confirmed no pre-existing collision on that phone number before
+inserting. Note: `0101` is a weak, easily-guessed password for a customer-facing login; not
+changed unilaterally since the user specified it directly, but worth a stronger one if this
+account is handed to the actual client rather than kept for internal use.

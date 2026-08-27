@@ -4875,3 +4875,23 @@ over the full history — 20 distinct serials, non-crashing, internally plausibl
 finished wash). `client_report_rows` for that same serial, `moyka_output` direction only — all 3
 rows correctly carry `state_loss_kg: 0`, matching the drill-down exactly. `npx tsc -b --noEmit`,
 `npm test` (82/82), `npm run build` all clean.
+
+## 2026-08-26 — Pallet weight correction: PLT-290726-072-02-1, 490 → 480 kg
+
+User-requested single-value data correction, no code change. No in-app edit path exists for a
+finished pallet's own `weight_kg` (unlike `kirim_lines.declared_qty`/tara, which have a real
+correction RPC, `correct_kirim_line_tara` — nothing equivalent exists on the finished-goods side
+yet). Checked before writing: `status = 'in_stock'`, not referenced in `dispatch_manifest`,
+`chiqim_line_pallets`, or `serial_mint_sources` (0 rows each) — a clean, isolated correction with
+no downstream reservation/dispatch/re-mint state to reconcile. Applied directly
+(`update finished_pallets set weight_kg = 480 where barcode2 = '...' and weight_kg = 490` — the
+old-value guard in the `WHERE` makes it a no-op rather than a silent double-apply if re-run), with
+a manual `audit_log` row (`before: {weight_kg: 490}`, `after: {weight_kg: 480}`) matching this
+app's own "never DELETE, audit trail is the defence in a client dispute" rule (§2.15) even for a
+correction made outside the normal app flow. Confirmed post-update: `weight_kg = 480`.
+
+Flagged, not fixed: this is the second time a finished-pallet-side correction has needed a direct
+SQL edit for lack of an in-app path (the first was this same session's own pallet fixture work).
+If corrections like this keep coming up, a real `correct_finished_pallet_weight`-style RPC
+(mirroring `correct_kirim_line_tara`'s shape — role-gated, audit-logged in the same transaction,
+no expiry) would be the proper fix rather than continuing ad hoc.

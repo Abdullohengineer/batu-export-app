@@ -37,8 +37,11 @@ export interface ClientReportFilters {
   serial: string // substring match, '' = no filter
 }
 
+// Default direction is Приход (kirim) only, not "every kind" -- user
+// request: the screen should open on arrivals, not a mixed dump of every
+// row kind. Every other filter starts unrestricted.
 export function defaultClientReportFilters(from: string, to: string): ClientReportFilters {
-  return { directions: [], from, to, typeId: '', serial: '' }
+  return { directions: ['kirim'], from, to, typeId: '', serial: '' }
 }
 
 export interface ClientReportRow {
@@ -57,6 +60,11 @@ export interface ClientReportRow {
   ostatokSyroyeKg: number | null
   otgruzkaGotoviyKg: number | null
   otgruzkaSyroyeKg: number | null
+  // "Убыток" — this serial's own overall processing loss, same value
+  // repeated on every row of that serial (state, not per-row). Null until
+  // the wash is actually finished (client_serial_loss_kg), not zero —
+  // a still-processing serial has no real loss figure yet.
+  ubytokKg: number | null
 }
 
 interface ClientReportDbRow {
@@ -74,6 +82,7 @@ interface ClientReportDbRow {
   state_kn_kg: number | string | null
   state_olib_ketilgan: number | string | null
   state_xom_jonatilgan: number | string | null
+  state_loss_kg: number | string | null
 }
 
 function num(v: number | string | null | undefined): number | null {
@@ -103,6 +112,7 @@ function mapRow(row: ClientReportDbRow): ClientReportRow {
     ostatokSyroyeKg: num(row.state_omborda_qoldi),
     otgruzkaGotoviyKg: olibKetilganKg,
     otgruzkaSyroyeKg: num(row.state_xom_jonatilgan),
+    ubytokKg: num(row.state_loss_kg),
   }
 }
 
@@ -122,6 +132,68 @@ export async function fetchClientReportRows(
   })
   if (error) throw error
   return ((data ?? []) as ClientReportDbRow[]).map(mapRow)
+}
+
+// Totals strip (task: parity with the internal Hisobot's own totals strip).
+// Movement totals (Нетто/Накладная) sum every matching ROW across the
+// WHOLE filtered set, server-side — never derived from the currently
+// fetched page, since client_report_rows is limit/offset-paginated and a
+// client-side sum would silently under-count once a filter matches more
+// rows than the page size. State totals (Готовый продукт/КН/Остаток ×2/
+// Отгрузка ×2/Убыток) sum once per DISTINCT serial — the same "never sum
+// a repeating per-serial figure once per row" rule the internal Hisobot's
+// TotalsStrip follows.
+export interface ClientReportTotals {
+  nettoKg: number
+  nakladnayaKg: number
+  serialCount: number
+  gotoviyProduktKg: number
+  knKg: number
+  ostatokGotoviyKg: number
+  ostatokSyroyeKg: number
+  otgruzkaGotoviyKg: number
+  otgruzkaSyroyeKg: number
+  ubytokKg: number
+  ubytokSerialCount: number // how many of serialCount actually have a known Убыток (wash finished)
+}
+
+interface ClientReportTotalsDb {
+  total_netto_kg: number | string
+  total_nakladnaya_kg: number | string
+  state_serial_count: number | string
+  state_gotoviy_produkt_kg: number | string
+  state_kn_kg: number | string
+  state_ostatok_gotoviy_kg: number | string
+  state_ostatok_syrye_kg: number | string
+  state_otgruzka_gotoviy_kg: number | string
+  state_otgruzka_syrye_kg: number | string
+  state_ubytok_kg: number | string
+  state_ubytok_serial_count: number | string
+}
+
+export async function fetchClientReportTotals(filters: ClientReportFilters): Promise<ClientReportTotals> {
+  const { data, error } = await supabase.rpc('client_report_totals', {
+    p_directions: filters.directions.length > 0 ? filters.directions : null,
+    p_from: filters.from,
+    p_to: filters.to,
+    p_type_id: filters.typeId || null,
+    p_serial: filters.serial || null,
+  })
+  if (error) throw error
+  const row = (data as ClientReportTotalsDb[])[0]
+  return {
+    nettoKg: Number(row.total_netto_kg),
+    nakladnayaKg: Number(row.total_nakladnaya_kg),
+    serialCount: Number(row.state_serial_count),
+    gotoviyProduktKg: Number(row.state_gotoviy_produkt_kg),
+    knKg: Number(row.state_kn_kg),
+    ostatokGotoviyKg: Number(row.state_ostatok_gotoviy_kg),
+    ostatokSyroyeKg: Number(row.state_ostatok_syrye_kg),
+    otgruzkaGotoviyKg: Number(row.state_otgruzka_gotoviy_kg),
+    otgruzkaSyroyeKg: Number(row.state_otgruzka_syrye_kg),
+    ubytokKg: Number(row.state_ubytok_kg),
+    ubytokSerialCount: Number(row.state_ubytok_serial_count),
+  }
 }
 
 // Per-serial drill-down (task: "a view section like hisobot, but without

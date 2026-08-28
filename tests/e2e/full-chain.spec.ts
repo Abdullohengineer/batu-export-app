@@ -284,29 +284,23 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await page.waitForURL('**/login')
   await loginAs(page, 'OMBOR')
   {
+    // Two-tile picker (2026-08-28, see DECISIONS.md "Two-tile Moyka send
+    // picker") — send is now via the Yangi zaxira tile's chip-select flow,
+    // not a per-serial row form. Wait on the actual moyka_sends response,
+    // not a button-label change, for the same reason the superseded
+    // per-row version of this block already documented (React relabels the
+    // button synchronously, before the write reaches the network).
     await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
-    const yuborishUchun = page.getByRole('heading', { name: '1 · Yuborishga tayyor' }).locator('xpath=following-sibling::div[1]')
-    const row = yuborishUchun.locator('div.rounded-md', { hasText: subxonSerial })
-    await expect(row).toBeVisible({ timeout: 20000 })
-    await row.getByRole('button', { name: 'Moykaga yuborish' }).click()
-    const qtyInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
+    await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
+    const chip = page.getByRole('button', { name: new RegExp(`^${subxonSerial}\\b`) })
+    await expect(chip).toBeVisible({ timeout: 20000 })
+    await chip.click()
+    const qtyInput = page.locator('#new-stock-weighed')
     await qtyInput.fill('5000')
     await expect(qtyInput).toHaveValue('5000')
-    // The button relabels to "Yuborilmoqda…" the instant React sets
-    // submitting=true, synchronously and before the moyka_sends insert has
-    // reached the network -- toHaveCount(0) on the OLD label was satisfied
-    // immediately and proved nothing about the write. Confirmed via a
-    // captured trace: the very next step (Chiqish/logout) is a real browser
-    // navigation, and it aborted this exact POST -- net::ERR_ABORTED,
-    // recorded at the same monotonic instant as the navigation completing.
-    // useMoykaOutput was reading the database correctly the whole time; the
-    // row was genuinely never written. Same defect already found and fixed
-    // this same way in lab-relocation-loss-verification.spec.ts (DECISIONS.md
-    // "Lab moves inside Moyka, wash-cycle concept removed", 2026-07-28) --
-    // just never ported to this spec. Wait on the actual response instead.
     const [sendResponse] = await Promise.all([
       page.waitForResponse((r) => r.url().includes('/moyka_sends') && r.request().method() === 'POST'),
-      row.getByRole('button', { name: 'Moykaga yuborish' }).click(),
+      page.getByRole('button', { name: 'Moykaga yuborish' }).click(),
     ])
     expect(sendResponse.ok(), `moyka_sends insert must succeed, got HTTP ${sendResponse.status()}: ${await sendResponse.text()}`).toBe(true)
   }

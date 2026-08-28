@@ -137,18 +137,20 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   )
 
   // --- Send the full 1000kg to Moyka (real UI -- mints wash_cycles) ---
+  // Two-tile picker (2026-08-28, see DECISIONS.md "Two-tile Moyka send
+  // picker") — send is now via the Yangi zaxira tile's chip-select flow,
+  // not a per-serial row form. Wait on the actual moyka_sends response, not
+  // a button-label/visibility change, for the same reason this block
+  // already documented before the redesign.
   await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
-  const sendCard = serialCard(page, serial)
-  await expect(sendCard).toBeVisible()
-  await sendCard.getByRole('button', { name: '+ Moykaga yuborish' }).click()
-  await serialCard(page, serial).locator('input[type="number"]').fill('1000')
-  // The "+ Moykaga yuborish" button is hidden the instant the form OPENS
-  // (isActive flips before any network call fires), so its absence proves
-  // nothing about whether the mutation itself succeeded -- wait for the
-  // actual moyka_sends insert's response instead.
+  await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
+  const chip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
+  await expect(chip).toBeVisible({ timeout: 20_000 })
+  await chip.click()
+  await page.locator('#new-stock-weighed').fill('1000')
   const [sendResponse] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/moyka_sends') && r.request().method() === 'POST'),
-    serialCard(page, serial).getByRole('button', { name: 'Moykaga yuborish' }).click(),
+    page.getByRole('button', { name: 'Moykaga yuborish' }).click(),
   ])
   expect(sendResponse.ok(), `moyka_sends insert must succeed, got HTTP ${sendResponse.status()}: ${await sendResponse.text()}`).toBe(true)
 

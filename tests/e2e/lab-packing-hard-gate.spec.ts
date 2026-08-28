@@ -32,7 +32,7 @@ async function switchRole(page: Page, role: TestRole): Promise<void> {
 // The serial's OWN card, found via its SerialChip and walked up to the
 // nearest rounded-md ancestor — NOT a plain `div.rounded-md:has-text()`
 // match, which several of this screen's own inline forms would also
-// satisfy once open (MoykaSendForm/ChiqimTahlilForm/FinishedReceiptForm all
+// satisfy once open (ChiqimTahlilForm/FinishedReceiptForm all
 // render the serial's own text inside their own rounded-md wrapper,
 // nested one level inside the row's card). Re-queried fresh on every call
 // (a Playwright locator is lazy), so it stays correct across the DOM
@@ -136,23 +136,22 @@ async function seedReadyForMoyka(page: Page, plate: string): Promise<string> {
   return serial
 }
 
+// Two-tile picker (2026-08-28, see DECISIONS.md "Two-tile Moyka send
+// picker") — the send action is no longer inside the serial's own row card;
+// it's the Yangi zaxira tile's chip-select flow. Playwright's own
+// auto-waiting on the tile's collapsed button covers the ~1.5s the previous
+// send's "Yuborildi." confirmation holds before the tile re-collapses, so
+// calling this twice in a row (as this test's two-serial scenario does)
+// needs no manual wait.
 async function sendToMoyka(page: Page, serial: string) {
-  const card = serialCard(page, serial)
-  await expect(card).toBeVisible()
-  await card.getByRole('button', { name: '+ Moykaga yuborish' }).click()
-  await serialCard(page, serial).locator('input[type="number"]').fill('1000')
-  // '+ Moykaga yuborish' vanishes on the click above (it's the toggle that
-  // opens the form, not the submit) -- the old toHaveCount(0) check here
-  // asserted something already true before the submit click even happened
-  // and gave zero synchronization on the actual moyka_sends write. Same
-  // defect already found and fixed in lab-relocation-loss-verification.spec.ts
-  // (DECISIONS.md "Lab moves inside Moyka, wash-cycle concept removed",
-  // 2026-07-28) and confirmed live via trace on full-chain.spec.ts's
-  // identical send action -- just never ported to this spec. Wait on the
-  // actual response instead.
+  await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
+  const chip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
+  await expect(chip).toBeVisible({ timeout: 20_000 })
+  await chip.click()
+  await page.locator('#new-stock-weighed').fill('1000')
   const [sendResponse] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/moyka_sends') && r.request().method() === 'POST'),
-    serialCard(page, serial).getByRole('button', { name: 'Moykaga yuborish' }).click(),
+    page.getByRole('button', { name: 'Moykaga yuborish' }).click(),
   ])
   expect(sendResponse.ok(), `moyka_sends insert must succeed, got HTTP ${sendResponse.status()}: ${await sendResponse.text()}`).toBe(true)
 }

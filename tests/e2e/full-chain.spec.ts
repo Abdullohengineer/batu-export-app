@@ -348,34 +348,37 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
 
   const barcode = `PLT-${subxonSerial}-06-1`
   {
+    // Single-tile receive picker (2026-08-28, see DECISIONS.md "Section 3
+    // single-tile receive picker") — open the tile, select the serial's
+    // chip, use the same FinishedReceiptForm as before (unchanged).
     await page.getByRole('button', { name: 'Chiqish' }).click()
     await page.waitForURL('**/login')
     await loginAs(page, 'OMBOR')
     await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-    await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
-    const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: subxonSerial })
-    await expect(row).toBeVisible({ timeout: 20000 })
-    await row.getByRole('button', { name: /Qabul qilish|Yana qo'shish/ }).click()
-    await row.locator('select').selectOption({ label: 'Kalibr 6' })
-    const weightInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
+    await expect(page.getByRole('heading', { name: 'Moykadan qabul qilish' })).toBeVisible({ timeout: 20000 })
+    await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+    const chip = page.getByRole('button', { name: new RegExp(`^${subxonSerial}\\b`) })
+    await expect(chip).toBeVisible({ timeout: 20000 })
+    await chip.click()
+    await page.locator('select').selectOption({ label: 'Kalibr 6' })
+    const weightInput = page.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
     await weightInput.fill('4600')
     await weightInput.press('Tab')
     await expect(weightInput).toHaveValue('4600')
-    await row.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
-    await expect(row.getByText(barcode).first()).toBeVisible({ timeout: 20000 })
+    await page.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
+    await expect(page.getByText(barcode).first()).toBeVisible({ timeout: 20000 })
   }
   {
     // Loss is live now (DECISIONS.md "Moyka loss becomes live; remove
-    // Tugallash") — no close/confirm action to trigger it. The serial still
-    // shows in Window 1 (400kg of its 5,000kg sent hasn't been packed yet),
-    // and yield_rows already reads the correct live figure for it: (5000 -
-    // 4600) / 5000 = 8.0% — against Subxon's own 5,000kg intake figure,
-    // never the truck's 5,700kg gate net (multi-line, §2.16.1).
+    // Tugallash") — no close/confirm action to trigger it. The serial's
+    // live in-Moyka balance is still positive (400kg of its 5,000kg sent
+    // hasn't been packed yet), and yield_rows already reads the correct
+    // live figure for it: (5000 - 4600) / 5000 = 8.0% — against Subxon's
+    // own 5,000kg intake figure, never the truck's 5,700kg gate net
+    // (multi-line, §2.16.1).
     await page.getByRole('link', { name: 'Skladga KIRIM' }).click()
     await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-    await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
-    const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: subxonSerial })
-    await expect(row).toBeVisible({ timeout: 20000 })
+    await expect(page.getByRole('heading', { name: 'Moykadan qabul qilish' })).toBeVisible({ timeout: 20000 })
     const yieldRow = await page.evaluate(async (serialArg) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
       const { data, error } = await w.supabase.from('yield_rows').select('loss_kg, loss_pct').eq('serial', serialArg).single()

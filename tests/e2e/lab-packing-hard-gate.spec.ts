@@ -182,11 +182,16 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
   await sendToMoyka(page, serialReject)
 
   // --- Part 1: prove the gate BEFORE any verdict exists ---
+  // Single-tile receive picker (2026-08-28, see DECISIONS.md "Section 3
+  // single-tile receive picker") — an untested serial doesn't appear as a
+  // receivable chip at all any more (not shown-but-blocked), so the proof
+  // is its absence from the chip list, not a missing/disabled button on a
+  // per-serial card.
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-  await expect(serialCard(page, serialPass)).toBeVisible()
-  // The pack action must not exist at all -- not disabled, absent.
-  await expect(serialCard(page, serialPass).getByRole('button', { name: '+ Qabul qilish' })).toHaveCount(0)
-  await expect(serialCard(page, serialPass).getByText('Tahlil kutilmoqda')).toBeVisible()
+  await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(`^${serialPass}\\b`) })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: new RegExp(`^${serialReject}\\b`) })).toHaveCount(0)
+  await expect(page.getByText("Qabul qilinadigan serial yo'q.")).toBeVisible()
 
   // Database-level proof, not just UI absence: a direct finished_pallets
   // insert as Ombor for the untested serial must be REFUSED by RLS. This is
@@ -254,16 +259,20 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
   // --- Part 3: passing serialPass unlocks packing ---
   await switchRole(page, 'OMBOR')
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-  await expect(serialCard(page, serialPass)).toBeVisible()
-  await expect(serialCard(page, serialPass).getByText('Tahlil kutilmoqda')).toHaveCount(0)
-  await serialCard(page, serialPass).getByRole('button', { name: '+ Qabul qilish' }).click()
-  await serialCard(page, serialPass).locator('select').selectOption({ label: 'Kalibr 6' })
-  await serialCard(page, serialPass).locator('input[type="number"]').fill('500')
-  await serialCard(page, serialPass).getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
-  await expect(serialCard(page, serialPass).getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+  const passChip = page.getByRole('button', { name: new RegExp(`^${serialPass}\\b`) })
+  await expect(passChip).toBeVisible({ timeout: 20_000 })
+  await passChip.click()
+  await page.locator('select').selectOption({ label: 'Kalibr 6' })
+  await page.locator('input[type="number"]').fill('500')
+  await page.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
+  await expect(page.getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
 
   // --- Part 4: the rejected serial STILL cannot pack, even after its
-  // sibling passed -- the gate is per-serial, not per-batch/session. ---
-  await expect(serialCard(page, serialReject)).toBeVisible()
-  await expect(serialCard(page, serialReject).getByRole('button', { name: '+ Qabul qilish' })).toHaveCount(0)
+  // sibling passed -- the gate is per-serial, not per-batch/session. Close
+  // back to the tile default (the form stays open after a save, by design)
+  // and reopen to get a fresh chip list.
+  await page.getByRole('button', { name: 'Yopish' }).click()
+  await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(`^${serialReject}\\b`) })).toHaveCount(0)
 })

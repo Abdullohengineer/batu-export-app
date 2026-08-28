@@ -166,16 +166,19 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
     .click()
 
   // --- Ombor: pack exactly ONE pallet, 850kg — loss reads live from here,
-  // no separate close/confirm step. ---
+  // no separate close/confirm step. Single-tile receive picker (2026-08-28,
+  // see DECISIONS.md "Section 3 single-tile receive picker") — open the
+  // tile, select the serial's chip, same FinishedReceiptForm as before. ---
   await switchRole(page, 'OMBOR')
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-  const packCard = serialCard(page, serial)
-  await expect(packCard).toBeVisible()
-  await packCard.getByRole('button', { name: '+ Qabul qilish' }).click()
-  await serialCard(page, serial).locator('select').selectOption({ label: 'Kalibr 6' })
-  await serialCard(page, serial).locator('input[type="number"]').fill('850')
-  await serialCard(page, serial).getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
-  await expect(serialCard(page, serial).getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+  const receiveChip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
+  await expect(receiveChip).toBeVisible({ timeout: 20_000 })
+  await receiveChip.click()
+  await page.locator('select').selectOption({ label: 'Kalibr 6' })
+  await page.locator('input[type="number"]').fill('850')
+  await page.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
+  await expect(page.getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
 
   // --- Trace the SAME number into get_client_report and yield_rows ---
   const today = new Date().toISOString().slice(0, 10)

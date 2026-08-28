@@ -573,15 +573,22 @@ function PassportBody({
         <h3 className={sectionTitle}>Moyka</h3>
         {cycles.length === 0 && <p className={`mt-2 ${label}`}>Hali Moykaga yuborilmagan.</p>}
         <div className="mt-2 space-y-4">
-          {cycles.map((cycle) => (
-            <div key={cycle.status} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+          {cycles.map((cycle, i) => (
+            <div key={i} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                  {cycle.status === 'final' ? 'Yakunlangan' : 'Faol'}
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Moykada: {cycle.inMoykaKg.toLocaleString()} kg</div>
+                <div
+                  className={
+                    cycle.lossKg > 0
+                      ? 'text-xs font-medium text-red-600 dark:text-red-400'
+                      : cycle.lossKg < 0
+                        ? 'text-xs font-medium text-amber-600 dark:text-amber-400'
+                        : 'text-xs font-medium text-slate-500 dark:text-slate-400'
+                  }
+                >
+                  Yo'qotish: {cycle.lossKg > 0 ? '' : cycle.lossKg < 0 ? '+' : ''}
+                  {Math.abs(cycle.lossKg).toLocaleString()} kg
                 </div>
-                {cycle.finalLossPct !== null && (
-                  <div className="text-xs font-medium text-red-600 dark:text-red-400">Yo'qotish: {cycle.finalLossPct.toFixed(1)}%</div>
-                )}
               </div>
               <div className={`mt-1 ${label}`}>Yuborilgan: {cycle.sentKg.toLocaleString()} kg</div>
 

@@ -25,17 +25,14 @@ import { Stat } from '../../components/ui/Stat'
 //   hasRawRemainder) — the send form lives here. Sorted newest-first by
 //   order_date (DECISIONS "Universal sort rule"), inherited from
 //   useMoykaSerials rather than sorted again here.
-// - Window 2 = §5.3 Tayyor's Window 1: reuses useMoykaOutput's `serials`
-//   directly — sent at all, not yet manually finished (isAwaitingTugallash;
-//   updated 2026-07-16, see DECISIONS.md "Manual-only finishing"). No
-//   quantity comparison at all: an over-received serial stays visible here
-//   exactly as long as an under-received one does, until Tugallash. Also
-//   ignores wash_cycles.status independently of quantity, so a serial with
-//   more sent after an earlier Tugallash can be in this window AND in
-//   §5.3's Tugallangan at the same time; both facts are real. Sorted
-//   newest-first by last activity, inherited from useMoykaOutput.
+// - Window 2 "Moykada" = §5.3 Tayyor's Window 1: reuses useMoykaOutput's
+//   `serials` directly — a positive live in-Moyka balance (isInMoyka: sent
+//   > received). No manual close event any more (DECISIONS.md "Moyka loss
+//   becomes live; remove Tugallash") — a serial drops off both windows on
+//   its own once packing catches up to what was sent. Sorted newest-first
+//   by last activity, inherited from useMoykaOutput.
 // A partial-send serial can legitimately appear in BOTH this tab's windows
-// at once (raw remainder AND not yet finished) — expected, not a bug. The
+// at once (raw remainder AND still in Moyka) — expected, not a bug. The
 // spec's "⋯ per-send history" is a per-serial expand within Window 1 only
 // (send log + Qaydlar); Window 2 is a read-only mirror of Tayyor's active
 // list, so it has no send action or expand of its own.
@@ -67,12 +64,12 @@ export function OmborMoykaTab() {
   //
   // Laborator v2 (2026-07-28): this is also the moment a serial's
   // wash_cycles row is minted — CHIQIM lab testing is now enterable as soon
-  // as material is sent to Moyka (not at Tugallash, which no longer exists
-  // per-cycle), so the row lab_results.wash_cycle_id needs to point at must
-  // already exist by the time Laborator opens the test form. `on conflict
-  // do nothing` makes this safe to run on every send, not just the first —
-  // a later send to an already-active or already-final serial must never
-  // reset its status.
+  // as material is sent to Moyka, so the row lab_results.wash_cycle_id needs
+  // to point at must already exist by the time Laborator opens the test
+  // form. `on conflict do nothing` makes this safe to run on every send, not
+  // just the first. wash_cycles is lab-linkage-only now (DECISIONS.md "Moyka
+  // loss becomes live; remove Tugallash") — nothing ever writes 'final' to
+  // its status again, so this upsert's status value is otherwise inert.
   async function handleSend(serial: MoykaSerial, qtyKg: number) {
     const { error: cycleErr } = await supabase
       .from('wash_cycles')

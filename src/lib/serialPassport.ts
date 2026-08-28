@@ -131,9 +131,13 @@ export interface PassportCycleLab {
   note: string | null
 }
 
+// Moyka loss becomes live (DECISIONS.md "Moyka loss becomes live; remove
+// Tugallash") — status/finalLossPct (a locked, Tugallash-only figure)
+// replaced with two always-live numbers: inMoykaKg (floored, physical
+// "still sitting in Moyka") and lossKg (signed, sent - output).
 export interface PassportCycle {
-  status: string
-  finalLossPct: number | null
+  inMoykaKg: number
+  lossKg: number
   sentKg: number
   pallets: PassportCyclePallet[]
   lab: PassportCycleLab | null

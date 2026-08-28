@@ -106,9 +106,7 @@ export function ClientSerialSummaryModal({ serial, onClose }: { serial: string; 
                   </tr>
                   <tr>
                     <td className="py-1 font-medium text-slate-700 dark:text-slate-300">Убыток</td>
-                    <td className="py-1 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">
-                      {summary.lossKg === null ? 'ещё в переработке' : kg(summary.lossKg)}
-                    </td>
+                    <td className="py-1 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">{kg(summary.lossKg)}</td>
                   </tr>
                 </tbody>
               </table>

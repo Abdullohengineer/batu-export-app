@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hasRawRemainder, isAwaitingTugallash } from './stageMembership.ts'
+import { hasRawRemainder, isInMoyka } from './stageMembership.ts'
 
 // §5.1 KIRIM Window 2 / §5.2 Moyka Window 1: raw remainder > 0.
 test('hasRawRemainder: untouched serial (nothing sent yet) has full remainder', () => {
@@ -20,58 +20,55 @@ test('hasRawRemainder: over-sent (should be blocked at the write path, but must 
   assert.equal(hasRawRemainder(1000, 1200), false)
 })
 
-// §5.2 Moyka Window 2 / §5.3 Tayyor Window 1: sent, not yet manually
-// finished (Tugallash) — independent of received/sent quantities.
-test('isAwaitingTugallash: never sent is not awaiting anything', () => {
-  assert.equal(isAwaitingTugallash(0, false), false)
+// §5.2 Moyka Window 2 / §5.3 Tayyor Window 1: a positive live in-Moyka
+// balance (sent > received). No manual close event any more — see
+// DECISIONS.md "Moyka loss becomes live; remove Tugallash".
+test('isInMoyka: never sent is not in Moyka', () => {
+  assert.equal(isInMoyka(0, 0), false)
 })
 
-test('isAwaitingTugallash: sent, not finished — awaiting Tugallash', () => {
-  assert.equal(isAwaitingTugallash(1000, false), true)
+test('isInMoyka: sent, nothing packed yet — in Moyka', () => {
+  assert.equal(isInMoyka(1000, 0), true)
 })
 
-test('isAwaitingTugallash: sent, under target, not finished — still awaiting (finishing is a judgment call, not a threshold)', () => {
-  assert.equal(isAwaitingTugallash(1000, false), true)
+test('isInMoyka: partially packed, balance still positive — in Moyka', () => {
+  assert.equal(isInMoyka(1000, 400), true)
 })
 
-test('isAwaitingTugallash: sent, OVER target, not finished — still awaiting (over-receipt never auto-graduates)', () => {
-  // §3W1 test requirement: 140726-002-style, sent 5000 received 5010 —
-  // quantity is irrelevant here, only whether Tugallash has been clicked.
-  assert.equal(isAwaitingTugallash(5000, false), true)
+test('isInMoyka: fully packed, balance at 0 — no longer in Moyka', () => {
+  assert.equal(isInMoyka(1000, 1000), false)
 })
 
-test('isAwaitingTugallash: finished (Tugallash clicked) — no longer awaiting, regardless of quantity', () => {
-  assert.equal(isAwaitingTugallash(1000, true), false)
-  assert.equal(isAwaitingTugallash(5000, true), false)
+test('isInMoyka: over-packed (received > sent) — no longer in Moyka, regardless of overage', () => {
+  assert.equal(isInMoyka(1000, 1200), false)
 })
 
 // Section mirroring in action: an early-life serial can satisfy
-// hasRawRemainder (raw left in storage) AND isAwaitingTugallash (sent, not
-// finished) at once — it appears in all four windows (S1W2, S2W1, S2W2,
-// S3W1) simultaneously, which is the pattern working as designed.
-test('early-life serial: hasRawRemainder and isAwaitingTugallash both true at once (all four windows)', () => {
+// hasRawRemainder (raw left in storage) AND isInMoyka (sent, balance still
+// open) at once — it appears in all four windows (S1W2, S2W1, S2W2, S3W1)
+// simultaneously, which is the pattern working as designed.
+test('early-life serial: hasRawRemainder and isInMoyka both true at once (all four windows)', () => {
   const actualQty = 6000
   const sent = 5000
   assert.equal(hasRawRemainder(actualQty, sent), true)
-  assert.equal(isAwaitingTugallash(sent, false), true)
+  assert.equal(isInMoyka(sent, 0), true)
 })
 
 // Last portion sent: raw remainder is gone (hasRawRemainder false) but the
-// serial hasn't been finished yet (isAwaitingTugallash true) — the serial
-// shows only in S2W2/S3W1, not S1W2/S2W1.
-test('last portion sent: hasRawRemainder false, isAwaitingTugallash true — S2W2/S3W1 only', () => {
+// serial's Moyka balance is still open (isInMoyka true) — the serial shows
+// only in S2W2/S3W1, not S1W2/S2W1.
+test('last portion sent: hasRawRemainder false, isInMoyka true — S2W2/S3W1 only', () => {
   const actualQty = 2700
   const sent = 2700
   assert.equal(hasRawRemainder(actualQty, sent), false)
-  assert.equal(isAwaitingTugallash(sent, false), true)
+  assert.equal(isInMoyka(sent, 0), true)
 })
 
-// Finished (Tugallash clicked): neither predicate holds if raw remainder is
-// also gone — the serial has left both processing windows and only shows
-// in S3W2 (Tugallangan) via the separate, unchanged finalized check.
-test('finished and no raw remainder: neither predicate holds — left both processing windows', () => {
+// Fully packed and no raw remainder: neither predicate holds — the serial
+// has left both processing windows on its own, no operator action needed.
+test('fully packed and no raw remainder: neither predicate holds — left both processing windows', () => {
   const actualQty = 5000
   const sent = 5000
   assert.equal(hasRawRemainder(actualQty, sent), false)
-  assert.equal(isAwaitingTugallash(sent, true), false)
+  assert.equal(isInMoyka(sent, sent), false)
 })

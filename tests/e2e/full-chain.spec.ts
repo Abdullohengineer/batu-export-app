@@ -371,19 +371,25 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(row.getByText(barcode).first()).toBeVisible({ timeout: 20000 })
   }
   {
+    // Loss is live now (DECISIONS.md "Moyka loss becomes live; remove
+    // Tugallash") — no close/confirm action to trigger it. The serial still
+    // shows in Window 1 (400kg of its 5,000kg sent hasn't been packed yet),
+    // and yield_rows already reads the correct live figure for it: (5000 -
+    // 4600) / 5000 = 8.0% — against Subxon's own 5,000kg intake figure,
+    // never the truck's 5,700kg gate net (multi-line, §2.16.1).
     await page.getByRole('link', { name: 'Skladga KIRIM' }).click()
     await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
     await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
     const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: subxonSerial })
     await expect(row).toBeVisible({ timeout: 20000 })
-    await row.getByRole('button', { name: 'Tugallash' }).click()
-    await row.getByRole('button', { name: 'Ha, tugallash' }).click()
-    const tugallangan = page.getByRole('heading', { name: 'Tugallangan' }).locator('xpath=following-sibling::div[1]')
-    const finishedRow = tugallangan.locator('div.rounded-md', { hasText: subxonSerial })
-    await expect(finishedRow).toBeVisible({ timeout: 20000 })
-    // (5000 - 4600) / 5000 = 8.0% — against Subxon's own 5,000kg intake
-    // figure, never the truck's 5,700kg gate net (multi-line, §2.16.1).
-    await expect(finishedRow).toContainText('8.0%')
+    const yieldRow = await page.evaluate(async (serialArg) => {
+      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const { data, error } = await w.supabase.from('yield_rows').select('loss_kg, loss_pct').eq('serial', serialArg).single()
+      if (error) throw new Error(`yield_rows select: ${error.message}`)
+      return data
+    }, subxonSerial)
+    expect(yieldRow.loss_kg).toBe(400)
+    expect(yieldRow.loss_pct).toBe(8.0)
   }
 
   // --- Confirm availability directly (SPEC.md §8 "one derived truth, all consumers") ---

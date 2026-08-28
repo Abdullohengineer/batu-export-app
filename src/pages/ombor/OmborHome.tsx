@@ -37,7 +37,7 @@ export function OmborHome() {
   // unchanged" is this task's own requirement).
   const { lines: intakeLines, refresh: refreshIntake } = useIntakeLines()
   const { serials: moykaSerials, refresh: refreshMoykaSerials } = useMoykaSerials()
-  const { serials: awaitingTugallash, refresh: refreshMoykaOutput } = useMoykaOutput()
+  const { serials: inMoyka, refresh: refreshMoykaOutput } = useMoykaOutput()
   const { open: openChiqim, refresh: refreshChiqim } = useOmborChiqimRequests()
 
   // None of these 4 hooks re-fetch on their own after mount (no realtime
@@ -119,7 +119,7 @@ export function OmborHome() {
       label: 'Tayyor',
       icon: <TayyorIcon />,
       tone: 'moyka',
-      count: awaitingTugallash.length,
+      count: inMoyka.length,
     },
     {
       to: '/ombor/chiqim',

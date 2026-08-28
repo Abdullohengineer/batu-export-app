@@ -60,10 +60,10 @@ export interface ClientReportRow {
   ostatokSyroyeKg: number | null
   otgruzkaGotoviyKg: number | null
   otgruzkaSyroyeKg: number | null
-  // "Убыток" — this serial's own overall processing loss, same value
-  // repeated on every row of that serial (state, not per-row). Null until
-  // the wash is actually finished (client_serial_loss_kg), not zero —
-  // a still-processing serial has no real loss figure yet.
+  // "Убыток" — this serial's own overall processing loss, live and signed
+  // (DECISIONS.md "Moyka loss becomes live; remove Tugallash"), same value
+  // repeated on every row of that serial (state, not per-row). Null only
+  // for rows with no serial at all (e.g. chiqim_old_kn).
   ubytokKg: number | null
 }
 
@@ -154,7 +154,7 @@ export interface ClientReportTotals {
   otgruzkaGotoviyKg: number
   otgruzkaSyroyeKg: number
   ubytokKg: number
-  ubytokSerialCount: number // how many of serialCount actually have a known Убыток (wash finished)
+  ubytokSerialCount: number // how many of serialCount have a known Убыток — effectively all serial rows now that loss is always live
 }
 
 interface ClientReportTotalsDb {
@@ -213,19 +213,17 @@ export interface ClientCalibreBreakdown {
 export interface ClientSerialSummary {
   serial: string
   orderDate: string | null
-  washCycleStatus: string | null
   byCalibre: ClientCalibreBreakdown[]
   knKg: number
-  lossKg: number | null // null = wash not yet finished, not a real figure yet
+  lossKg: number // live, signed — sent minus output kg (DECISIONS.md "Moyka loss becomes live")
 }
 
 interface ClientSerialSummaryDb {
   serial: string
   orderDate: string | null
-  washCycleStatus: string | null
   byCalibre: { calibreId: string; weightKg: number | string }[]
   knKg: number | string
-  lossKg: number | string | null
+  lossKg: number | string
 }
 
 export async function fetchClientSerialSummary(serial: string): Promise<ClientSerialSummary | null> {
@@ -236,9 +234,8 @@ export async function fetchClientSerialSummary(serial: string): Promise<ClientSe
   return {
     serial: d.serial,
     orderDate: d.orderDate,
-    washCycleStatus: d.washCycleStatus,
     byCalibre: d.byCalibre.map((c) => ({ calibreId: c.calibreId, weightKg: Number(c.weightKg) })),
     knKg: Number(d.knKg),
-    lossKg: d.lossKg === null ? null : Number(d.lossKg),
+    lossKg: Number(d.lossKg),
   }
 }

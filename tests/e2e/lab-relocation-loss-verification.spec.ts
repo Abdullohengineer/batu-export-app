@@ -5,8 +5,9 @@ import { teardownFixtures } from './helpers/teardown'
 
 // Laborator v2 (2026-07-28 — see DECISIONS.md "Lab moves inside Moyka,
 // wash-cycle concept removed") Test 2: loss = (raw for serial − received
-// finished), computed at Ombor's receipt (Tugallash), with no cycle
-// involved — and that SAME number must flow into both get_client_report
+// finished), computed live the instant Ombor packs a pallet — no manual
+// close event any more (DECISIONS.md "Moyka loss becomes live; remove
+// Tugallash") — and that SAME number must flow into both get_client_report
 // and yield_rows, the two rewritten reporting functions this change
 // touched. This is deliberately the highest-scrutiny test in this whole
 // change: the reporting layer was flagged as the riskiest part of the
@@ -162,7 +163,8 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
     .getByRole('button', { name: "O'tdi", exact: true })
     .click()
 
-  // --- Ombor: pack exactly ONE pallet, 850kg, then Tugallash ---
+  // --- Ombor: pack exactly ONE pallet, 850kg — loss reads live from here,
+  // no separate close/confirm step. ---
   await switchRole(page, 'OMBOR')
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
   const packCard = serialCard(page, serial)
@@ -172,20 +174,6 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   await serialCard(page, serial).locator('input[type="number"]').fill('850')
   await serialCard(page, serial).getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
   await expect(serialCard(page, serial).getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
-
-  await serialCard(page, serial).getByRole('button', { name: 'Tugallash' }).click()
-  // The confirm dialog's own "Yakuniy yo'qotish" line is the number Ombor's
-  // receipt itself produces -- check it directly before confirming, this is
-  // the "computed at receipt" half of the claim. Matched as the exact
-  // combined "150 kg · 15.0%" stat span, not a bare '15.0%' substring --
-  // this scenario's deliberately-round 15% loss also trips the app's real
-  // >10% Tugallash sanity-check warning banner ("Yo'qotish 15.0% — 10% dan
-  // yuqori..."), which contains the same substring and would otherwise
-  // make the locator ambiguous (a second, correct, unrelated feature).
-  const confirmDialog = serialCard(page, serial)
-  await expect(confirmDialog.getByText('150 kg · 15.0%')).toBeVisible()
-  await confirmDialog.getByRole('button', { name: 'Ha, tugallash' }).click()
-  await expect(page.getByText('Tugallangan serial yo\'q.')).toHaveCount(0)
 
   // --- Trace the SAME number into get_client_report and yield_rows ---
   const today = new Date().toISOString().slice(0, 10)

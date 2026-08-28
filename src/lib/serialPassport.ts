@@ -242,23 +242,35 @@ export interface PassportStorageLossEvent {
   note?: string
 }
 
-// Symptom-A fix: a request that has reserved this serial's material
-// (chiqim_line_pallets / chiqim_line_raw_serials) but hasn't produced the
-// completed event yet (no dispatch_manifest / raw_dispatch_lines row) --
-// previously invisible on the passport even though it's already visible on
-// the CHIQIM screen.
+// Symptom-A fix: a request that has reserved this serial's raw material
+// (chiqim_line_raw_serials) but hasn't produced the completed event yet (no
+// raw_dispatch_lines row) -- previously invisible on the passport even
+// though it's already visible on the CHIQIM screen.
+//
+// §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
+// dispatch: FIFO cascade, consumption table"): this used to also carry a
+// kind='finished' case, sourced from chiqim_line_pallets (Option B's
+// reservation table). That table is gone, and FIFO attribution now happens
+// only at Ombor's finalize click -- a still-open finished/old_washed
+// chiqim_line has no specific pallets reserved in advance to report as
+// "pending" for any one serial, so that case is simply gone, not replaced.
+// Flagged as a real gap, not silently worked around.
 export interface PassportPendingDispatch {
-  kind: 'finished' | 'raw'
+  kind: 'raw'
   requestId: string
   requestDate: string
   plate: string
   driver: string
-  // Only present for kind='finished' -- a raw pool reservation has no
-  // per-serial pending weight (chiqim_lines.qty_kg is the whole line's plan
-  // figure, not a per-serial split).
-  barcode2?: string
-  calibreId?: string
-  weightKg?: number
+}
+
+// §5.4 FIFO dispatch (2026-08-28) -- this serial's own finished pallets'
+// dispatched kg, by calibre, sourced from chiqim_pallet_consumption
+// (migrations 0087/0088). Scoped to gate-completed (truly departed)
+// consumption only, consistent with every other "departed" figure
+// elsewhere on this passport (dispatches[], joriyHolat.finished.dispatchedKg).
+export interface PassportDispatchedByCalibre {
+  calibreId: string
+  kg: number
 }
 
 export interface SerialPassport {
@@ -279,6 +291,7 @@ export interface SerialPassport {
   joriyHolat: PassportJoriyHolat
   storageLossEvents: PassportStorageLossEvent[]
   pendingDispatches: PassportPendingDispatch[]
+  dispatchedByCalibre: PassportDispatchedByCalibre[]
 }
 
 export async function fetchSerialPassport(serial: string): Promise<SerialPassport> {

@@ -419,14 +419,12 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await chiqimSelects.nth(0).selectOption({ label: E2E_OWNER_NAME })
   await chiqimSelects.nth(1).selectOption({ label: 'Subxon' })
   await chiqimSelects.nth(2).selectOption({ label: 'Kalibr 6' })
-  // §5.4 Option B (2026-07-26/27): qty is derived from picker selection,
-  // not typed. Click the exact, already-known barcode (`barcode`, captured
-  // when this pallet was produced above) rather than a generic "any PLT-"
-  // match — this shared e2e database can carry OTHER, unrelated
-  // Subxon/Kalibr-6 stock for the same owner at any given moment (found
-  // live: a generic match clicked one of those instead, silently reaching
-  // the wrong target further down this test).
-  await page.getByRole('button', { name: new RegExp(barcode) }).click()
+  // §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
+  // dispatch: FIFO cascade, consumption table"): no more picker -- calibre
+  // + declared net kg + declared tara kg only. Which specific pallet(s)
+  // this draws from is decided by FIFO at Ombor's finalize click, not here.
+  await page.getByPlaceholder('Sof miqdor (kg)').fill('4600')
+  await page.getByPlaceholder('Tara (kg)').fill('0')
   await page.getByRole('button', { name: 'Saqlash' }).click()
   await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
 
@@ -455,7 +453,10 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(faol.locator('.rounded-md.border-red-300', { hasText: PLATE_OUT })).toBeVisible()
   }
 
-  // --- Ombor: scan + finish loading ---
+  // --- Ombor: enter loaded weight + finish loading — §5.4 FIFO dispatch:
+  // no scan step, FIFO attributes this against `barcode` (the only
+  // in-stock Subxon/Kalibr-6 pallet this owner has right now) at the
+  // finalize click. ---
   await page.getByRole('button', { name: 'Chiqish' }).click()
   await page.waitForURL('**/login')
   await loginAs(page, 'OMBOR')
@@ -465,9 +466,7 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: PLATE_OUT })
     await expect(omborRequest).toBeVisible({ timeout: 20000 })
     await omborRequest.getByRole('button', { name: 'Yuklashni boshlash' }).click()
-    const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
-    await barcodeInput.fill(barcode)
-    await page.getByRole('button', { name: 'Skanerlash' }).click()
+    await page.getByPlaceholder("Yuklangan og'irlik (kg)").fill('4600')
     await expect(page.getByText('Yetarli emas')).not.toBeVisible()
     await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
     await page.getByRole('button', { name: 'Ha, yakunlash' }).click()

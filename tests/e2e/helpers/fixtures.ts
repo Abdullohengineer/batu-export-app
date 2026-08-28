@@ -109,7 +109,7 @@ export interface SeedDispatchableResult {
 }
 
 // Seeds N real, immediately-dispatchable finished_pallets — in_stock,
-// o'tdi-verdict lab-passed, no dispatch_manifest claim — for CHIQIM-focused
+// o'tdi-verdict lab-passed, no chiqim_pallet_consumption claim — for CHIQIM-focused
 // tests that don't care about the raw-intake chain (chiqim-flow,
 // chiqim-full-chain, chiqim-undo-scan, menejer-chiqim-finished-view all
 // need exactly this shape). Writes directly via the dev-only

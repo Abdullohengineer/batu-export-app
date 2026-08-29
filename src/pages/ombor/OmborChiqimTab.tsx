@@ -675,10 +675,7 @@ export function OmborChiqimTab() {
                                       {typeName(line.type_id)} · {lineLabel(line)}
                                       {isOld && oldStockBadge}
                                     </span>
-                                    <span>
-                                      sof {line.qty_kg === null ? '—' : `${line.qty_kg.toLocaleString()} kg`}
-                                      {line.declared_tara_kg !== null && ` + tara ${line.declared_tara_kg.toLocaleString()} kg`}
-                                    </span>
+                                    <span>sof {line.qty_kg === null ? '—' : `${line.qty_kg.toLocaleString()} kg`}</span>
                                   </div>
                                   <p className="mt-1 text-xs text-slate-400">
                                     Omborda mavjud: {Math.round(available).toLocaleString()} kg

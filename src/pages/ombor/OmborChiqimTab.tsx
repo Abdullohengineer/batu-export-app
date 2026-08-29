@@ -771,7 +771,7 @@ export function OmborChiqimTab() {
                                             }`}
                                           >
                                             <span className="font-mono">{selected ? '✓ ' : ''}{serial}</span>
-                                            <PartiyaBadge partiyaNo={poolSerial?.partiyaNo ?? null} />
+                                            <PartiyaBadge partiyaNo={poolSerial?.partiyaNo ?? null} typeName={typeName(poolSerial?.type_id ?? '')} />
                                             <span className="ml-1.5">{available === null ? '—' : `${Math.round(available).toLocaleString()} kg mavjud`}</span>
                                           </button>
                                         )
@@ -845,7 +845,10 @@ export function OmborChiqimTab() {
                                         <li key={d.key} className="flex items-center justify-between gap-2 text-xs">
                                           <span className="min-w-0 flex-1 truncate">
                                             <span className="font-mono text-slate-700 dark:text-slate-300">{d.serial}</span>
-                                            <PartiyaBadge partiyaNo={rawSerials.find((s) => s.serial === d.serial)?.partiyaNo ?? null} />
+                                            <PartiyaBadge
+                                              partiyaNo={rawSerials.find((s) => s.serial === d.serial)?.partiyaNo ?? null}
+                                              typeName={typeName(rawSerials.find((s) => s.serial === d.serial)?.type_id ?? '')}
+                                            />
                                             {d.outOfPool && (
                                               <span className="ml-1 font-medium text-amber-600 dark:text-amber-400">⚠ pool tashqarisida</span>
                                             )}

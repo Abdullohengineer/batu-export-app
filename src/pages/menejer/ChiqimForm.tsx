@@ -526,7 +526,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                             }`}
                           >
                             <span className="font-mono">{selected ? '✓ ' : ''}{s.serial}</span>
-                            <PartiyaBadge partiyaNo={s.partiyaNo} />
+                            <PartiyaBadge partiyaNo={s.partiyaNo} typeName={typeName(s.type_id)} />
                             <span className="ml-1.5">{Math.round(s.available).toLocaleString()} kg mavjud</span>
                           </button>
                         )

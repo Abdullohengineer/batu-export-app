@@ -125,7 +125,7 @@ export function OmborHisobotlar() {
             >
               <span className="inline-flex items-center gap-1.5">
                 <span className="font-mono text-slate-900 dark:text-slate-100">{r.serial}</span>
-                <PartiyaBadge partiyaNo={r.partiyaNo} />
+                <PartiyaBadge partiyaNo={r.partiyaNo} typeName={typeName(r.type_id)} />
               </span>
               <span className="text-slate-500 dark:text-slate-400">
                 {typeName(r.type_id)} · {ownerName(r.owner_id)}

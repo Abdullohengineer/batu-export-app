@@ -96,7 +96,7 @@ export function SerialPassportModal({
               <>
                 <span className="text-slate-400 dark:text-slate-500">·</span>
                 <span className="inline-flex items-center gap-1.5 text-base font-semibold">
-                  Partiya: <PartiyaBadge partiyaNo={passport.order.partiyaNo} />
+                  Partiya: <PartiyaBadge partiyaNo={passport.order.partiyaNo} typeName={typeName(passport.order.typeId)} />
                   {passport.order.partiyaNo === null && <span className="text-slate-400">—</span>}
                   <span className="font-normal text-slate-500 dark:text-slate-400">({typeName(passport.order.typeId)})</span>
                 </span>

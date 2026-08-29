@@ -217,6 +217,10 @@ export interface ClientSerialSummary {
   serial: string
   orderDate: string | null
   partiyaNo: number | null
+  // Partiya badge type-prefix (2026-08-29, Prompt 9) -- needed to resolve
+  // which letter PartiyaBadge shows here; see migration
+  // 0099_client_serial_summary_type_id.sql.
+  typeId: string
   byCalibre: ClientCalibreBreakdown[]
   knKg: number
   lossKg: number // live, signed — sent minus output kg (DECISIONS.md "Moyka loss becomes live")
@@ -226,6 +230,7 @@ interface ClientSerialSummaryDb {
   serial: string
   orderDate: string | null
   partiyaNo: number | string | null
+  typeId: string
   byCalibre: { calibreId: string; weightKg: number | string }[]
   knKg: number | string
   lossKg: number | string
@@ -240,6 +245,7 @@ export async function fetchClientSerialSummary(serial: string): Promise<ClientSe
     serial: d.serial,
     orderDate: d.orderDate,
     partiyaNo: num(d.partiyaNo),
+    typeId: d.typeId,
     byCalibre: d.byCalibre.map((c) => ({ calibreId: c.calibreId, weightKg: Number(c.weightKg) })),
     knKg: Number(d.knKg),
     lossKg: Number(d.lossKg),

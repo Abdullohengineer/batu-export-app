@@ -53,7 +53,7 @@ export function StockOnHandTable({
               <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
                 <span className="inline-flex items-center gap-1.5">
                   {row.barcode2 ?? row.serial ?? '—'}
-                  <PartiyaBadge partiyaNo={row.partiyaNo} />
+                  <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />
                 </span>
               </td>
               <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{ownerName(row.ownerId)}</td>

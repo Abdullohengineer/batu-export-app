@@ -217,7 +217,7 @@ export function LaboratorChiqimTab() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <SerialChip>{item.serial}</SerialChip>
-                      <PartiyaBadge partiyaNo={item.partiyaNo} />
+                      <PartiyaBadge partiyaNo={item.partiyaNo} typeName={typeName(item.type_id)} />
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(item.owner_id)} · {typeName(item.type_id)}
                       </span>
@@ -277,7 +277,7 @@ export function LaboratorChiqimTab() {
             <Card key={row.id} tone="pending">
               <div className="flex items-center gap-2">
                 <SerialChip>{row.serial}</SerialChip>
-                <PartiyaBadge partiyaNo={row.partiyaNo} />
+                <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.type_id)} />
                 <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                   {ownerName(row.owner_id)} · {typeName(row.type_id)}
                 </span>
@@ -349,7 +349,7 @@ export function LaboratorChiqimTab() {
                 className="flex w-full items-center gap-2 text-left"
               >
                 <SerialChip>{row.serial}</SerialChip>
-                <PartiyaBadge partiyaNo={row.partiyaNo} />
+                <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.type_id)} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                   {ownerName(row.owner_id)} · {typeName(row.type_id)}
                 </span>

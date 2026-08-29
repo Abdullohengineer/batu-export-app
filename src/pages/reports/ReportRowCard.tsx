@@ -88,7 +88,7 @@ export function ReportRowCard({
         <SerialChip>
           {row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}
         </SerialChip>
-        <PartiyaBadge partiyaNo={row.partiyaNo} />
+        <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-slate-900 dark:text-slate-100">
             {ownerName(row.ownerId)} · {typeName(row.typeId)}

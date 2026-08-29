@@ -21,10 +21,12 @@ import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 // an over-send correctly (same §2.15.2 edge case this app has always had).
 export function NewStockToMoykaForm({
   serials,
+  typeName,
   onCancel,
   onSubmit,
 }: {
   serials: MoykaSerial[]
+  typeName: (id: string) => string
   onCancel: () => void
   onSubmit: (serial: MoykaSerial, qtyKg: number) => Promise<void>
 }) {
@@ -92,7 +94,7 @@ export function NewStockToMoykaForm({
                 className="rounded-md border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <span className="font-mono">{s.serial}</span>
-                <PartiyaBadge partiyaNo={s.partiyaNo} />
+                <PartiyaBadge partiyaNo={s.partiyaNo} typeName={typeName(s.type_id)} />
                 {/* '~' marks Qoldiq as a reference figure, same convention
                     OldStockToMoykaForm's own book-weight chips use. */}
                 <span className="ml-1.5">~{Math.round(s.available).toLocaleString()} kg</span>

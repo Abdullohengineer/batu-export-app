@@ -22,7 +22,7 @@ export function MoykaOutputRowDetail({
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
       <div>
-        Ona seriya: <span className="font-mono">{row.serial}</span> <PartiyaBadge partiyaNo={row.partiyaNo} /> ·{' '}
+        Ona seriya: <span className="font-mono">{row.serial}</span> <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} /> ·{' '}
         {typeName(row.typeId)} · {calibreLabel(row.calibreId)}
       </div>
       <div>

@@ -64,6 +64,10 @@ export function QorovulKirimTab() {
     return trip.lines[0]?.partiya_no ?? null
   }
 
+  function primaryTypeName(trip: KirimTrip) {
+    return typeName(trip.lines[0]?.type_id ?? '')
+  }
+
   function closeForm() {
     setActiveOrderId(null)
     setActiveStage(null)
@@ -151,7 +155,7 @@ export function QorovulKirimTab() {
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2">
                       <SerialChip>{primarySerial(trip)}</SerialChip>
-                    <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} />
+                    <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} typeName={primaryTypeName(trip)} />
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(trip.order.owner_id)} · {typeSummary(trip)}
                       </span>
@@ -210,7 +214,7 @@ export function QorovulKirimTab() {
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-center gap-2">
                     <SerialChip>{primarySerial(trip)}</SerialChip>
-                    <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} />
+                    <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} typeName={primaryTypeName(trip)} />
                     <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                       {ownerName(trip.order.owner_id)} · {typeSummary(trip)}
                     </span>

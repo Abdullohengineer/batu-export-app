@@ -274,7 +274,7 @@ export function ClientHisobotTab() {
                     <td className="px-3 py-2 whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
                         {row.serial ?? '—'}
-                        {row.serial && <PartiyaBadge partiyaNo={row.partiyaNo} />}
+                        {row.serial && <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />}
                       </span>
                     </td>
                     <td className="px-3 py-2">{typeName(row.typeId)}</td>

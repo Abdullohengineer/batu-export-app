@@ -111,14 +111,14 @@ export function ReportTableRow({
         return (
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">
             {row.kind === 'chiqim_old_kn' ? '—' : row.serial}
-            {row.kind !== 'chiqim_old_kn' && <PartiyaBadge partiyaNo={row.partiyaNo} />}
+            {row.kind !== 'chiqim_old_kn' && <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />}
           </span>
         )
       case 'partiya':
         return row.kind === 'chiqim_old_kn' ? (
           <span className="text-slate-400">—</span>
         ) : (
-          <PartiyaBadge partiyaNo={row.partiyaNo} />
+          <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />
         )
       case 'owner':
         return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">{ownerName(row.ownerId)}</span>

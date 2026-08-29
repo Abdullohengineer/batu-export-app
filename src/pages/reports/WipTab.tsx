@@ -5,6 +5,7 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useWipRows } from '../../lib/useWipRows'
 import { WipTable } from './WipTable'
 import { SerialPassportModal } from './SerialPassportModal'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 
 // §3.2.9 Kutilayotgan ishlar (WIP/stuck) — an exceptions list, no filter bar
 // (§2.14 thresholds are configured in Administration, not here). Mounted at
@@ -55,12 +56,14 @@ export function WipTab() {
       )}
 
       {passportSerial && (
-        <SerialPassportModal
-          serial={passportSerial}
-          onClose={() => setPassportSerial(null)}
-          typeName={typeNameStrict}
-          calibreLabel={calibreLabel}
-        />
+        <ErrorBoundary label="Seriya pasporti">
+          <SerialPassportModal
+            serial={passportSerial}
+            onClose={() => setPassportSerial(null)}
+            typeName={typeNameStrict}
+            calibreLabel={calibreLabel}
+          />
+        </ErrorBoundary>
       )}
     </div>
   )

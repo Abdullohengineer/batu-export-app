@@ -16,6 +16,7 @@ import { ReportFilterBar } from '../../components/report/ReportFilterBar'
 import { StockOnHandHeader } from './StockOnHandHeader'
 import { StockOnHandTable } from './StockOnHandTable'
 import { SerialPassportModal } from './SerialPassportModal'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { StatusNote } from '../../components/ui/StatusNote'
 
 const STATUS_OPTIONS = STOCK_BUCKET_ORDER.map((b) => ({ value: b, label: STOCK_BUCKET_LABEL[b] }))
@@ -137,12 +138,14 @@ export function StockOnHandTab() {
       )}
 
       {passportSerial && (
-        <SerialPassportModal
-          serial={passportSerial}
-          onClose={() => setPassportSerial(null)}
-          typeName={typeName}
-          calibreLabel={calibreLabel}
-        />
+        <ErrorBoundary label="Seriya pasporti">
+          <SerialPassportModal
+            serial={passportSerial}
+            onClose={() => setPassportSerial(null)}
+            typeName={typeName}
+            calibreLabel={calibreLabel}
+          />
+        </ErrorBoundary>
       )}
     </div>
   )

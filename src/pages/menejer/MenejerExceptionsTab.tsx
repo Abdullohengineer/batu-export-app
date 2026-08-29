@@ -5,6 +5,7 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarExceptions } from '../../lib/useRahbarDashboard'
 import { EXCEPTION_KIND_LABEL, EXCEPTION_KIND_ORDER, type ExceptionKind, type ExceptionRow } from '../../lib/rahbarDashboard'
 import { SerialPassportModal } from '../reports/SerialPassportModal'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { formatLossPct } from '../../lib/formatLoss'
 import { StatusPill } from '../../components/ui/StatusPill'
 import type { Tone } from '../../components/ui/tokens'
@@ -188,7 +189,9 @@ export function MenejerExceptionsTab() {
       )}
 
       {passportSerial && (
-        <SerialPassportModal serial={passportSerial} onClose={() => setPassportSerial(null)} typeName={typeName} calibreLabel={calibreLabelLookup} />
+        <ErrorBoundary label="Seriya pasporti">
+          <SerialPassportModal serial={passportSerial} onClose={() => setPassportSerial(null)} typeName={typeName} calibreLabel={calibreLabelLookup} />
+        </ErrorBoundary>
       )}
     </div>
   )

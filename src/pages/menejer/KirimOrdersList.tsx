@@ -17,6 +17,7 @@ import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import type { Tone } from '../../components/ui/tokens'
 import { SerialPassportModal } from '../reports/SerialPassportModal'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 
 // kirim_orders.status has exactly these two values (confirmed against the
 // live DB, not assumed) -- a plain display-label + tone map, no new status
@@ -336,12 +337,14 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
       ))}
 
       {passportSerial && (
-        <SerialPassportModal
-          serial={passportSerial}
-          onClose={() => setPassportSerial(null)}
-          typeName={typeName}
-          calibreLabel={calibreLabel}
-        />
+        <ErrorBoundary label="Seriya pasporti">
+          <SerialPassportModal
+            serial={passportSerial}
+            onClose={() => setPassportSerial(null)}
+            typeName={typeName}
+            calibreLabel={calibreLabel}
+          />
+        </ErrorBoundary>
       )}
     </div>
   )

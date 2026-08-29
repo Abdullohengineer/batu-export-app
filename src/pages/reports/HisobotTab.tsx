@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { HistoryView } from '../../components/HistoryView'
 import { ReportFilterBar, FilterField } from '../../components/report/ReportFilterBar'
 import { TotalsStrip } from '../../components/report/TotalsStrip'
@@ -105,141 +106,145 @@ export function HisobotTab() {
   const showVoidedCallout = voidedBarcodeMatch !== null && !rows.some((r) => r.key === voidedBarcodeMatch.key)
 
   return (
-    <div className="space-y-4">
-      <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(filters.directions)} visibleColumnKeys={visibleColumnKeys} />
+    <ErrorBoundary label="Hisobot">
+      <div className="space-y-4">
+        <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(filters.directions)} visibleColumnKeys={visibleColumnKeys} />
 
-      <HistoryView
-        loading={loading}
-        isEmpty={totalCount === 0 && !showVoidedCallout}
-        emptyText="Natija topilmadi."
-        resultCount={totalCount}
-        filters={
-          <ReportFilterBar
-            from={filters.from}
-            to={filters.to}
-            onDateRangeChange={(from, to) => setFilters({ ...filters, from, to })}
-            ownerId={filters.ownerId}
-            onOwnerIdChange={(id) => setFilters({ ...filters, ownerId: id })}
-            typeIds={filters.typeId ? [filters.typeId] : []}
-            onTypeIdsChange={(ids) => setFilters({ ...filters, typeId: ids[0] ?? '' })}
-            productTypes={productTypes}
-            calibreIds={filters.calibreId ? [filters.calibreId] : []}
-            onCalibreIdsChange={(ids) => setFilters({ ...filters, calibreId: ids[0] ?? '' })}
-            calibres={calibres}
-            statusOptions={STATUS_OPTIONS}
-            statusValues={filters.status ? [filters.status] : []}
-            onStatusValuesChange={(values) => setFilters({ ...filters, status: (values[0] ?? '') as PalletStatusFilter })}
-            owners={owners}
-            directions={filters.directions}
-            onDirectionsChange={(d) => setFilters({ ...filters, directions: d })}
-            serial={filters.serial}
-            onSerialChange={(v) => setFilters({ ...filters, serial: v })}
-            barcode2={filters.barcode2}
-            onBarcode2Change={(v) => setFilters({ ...filters, barcode2: v })}
-            plate={filters.plate}
-            onPlateChange={(v) => setFilters({ ...filters, plate: v })}
-            driver={filters.driver}
-            onDriverChange={(v) => setFilters({ ...filters, driver: v })}
-            labVerdict={filters.labVerdict}
-            onLabVerdictChange={(v) => setFilters({ ...filters, labVerdict: v })}
-            partiya={filters.partiya}
-            onPartiyaChange={(v) => setFilters({ ...filters, partiya: v })}
-            onReset={() => setFilters(defaultReportFilters(filters.from, filters.to))}
-          />
-        }
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-            <button
-              type="button"
-              onClick={() => setPage(page - 1)}
-              disabled={page <= 1}
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              ← Oldingi
-            </button>
-            <span>
-              {page} / {pageCount}-sahifa
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage(page + 1)}
-              disabled={page >= pageCount}
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              Keyingi →
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Column picker (2026-08-15) -- reuses ReportFilterBar's own
-                multi-select checkbox-panel component ("styled like the
-                existing filters"), wired independently of `filters`: this
-                controls DISPLAY only, never the query, so hiding a column
-                can never remove it as a filter. */}
-            <FilterField
-              label="Ustunlar"
-              allLabel="Hammasi"
-              options={REPORT_COLUMNS.map((c) => ({ value: c.key, label: c.label }))}
-              selected={REPORT_COLUMNS.filter((c) => visibleColumnKeys.has(c.key)).map((c) => c.key)}
-              onChange={(keys) => setVisibleColumnKeys(new Set(keys))}
-              multi
-              compact
+        <HistoryView
+          loading={loading}
+          isEmpty={totalCount === 0 && !showVoidedCallout}
+          emptyText="Natija topilmadi."
+          resultCount={totalCount}
+          filters={
+            <ReportFilterBar
+              from={filters.from}
+              to={filters.to}
+              onDateRangeChange={(from, to) => setFilters({ ...filters, from, to })}
+              ownerId={filters.ownerId}
+              onOwnerIdChange={(id) => setFilters({ ...filters, ownerId: id })}
+              typeIds={filters.typeId ? [filters.typeId] : []}
+              onTypeIdsChange={(ids) => setFilters({ ...filters, typeId: ids[0] ?? '' })}
+              productTypes={productTypes}
+              calibreIds={filters.calibreId ? [filters.calibreId] : []}
+              onCalibreIdsChange={(ids) => setFilters({ ...filters, calibreId: ids[0] ?? '' })}
+              calibres={calibres}
+              statusOptions={STATUS_OPTIONS}
+              statusValues={filters.status ? [filters.status] : []}
+              onStatusValuesChange={(values) => setFilters({ ...filters, status: (values[0] ?? '') as PalletStatusFilter })}
+              owners={owners}
+              directions={filters.directions}
+              onDirectionsChange={(d) => setFilters({ ...filters, directions: d })}
+              serial={filters.serial}
+              onSerialChange={(v) => setFilters({ ...filters, serial: v })}
+              barcode2={filters.barcode2}
+              onBarcode2Change={(v) => setFilters({ ...filters, barcode2: v })}
+              plate={filters.plate}
+              onPlateChange={(v) => setFilters({ ...filters, plate: v })}
+              driver={filters.driver}
+              onDriverChange={(v) => setFilters({ ...filters, driver: v })}
+              labVerdict={filters.labVerdict}
+              onLabVerdictChange={(v) => setFilters({ ...filters, labVerdict: v })}
+              partiya={filters.partiya}
+              onPartiyaChange={(v) => setFilters({ ...filters, partiya: v })}
+              onReset={() => setFilters(defaultReportFilters(filters.from, filters.to))}
             />
-            <Button variant="success" size="md" onClick={handleExport} disabled={exporting || totalCount === 0}>
-              {exporting ? 'Tayyorlanmoqda…' : '↓ Excel yuklab olish'}
-            </Button>
-          </div>
-        </div>
-
-        {exportError && <StatusNote tone="problem">{exportError}</StatusNote>}
-
-        {showVoidedCallout && voidedBarcodeMatch && (
-          <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/30">
-            <div className="font-medium text-red-700 dark:text-red-400">{voidedBarcodeMatch.barcode2} — bekor qilindi</div>
-            <div className="mt-1 text-red-600 dark:text-red-400">
-              Qayta yuvilgan, sikl {voidedBarcodeMatch.voidInfo?.voidedCycle}.{' '}
-              {voidedBarcodeMatch.voidInfo && voidedBarcodeMatch.voidInfo.successorBarcodes.length > 0 ? (
-                <>
-                  Yangi barkod{voidedBarcodeMatch.voidInfo.successorBarcodes.length > 1 ? 'lar' : ''}:{' '}
-                  {voidedBarcodeMatch.voidInfo.successorBarcodes.join(', ')}.
-                </>
-              ) : (
-                <>Sikl {voidedBarcodeMatch.voidInfo?.successorCycle} hali yangi barkod chiqarilmagan.</>
-              )}
+          }
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+              <button
+                type="button"
+                onClick={() => setPage(page - 1)}
+                disabled={page <= 1}
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                ← Oldingi
+              </button>
+              <span>
+                {page} / {pageCount}-sahifa
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(page + 1)}
+                disabled={page >= pageCount}
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Keyingi →
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Column picker (2026-08-15) -- reuses ReportFilterBar's own
+                  multi-select checkbox-panel component ("styled like the
+                  existing filters"), wired independently of `filters`: this
+                  controls DISPLAY only, never the query, so hiding a column
+                  can never remove it as a filter. */}
+              <FilterField
+                label="Ustunlar"
+                allLabel="Hammasi"
+                options={REPORT_COLUMNS.map((c) => ({ value: c.key, label: c.label }))}
+                selected={REPORT_COLUMNS.filter((c) => visibleColumnKeys.has(c.key)).map((c) => c.key)}
+                onChange={(keys) => setVisibleColumnKeys(new Set(keys))}
+                multi
+                compact
+              />
+              <Button variant="success" size="md" onClick={handleExport} disabled={exporting || totalCount === 0}>
+                {exporting ? 'Tayyorlanmoqda…' : '↓ Excel yuklab olish'}
+              </Button>
             </div>
           </div>
+
+          {exportError && <StatusNote tone="problem">{exportError}</StatusNote>}
+
+          {showVoidedCallout && voidedBarcodeMatch && (
+            <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/30">
+              <div className="font-medium text-red-700 dark:text-red-400">{voidedBarcodeMatch.barcode2} — bekor qilindi</div>
+              <div className="mt-1 text-red-600 dark:text-red-400">
+                Qayta yuvilgan, sikl {voidedBarcodeMatch.voidInfo?.voidedCycle}.{' '}
+                {voidedBarcodeMatch.voidInfo && voidedBarcodeMatch.voidInfo.successorBarcodes.length > 0 ? (
+                  <>
+                    Yangi barkod{voidedBarcodeMatch.voidInfo.successorBarcodes.length > 1 ? 'lar' : ''}:{' '}
+                    {voidedBarcodeMatch.voidInfo.successorBarcodes.join(', ')}.
+                  </>
+                ) : (
+                  <>Sikl {voidedBarcodeMatch.voidInfo?.successorCycle} hali yangi barkod chiqarilmagan.</>
+                )}
+              </div>
+            </div>
+          )}
+
+          <ReportResultsTable
+            rows={rows}
+            visibleColumnKeys={visibleColumnKeys}
+            expandedKey={expandedKey}
+            onToggle={(key) => setExpandedKey(expandedKey === key ? null : key)}
+            ownerName={ownerName}
+            typeName={typeName}
+            calibreLabel={calibreLabel}
+            onOpenPassport={setPassportSerial}
+            onOpenOldKnRequest={setOldKnRequestId}
+          />
+        </HistoryView>
+
+        {passportSerial && (
+          <ErrorBoundary label="Seriya pasporti">
+            <SerialPassportModal
+              serial={passportSerial}
+              onClose={() => setPassportSerial(null)}
+              typeName={typeName}
+              calibreLabel={calibreLabel}
+            />
+          </ErrorBoundary>
         )}
 
-        <ReportResultsTable
-          rows={rows}
-          visibleColumnKeys={visibleColumnKeys}
-          expandedKey={expandedKey}
-          onToggle={(key) => setExpandedKey(expandedKey === key ? null : key)}
-          ownerName={ownerName}
-          typeName={typeName}
-          calibreLabel={calibreLabel}
-          onOpenPassport={setPassportSerial}
-          onOpenOldKnRequest={setOldKnRequestId}
-        />
-      </HistoryView>
-
-      {passportSerial && (
-        <SerialPassportModal
-          serial={passportSerial}
-          onClose={() => setPassportSerial(null)}
-          typeName={typeName}
-          calibreLabel={calibreLabel}
-        />
-      )}
-
-      {oldKnRequestId && (
-        <OldKnRequestPassportModal
-          requestId={oldKnRequestId}
-          onClose={() => setOldKnRequestId(null)}
-          typeName={typeName}
-          calibreLabel={calibreLabel}
-        />
-      )}
-    </div>
+        {oldKnRequestId && (
+          <OldKnRequestPassportModal
+            requestId={oldKnRequestId}
+            onClose={() => setOldKnRequestId(null)}
+            typeName={typeName}
+            calibreLabel={calibreLabel}
+          />
+        )}
+      </div>
+    </ErrorBoundary>
   )
 }

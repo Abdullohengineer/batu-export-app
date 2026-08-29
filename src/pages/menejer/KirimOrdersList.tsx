@@ -223,7 +223,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
             className="flex min-h-12 w-full items-center gap-3 text-left"
           >
             <SerialChip>{order.kirim_lines[0]?.serial ?? '—'}</SerialChip>
-            <PartiyaBadge partiyaNo={order.kirim_lines[0]?.partiya_no ?? null} />
+            <PartiyaBadge partiyaNo={order.kirim_lines[0]?.partiya_no ?? null} typeName={typeName(order.kirim_lines[0]?.type_id ?? '')} />
             <span className="min-w-0 flex-1">
               <span className="block text-base text-slate-900 dark:text-slate-100">
                 {order.plate} · {order.driver}
@@ -245,7 +245,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                   <div className="flex items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5">
                       <span className="font-mono text-slate-700 dark:text-slate-300">{line.serial}</span>
-                      <PartiyaBadge partiyaNo={line.partiya_no} />
+                      <PartiyaBadge partiyaNo={line.partiya_no} typeName={typeName(line.type_id)} />
                     </span>
                     <span className="text-slate-600 dark:text-slate-400">{typeName(line.type_id)}</span>
                     <span className="text-slate-600 dark:text-slate-400">

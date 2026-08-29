@@ -60,7 +60,7 @@ export function WipTable({
                   <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
                     <span className="inline-flex items-center gap-1.5">
                       {row.serial ?? (row.requestId ? `So'rov ${row.requestId.slice(0, 8)}` : '—')}
-                      {row.serial && <PartiyaBadge partiyaNo={row.partiyaNo} />}
+                      {row.serial && <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />}
                     </span>
                   </td>
                   <td className={`${td} whitespace-nowrap text-right tabular-nums`}>

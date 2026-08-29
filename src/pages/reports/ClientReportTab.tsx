@@ -275,7 +275,7 @@ export function ClientReportTab() {
                     <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
                       <span className="inline-flex items-center gap-1.5">
                         {qr.serial}
-                        <PartiyaBadge partiyaNo={qr.partiyaNo} />
+                        <PartiyaBadge partiyaNo={qr.partiyaNo} typeName={typeName(qr.typeId)} />
                       </span>
                     </td>
                     <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{typeName(qr.typeId)}</td>

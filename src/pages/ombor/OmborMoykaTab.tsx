@@ -98,7 +98,7 @@ export function OmborMoykaTab() {
       <Card key={s.serial} padding="compact">
         <div className="flex items-center gap-2">
           <SerialChip>{s.serial}</SerialChip>
-          <PartiyaBadge partiyaNo={s.partiyaNo} />
+          <PartiyaBadge partiyaNo={s.partiyaNo} typeName={typeName(s.type_id)} />
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
             {ownerName(s.owner_id)} · {typeName(s.type_id)}
           </span>
@@ -128,7 +128,7 @@ export function OmborMoykaTab() {
             suite, not by tsc). */}
         <div className="mt-2 space-y-2">
           {expandedTile === 'yangi' ? (
-            <NewStockToMoykaForm serials={serials} onCancel={() => setExpandedTile(null)} onSubmit={(s, qty) => handleSend(s, qty)} />
+            <NewStockToMoykaForm serials={serials} typeName={typeName} onCancel={() => setExpandedTile(null)} onSubmit={(s, qty) => handleSend(s, qty)} />
           ) : (
             <Button variant="ghost" size="md" fullWidth onClick={() => setExpandedTile('yangi')} className={tileButtonClass}>
               + Yangi zaxiradan moykaga yuborish

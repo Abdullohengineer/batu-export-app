@@ -72,6 +72,7 @@ export function ReceiveFromMoykaForm({
                 calibre_id: values.calibreId,
                 weight_kg: values.weightKg,
                 received_date: new Date().toISOString().slice(0, 10),
+                created_at: new Date().toISOString(),
               },
             ],
             barcodeSeqByCalibre: {
@@ -129,7 +130,7 @@ export function ReceiveFromMoykaForm({
                 className="rounded-md border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <span className="font-mono">{s.serial}</span>
-                <PartiyaBadge partiyaNo={s.partiyaNo} />
+                <PartiyaBadge partiyaNo={s.partiyaNo} typeName={typeName(s.type_id)} />
                 <span className="ml-1.5">~{Math.round(s.inProcess).toLocaleString()} kg</span>
               </button>
             ))}

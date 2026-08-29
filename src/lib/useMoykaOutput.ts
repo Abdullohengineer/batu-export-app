@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { jarayonda, ortiqcha } from './tayyorCompletion'
 import { sortByDateDesc, maxDate } from './sortByDate'
@@ -10,6 +10,13 @@ export interface FinishedPallet {
   calibre_id: string
   weight_kg: number
   received_date: string
+  // Real receipt timestamp (2026-08-29, Prompt 9) -- `received_date` above
+  // is a plain `date` (day granularity), which can't order two same-day
+  // pallets for the same serial. `finished_pallets.created_at` (added in
+  // the FIFO migration, 0087) already exists and is already fetched
+  // nowhere else in this hook -- one more column on the same select, no
+  // new read.
+  created_at: string
 }
 
 export interface OutputSerial {
@@ -42,13 +49,19 @@ export interface OutputSerial {
   // barcode2 is a permanent PK, so the next barcode's sequence number must never collide with a prior one.
 }
 
-// §5.3 data: serials sent to Moyka (Step 5) with a positive live in-Moyka
-// balance (sent > received — see stageMembership.ts isInMoyka). No more
-// manual finish event (DECISIONS.md "Moyka loss becomes live; remove
-// Tugallash"): a serial drops off this list on its own once its balance
-// reaches 0, rather than needing an operator to close it out. All totals
-// DERIVED (CLAUDE.md "derive, don't store"). Sorted newest-first (DECISIONS
-// "Universal sort rule").
+// §5.3 data: serials sent to Moyka (Step 5). No more manual finish event
+// (DECISIONS.md "Moyka loss becomes live; remove Tugallash") — a serial's
+// live in-Moyka balance (sent − received) just floats; nothing here closes
+// it out. All totals DERIVED (CLAUDE.md "derive, don't store"). Sorted
+// newest-first (DECISIONS "Universal sort rule").
+//
+// Two views over the SAME fetched/derived set (2026-08-29, Prompt 9, see
+// DECISIONS.md "Restore Ombor Tayyor Window 2..."): `serials` (positive
+// live in-Moyka balance, isInMoyka — the receive-picker's own membership,
+// UNCHANGED) and `receivedSerials` (received > 0, regardless of balance —
+// Window 2's membership, including serials fully received down to 0). Both
+// are filtered `useMemo` views of one `allSerials` array built for every
+// serial in this fetch, not two separate queries — no new database read.
 //
 // Wash-cycle scoping removed (2026-07-28, Laborator v2 — see DECISIONS.md
 // "Lab moves inside Moyka, wash-cycle concept removed"): re-washing now
@@ -56,7 +69,7 @@ export interface OutputSerial {
 // to the same single balance for its whole life — no more active-cycle
 // derivation (the old fetchActiveCycles/rewash.ts, both deleted).
 export function useMoykaOutput() {
-  const [serials, setSerials] = useState<OutputSerial[]>([])
+  const [allSerials, setAllSerials] = useState<OutputSerial[]>([])
   const [loading, setLoading] = useState(true)
   // 🔒 refresh is called both from the mount effect below AND from mutation
   // handlers elsewhere (handleSend/handleReceipt) — a plain
@@ -76,13 +89,13 @@ export function useMoykaOutput() {
     try {
       const [{ data: sends }, { data: pallets }] = await Promise.all([
         supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
-        supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, status'),
+        supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, created_at, status'),
       ])
 
       const serialList = [...new Set((sends ?? []).map((s) => s.serial))]
       if (serialList.length === 0) {
         if (requestIdRef.current === requestId) {
-          setSerials([])
+          setAllSerials([])
         }
         return
       }
@@ -101,7 +114,13 @@ export function useMoykaOutput() {
       for (const p of pallets ?? []) {
         if (p.status === 'bekor_qilindi') continue
         const list = palletsBySerial.get(p.serial) ?? []
-        list.push({ barcode2: p.barcode2, calibre_id: p.calibre_id, weight_kg: p.weight_kg, received_date: p.received_date })
+        list.push({
+          barcode2: p.barcode2,
+          calibre_id: p.calibre_id,
+          weight_kg: p.weight_kg,
+          received_date: p.received_date,
+          created_at: p.created_at,
+        })
         palletsBySerial.set(p.serial, list)
       }
       const receivedBySerial = new Map<string, number>()
@@ -121,13 +140,6 @@ export function useMoykaOutput() {
         bySerial[p.calibre_id] = (bySerial[p.calibre_id] ?? 0) + 1
         barcodeSeqBySerial.set(p.serial, bySerial)
       }
-
-      // §5.2 Moyka Window 2 = §5.3 Tayyor Window 1 (section mirroring) —
-      // isInMoyka is the shared, tested predicate: a positive live balance
-      // (sent > received). A serial drops off on its own once packing
-      // catches up to sent — no manual close event any more (DECISIONS.md
-      // "Moyka loss becomes live; remove Tugallash").
-      const activeSerials = serialList.filter((s) => isInMoyka(sentBySerial.get(s) ?? 0, receivedBySerial.get(s) ?? 0))
 
       const { data: kLines } = await supabase
         .from('kirim_lines')
@@ -172,7 +184,14 @@ export function useMoykaOutput() {
         }
       }
 
-      const combined: OutputSerial[] = activeSerials
+      // Built for EVERY serial in this fetch (2026-08-29, Prompt 9) — not
+      // pre-filtered to isInMoyka any more. Window 2 (receivedSerials,
+      // below) needs a fully-received serial (balance 0) to stay in this
+      // set; the receive picker's own membership (serials, isInMoyka) is
+      // still exactly what it was, just derived as a filter AFTER this map
+      // instead of before it — same rows, same figures, no behaviour change
+      // for that consumer.
+      const combined: OutputSerial[] = serialList
         .map((serial): OutputSerial | null => {
           const base = baseRow(serial)
           if (!base) return null
@@ -197,10 +216,11 @@ export function useMoykaOutput() {
 
       // Universal sort rule (DECISIONS "Universal sort rule", SPEC.md §5
       // intro): every stage/history list sorts newest-first. Sorted once
-      // here, at the shared hook, so both consumers of `serials`
-      // (§5.2 Window 2 and §5.3 Window 1 — section mirroring) inherit it.
+      // here, at the shared hook, so every consumer of `allSerials` (§5.2
+      // Window 2, §5.3 Window 1, §5.3's new Window 2 — section mirroring)
+      // inherits it without re-sorting.
       if (requestIdRef.current !== requestId) return
-      setSerials(sortByDateDesc(combined, (s) => s.lastActivityDate))
+      setAllSerials(sortByDateDesc(combined, (s) => s.lastActivityDate))
     } finally {
       if (requestIdRef.current === requestId) setLoading(false)
     }
@@ -210,5 +230,15 @@ export function useMoykaOutput() {
     refresh()
   }, [refresh])
 
-  return { serials, loading, refresh }
+  // Two filtered views of the one fetched/sorted set (2026-08-29, Prompt 9)
+  // — see this hook's own header comment. `serials`: §5.3 Window 1's
+  // receive-picker membership, unchanged (isInMoyka). `receivedSerials`:
+  // §5.3's restored Window 2 — every serial that has ever received
+  // anything, balance irrelevant, so a fully-packed serial (received =
+  // sent, in-Moyka balance 0) stays visible for the record instead of
+  // disappearing the moment packing catches up.
+  const serials = useMemo(() => allSerials.filter((s) => isInMoyka(s.sent, s.received)), [allSerials])
+  const receivedSerials = useMemo(() => allSerials.filter((s) => s.received > 0), [allSerials])
+
+  return { serials, receivedSerials, loading, refresh }
 }

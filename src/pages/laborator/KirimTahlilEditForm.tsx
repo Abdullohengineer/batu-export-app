@@ -122,7 +122,7 @@ export function KirimTahlilEditForm({
           <span className="text-slate-500 dark:text-slate-400">Seriya</span>
           <span className="inline-flex items-center gap-1.5">
             <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{row.parent_serial}</span>
-            <PartiyaBadge partiyaNo={row.partiyaNo} />
+            <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName} />
           </span>
         </div>
         <div className="flex items-center justify-between text-sm">

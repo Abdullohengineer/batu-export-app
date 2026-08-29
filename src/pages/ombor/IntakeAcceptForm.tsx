@@ -87,7 +87,7 @@ export function IntakeAcceptForm({
           <span className="text-slate-500 dark:text-slate-400">Seriya</span>
           <span className="inline-flex items-center gap-1.5">
             <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{line.serial}</span>
-            <PartiyaBadge partiyaNo={line.partiyaNo} />
+            <PartiyaBadge partiyaNo={line.partiyaNo} typeName={typeName} />
           </span>
         </div>
         <div className="flex items-center justify-between text-sm">

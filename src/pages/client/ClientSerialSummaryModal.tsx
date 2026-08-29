@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchClientSerialSummary, type ClientSerialSummary } from '../../lib/clientPortalReport'
 import { useCalibres } from '../../lib/useCalibres'
+import { useProductTypes } from '../../lib/useProductTypes'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { formatLossKg } from '../../lib/formatLoss'
 
@@ -20,6 +21,7 @@ export function ClientSerialSummaryModal({ serial, onClose }: { serial: string; 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { calibres } = useCalibres(true)
+  const { productTypes } = useProductTypes(true)
 
   useEffect(() => {
     let cancelled = false
@@ -52,6 +54,10 @@ export function ClientSerialSummaryModal({ serial, onClose }: { serial: string; 
     return calibres.find((c) => c.id === id)?.label ?? id
   }
 
+  function typeName(id: string): string {
+    return productTypes.find((t) => t.id === id)?.name ?? '—'
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
@@ -64,7 +70,7 @@ export function ClientSerialSummaryModal({ serial, onClose }: { serial: string; 
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
           <h2 className="flex items-center gap-1.5 font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
             Серия — {serial}
-            {summary && <PartiyaBadge partiyaNo={summary.partiyaNo} />}
+            {summary && <PartiyaBadge partiyaNo={summary.partiyaNo} typeName={typeName(summary.typeId)} />}
           </h2>
           <button
             type="button"

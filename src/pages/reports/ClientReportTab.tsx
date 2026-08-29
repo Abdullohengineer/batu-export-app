@@ -7,6 +7,7 @@ import { defaultDateRange } from '../../lib/dateRange'
 import { CLIENT_REPORT_LABELS, type ReportLocale } from '../../lib/clientReportLabels'
 import { downloadClientReportExcel } from '../../lib/clientReportExport'
 import { SerialPassportModal } from './SerialPassportModal'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { formatDate } from '../../lib/formatDate'
 import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { Button } from '../../components/ui/Button'
@@ -433,7 +434,9 @@ export function ClientReportTab() {
       )}
 
       {passportSerial && (
-        <SerialPassportModal serial={passportSerial} onClose={() => setPassportSerial(null)} typeName={typeName} calibreLabel={calibreLabel} />
+        <ErrorBoundary label="Seriya pasporti">
+          <SerialPassportModal serial={passportSerial} onClose={() => setPassportSerial(null)} typeName={typeName} calibreLabel={calibreLabel} />
+        </ErrorBoundary>
       )}
     </div>
   )

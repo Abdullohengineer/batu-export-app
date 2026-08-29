@@ -24,7 +24,7 @@ const td = 'px-3 py-2 align-top'
 function StateCell({ value }: { value: number | undefined }) {
   return (
     <span className="whitespace-nowrap tabular-nums text-slate-700 dark:text-slate-300">
-      {value !== undefined ? `${value.toLocaleString()} kg` : '—'}
+      {value != null ? `${value.toLocaleString()} kg` : '—'}
     </span>
   )
 }

@@ -9,6 +9,7 @@ import { downloadYieldExcel } from '../../lib/yieldExport'
 import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { YieldTable } from './YieldTable'
 import { SerialPassportModal } from './SerialPassportModal'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { Button } from '../../components/ui/Button'
 import { toneStyles } from '../../components/ui/tokens'
 
@@ -156,12 +157,14 @@ export function YieldTab() {
       )}
 
       {passportSerial && (
-        <SerialPassportModal
-          serial={passportSerial}
-          onClose={() => setPassportSerial(null)}
-          typeName={typeName}
-          calibreLabel={calibreLabel}
-        />
+        <ErrorBoundary label="Seriya pasporti">
+          <SerialPassportModal
+            serial={passportSerial}
+            onClose={() => setPassportSerial(null)}
+            typeName={typeName}
+            calibreLabel={calibreLabel}
+          />
+        </ErrorBoundary>
       )}
     </div>
   )

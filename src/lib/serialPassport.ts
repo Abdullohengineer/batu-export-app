@@ -139,9 +139,18 @@ export interface PassportCycleLab {
 // Tugallash") — status/finalLossPct (a locked, Tugallash-only figure)
 // replaced with two always-live numbers: inMoykaKg (floored, physical
 // "still sitting in Moyka") and lossKg (signed, sent - output).
+//
+// AMENDED 2026-08-29 (Prompt 10, Yakunlash -- see DECISIONS.md "Serial
+// close-out (Yakunlash)"): the gap those two numbers describe now splits on
+// closedAt. Open (closedAt null): inMoykaKg is the live floored gap,
+// lossKg is null (unrealized -- nothing booked yet). Closed: inMoykaKg is
+// 0, lossKg is the signed booked figure. isRealized === (closedAt !== null),
+// carried separately so the UI doesn't have to re-derive it from closedAt.
 export interface PassportCycle {
   inMoykaKg: number
-  lossKg: number
+  lossKg: number | null
+  isRealized: boolean
+  closedAt: string | null
   sentKg: number
   pallets: PassportCyclePallet[]
   lab: PassportCycleLab | null

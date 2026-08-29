@@ -21,26 +21,31 @@ test('hasRawRemainder: over-sent (should be blocked at the write path, but must 
 })
 
 // §5.2 Moyka Window 2 / §5.3 Tayyor Window 1: a positive live in-Moyka
-// balance (sent > received). No manual close event any more — see
-// DECISIONS.md "Moyka loss becomes live; remove Tugallash".
+// balance (sent > received) AND not closed. No manual close event existed
+// at all until Yakunlash (2026-08-29, Prompt 10, see DECISIONS.md "Serial
+// close-out") reintroduced one — closedAt is now a required third param.
 test('isInMoyka: never sent is not in Moyka', () => {
-  assert.equal(isInMoyka(0, 0), false)
+  assert.equal(isInMoyka(0, 0, null), false)
 })
 
 test('isInMoyka: sent, nothing packed yet — in Moyka', () => {
-  assert.equal(isInMoyka(1000, 0), true)
+  assert.equal(isInMoyka(1000, 0, null), true)
 })
 
 test('isInMoyka: partially packed, balance still positive — in Moyka', () => {
-  assert.equal(isInMoyka(1000, 400), true)
+  assert.equal(isInMoyka(1000, 400, null), true)
 })
 
 test('isInMoyka: fully packed, balance at 0 — no longer in Moyka', () => {
-  assert.equal(isInMoyka(1000, 1000), false)
+  assert.equal(isInMoyka(1000, 1000, null), false)
 })
 
 test('isInMoyka: over-packed (received > sent) — no longer in Moyka, regardless of overage', () => {
-  assert.equal(isInMoyka(1000, 1200), false)
+  assert.equal(isInMoyka(1000, 1200, null), false)
+})
+
+test('isInMoyka: closed serial with a positive residual is NOT in Moyka — Yakunlash means no more expected', () => {
+  assert.equal(isInMoyka(1000, 400, '2026-08-29T00:00:00Z'), false)
 })
 
 // Section mirroring in action: an early-life serial can satisfy
@@ -51,7 +56,7 @@ test('early-life serial: hasRawRemainder and isInMoyka both true at once (all fo
   const actualQty = 6000
   const sent = 5000
   assert.equal(hasRawRemainder(actualQty, sent), true)
-  assert.equal(isInMoyka(sent, 0), true)
+  assert.equal(isInMoyka(sent, 0, null), true)
 })
 
 // Last portion sent: raw remainder is gone (hasRawRemainder false) but the
@@ -61,7 +66,7 @@ test('last portion sent: hasRawRemainder false, isInMoyka true — S2W2/S3W1 onl
   const actualQty = 2700
   const sent = 2700
   assert.equal(hasRawRemainder(actualQty, sent), false)
-  assert.equal(isInMoyka(sent, 0), true)
+  assert.equal(isInMoyka(sent, 0, null), true)
 })
 
 // Fully packed and no raw remainder: neither predicate holds — the serial
@@ -70,5 +75,5 @@ test('fully packed and no raw remainder: neither predicate holds — left both p
   const actualQty = 5000
   const sent = 5000
   assert.equal(hasRawRemainder(actualQty, sent), false)
-  assert.equal(isInMoyka(sent, sent), false)
+  assert.equal(isInMoyka(sent, sent, null), false)
 })

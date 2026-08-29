@@ -63,9 +63,17 @@ export interface ClientReportRow {
   otgruzkaSyroyeKg: number | null
   // "Убыток" — this serial's own overall processing loss, live and signed
   // (DECISIONS.md "Moyka loss becomes live; remove Tugallash"), same value
-  // repeated on every row of that serial (state, not per-row). Null only
-  // for rows with no serial at all (e.g. chiqim_old_kn).
+  // repeated on every row of that serial (state, not per-row). Null for
+  // rows with no serial at all (e.g. chiqim_old_kn) AND, since 2026-08-29
+  // (Prompt 10, "Serial close-out (Yakunlash)"), for a serial that hasn't
+  // been closed yet — a still-open gap is unrealized, not a booked loss.
+  // ClientHisobotTab.tsx already renders null as "—", so this reuses that
+  // existing handling rather than needing a separate isRealized flag.
   ubytokKg: number | null
+  // "Moyka" — this serial's live in-Moyka balance (unrealized-only; 0 once
+  // closed). NEW 2026-08-29 (Prompt 10) — same state-column shape as the
+  // other per-serial figures above, null only for no-serial rows.
+  moykadaKg: number | null
 }
 
 interface ClientReportDbRow {
@@ -85,6 +93,7 @@ interface ClientReportDbRow {
   state_olib_ketilgan: number | string | null
   state_xom_jonatilgan: number | string | null
   state_loss_kg: number | string | null
+  state_moykada_kg: number | string | null
 }
 
 function num(v: number | string | null | undefined): number | null {
@@ -116,6 +125,7 @@ function mapRow(row: ClientReportDbRow): ClientReportRow {
     otgruzkaGotoviyKg: olibKetilganKg,
     otgruzkaSyroyeKg: num(row.state_xom_jonatilgan),
     ubytokKg: num(row.state_loss_kg),
+    moykadaKg: num(row.state_moykada_kg),
   }
 }
 
@@ -157,7 +167,11 @@ export interface ClientReportTotals {
   otgruzkaGotoviyKg: number
   otgruzkaSyroyeKg: number
   ubytokKg: number
-  ubytokSerialCount: number // how many of serialCount have a known Убыток — effectively all serial rows now that loss is always live
+  // AMENDED 2026-08-29 (Prompt 10): "known" now means "closed" (realized)
+  // rather than "always live" — an open serial's loss_kg is null (SQL) /
+  // excluded from this count, not merely not-yet-final the old way.
+  ubytokSerialCount: number
+  moykadaKg: number // NEW 2026-08-29 (Prompt 10) — sum of unrealized in-Moyka balances across the filtered serial set.
 }
 
 interface ClientReportTotalsDb {
@@ -172,6 +186,7 @@ interface ClientReportTotalsDb {
   state_otgruzka_syrye_kg: number | string
   state_ubytok_kg: number | string
   state_ubytok_serial_count: number | string
+  state_moykada_kg: number | string
 }
 
 export async function fetchClientReportTotals(filters: ClientReportFilters): Promise<ClientReportTotals> {
@@ -196,6 +211,7 @@ export async function fetchClientReportTotals(filters: ClientReportFilters): Pro
     otgruzkaSyroyeKg: Number(row.state_otgruzka_syrye_kg),
     ubytokKg: Number(row.state_ubytok_kg),
     ubytokSerialCount: Number(row.state_ubytok_serial_count),
+    moykadaKg: Number(row.state_moykada_kg),
   }
 }
 
@@ -223,7 +239,10 @@ export interface ClientSerialSummary {
   typeId: string
   byCalibre: ClientCalibreBreakdown[]
   knKg: number
-  lossKg: number // live, signed — sent minus output kg (DECISIONS.md "Moyka loss becomes live")
+  // AMENDED 2026-08-29 (Prompt 10, "Serial close-out (Yakunlash)"): null
+  // while still open (unrealized — nothing booked yet), signed once closed.
+  lossKg: number | null
+  moykadaKg: number // NEW 2026-08-29 (Prompt 10) — live unrealized in-Moyka balance, 0 once closed.
 }
 
 interface ClientSerialSummaryDb {
@@ -233,7 +252,8 @@ interface ClientSerialSummaryDb {
   typeId: string
   byCalibre: { calibreId: string; weightKg: number | string }[]
   knKg: number | string
-  lossKg: number | string
+  lossKg: number | string | null
+  moykadaKg: number | string
 }
 
 export async function fetchClientSerialSummary(serial: string): Promise<ClientSerialSummary | null> {
@@ -248,6 +268,7 @@ export async function fetchClientSerialSummary(serial: string): Promise<ClientSe
     typeId: d.typeId,
     byCalibre: d.byCalibre.map((c) => ({ calibreId: c.calibreId, weightKg: Number(c.weightKg) })),
     knKg: Number(d.knKg),
-    lossKg: Number(d.lossKg),
+    lossKg: num(d.lossKg),
+    moykadaKg: Number(d.moykadaKg),
   }
 }

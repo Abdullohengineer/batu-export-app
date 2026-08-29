@@ -7,6 +7,7 @@ import { useSettingsLimits } from '../../lib/useSettingsLimits'
 import { useIntakeHistory, type IntakeHistoryFilters } from '../../lib/useIntakeHistory'
 import { IntakeDetailView } from './IntakeDetailView'
 import { formatDateTime } from '../../lib/formatDate'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // Ombor's Hisobotlar (task step 4): read-only storage_intake history. Row
 // expand reuses the Step 3 full-story view (IntakeDetailView) unchanged.
@@ -122,7 +123,10 @@ export function OmborHisobotlar() {
               onClick={() => setExpanded(expanded === r.serial ? null : r.serial)}
               className="flex w-full items-center justify-between text-left"
             >
-              <span className="font-mono text-slate-900 dark:text-slate-100">{r.serial}</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="font-mono text-slate-900 dark:text-slate-100">{r.serial}</span>
+                <PartiyaBadge partiyaNo={r.partiyaNo} />
+              </span>
               <span className="text-slate-500 dark:text-slate-400">
                 {typeName(r.type_id)} · {ownerName(r.owner_id)}
               </span>

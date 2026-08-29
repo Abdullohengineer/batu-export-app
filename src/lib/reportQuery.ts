@@ -81,6 +81,10 @@ export interface ReportFilters {
   driver: string // substring match
   labVerdict: LabVerdictFilter
   status: PalletStatusFilter // CHIQIM/pallet rows only
+  // Partiya raqami -- exact match, '' = no filter. Text (not number) since
+  // it's a controlled text input, same convention as serial/barcode2 below;
+  // parsed to an integer (or null) only when building the RPC params.
+  partiya: string
 }
 
 export function defaultReportFilters(from: string, to: string): ReportFilters {
@@ -97,6 +101,7 @@ export function defaultReportFilters(from: string, to: string): ReportFilters {
     driver: '',
     labVerdict: '',
     status: '',
+    partiya: '',
   }
 }
 
@@ -124,6 +129,7 @@ export interface KirimReportRow {
   serial: string
   orderId: string
   typeId: string
+  partiyaNo: number | null // Partiya raqami — per-type arrival batch number; null for opening_stock/internal_reprocess (never arrived on a truck)
   ownerId: string
   plate: string
   driver: string
@@ -158,6 +164,7 @@ export interface ChiqimReportRow {
   barcode2: string
   serial: string // parent serial
   typeId: string
+  partiyaNo: number | null
   calibreId: string
   ownerId: string
   requestId: string
@@ -190,6 +197,7 @@ export interface RawDispatchReportRow {
   key: string // raw_dispatch_lines.id — stable row key
   serial: string
   typeId: string
+  partiyaNo: number | null
   ownerId: string
   requestId: string
   plate: string
@@ -211,6 +219,7 @@ export interface OldKnReportRow {
   kind: 'chiqim_old_kn'
   key: string // old_kn_collections.id -- stable row key
   typeId: string
+  partiyaNo: null // old-KN has no serial at all -- genuinely inapplicable, not just unassigned, same as state: null below
   ownerId: string // sourced from old_kn_pools, not chiqim_requests -- see DECISIONS.md "Old-KN reporting"
   requestId: string
   plate: string
@@ -235,6 +244,7 @@ export interface MoykaSendReportRow {
   serial: string
   orderId: string
   typeId: string
+  partiyaNo: number | null
   ownerId: string
   plate: null
   driver: null
@@ -262,6 +272,7 @@ export interface MoykaOutputReportRow {
   orderId: string
   requestId: string
   typeId: string
+  partiyaNo: number | null
   calibreId: string
   ownerId: string
   plate: null
@@ -393,6 +404,7 @@ export interface ReportDbRow {
   request_id: string | null
   owner_id: string
   type_id: string
+  partiya_no: number | string | null
   calibre_id: string | null
   plate: string | null
   driver: string | null
@@ -457,6 +469,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       serial: row.serial ?? '',
       orderId: row.order_id ?? '',
       typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
       ownerId: row.owner_id,
       plate: row.plate ?? '',
       driver: row.driver ?? '',
@@ -484,6 +497,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       key: row.row_key,
       serial: row.serial ?? '',
       typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
       ownerId: row.owner_id,
       requestId: row.request_id ?? '',
       plate: row.plate ?? '',
@@ -501,6 +515,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       kind: 'chiqim_old_kn',
       key: row.row_key,
       typeId: row.type_id,
+      partiyaNo: null,
       ownerId: row.owner_id,
       requestId: row.request_id ?? '',
       plate: row.plate ?? '',
@@ -520,6 +535,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       serial: row.serial ?? '',
       orderId: row.order_id ?? '',
       typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
       ownerId: row.owner_id,
       plate: null,
       driver: null,
@@ -540,6 +556,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       orderId: row.order_id ?? '',
       requestId: row.request_id ?? '',
       typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
       calibreId: row.calibre_id ?? '',
       ownerId: row.owner_id,
       plate: null,
@@ -568,6 +585,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
     barcode2: row.barcode2 ?? '',
     serial: row.serial ?? '',
     typeId: row.type_id,
+    partiyaNo: num(row.partiya_no),
     calibreId: row.calibre_id ?? '',
     ownerId: row.owner_id,
     requestId: row.request_id ?? '',

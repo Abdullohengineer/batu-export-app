@@ -6,6 +6,7 @@ import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
 import { formatDate } from '../../lib/formatDate'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 export interface IntakeAcceptValues {
   actualQty: number
@@ -84,7 +85,10 @@ export function IntakeAcceptForm({
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500 dark:text-slate-400">Seriya</span>
-          <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{line.serial}</span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{line.serial}</span>
+            <PartiyaBadge partiyaNo={line.partiyaNo} />
+          </span>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500 dark:text-slate-400">Egasi · tur</span>

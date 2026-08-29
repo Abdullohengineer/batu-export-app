@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../lib/AuthProvider'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
 import {
@@ -269,7 +270,12 @@ export function ClientHisobotTab() {
                   >
                     <td className="px-3 py-2">{directionLabel(row.kind)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.dateBasis)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{row.serial ?? '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        {row.serial ?? '—'}
+                        {row.serial && <PartiyaBadge partiyaNo={row.partiyaNo} />}
+                      </span>
+                    </td>
                     <td className="px-3 py-2">{typeName(row.typeId)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.nettoKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.nakladnayaKg)}</td>

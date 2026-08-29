@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button'
 import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 export interface TahlilEditValues {
   sampleDate: string
@@ -119,7 +120,10 @@ export function KirimTahlilEditForm({
       <div className="space-y-1.5 rounded-md bg-slate-100 p-3 dark:bg-slate-800/60">
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500 dark:text-slate-400">Seriya</span>
-          <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{row.parent_serial}</span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{row.parent_serial}</span>
+            <PartiyaBadge partiyaNo={row.partiyaNo} />
+          </span>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500 dark:text-slate-400">Egasi</span>

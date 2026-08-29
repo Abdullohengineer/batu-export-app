@@ -15,6 +15,7 @@ export interface FinishedPallet {
 export interface OutputSerial {
   serial: string
   type_id: string
+  partiyaNo: number | null
   category_id: string
   owner_id: string
   labStatus: LabGateStatus // Laborator v2 (2026-07-28): hard gate on Barcode #2 assignment —
@@ -130,7 +131,7 @@ export function useMoykaOutput() {
 
       const { data: kLines } = await supabase
         .from('kirim_lines')
-        .select('serial, order_id, type_id')
+        .select('serial, order_id, type_id, partiya_no')
         .in('serial', serialList)
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
       const [{ data: orders }, { data: types }] = await Promise.all([
@@ -159,6 +160,7 @@ export function useMoykaOutput() {
         return {
           serial,
           type_id: line.type_id,
+          partiyaNo: line.partiya_no,
           owner_id: order.owner_id,
           isMinted: order.origin === 'internal_reprocess',
           sent,
@@ -177,6 +179,7 @@ export function useMoykaOutput() {
           return {
             serial: base.serial,
             type_id: base.type_id,
+            partiyaNo: base.partiyaNo,
             owner_id: base.owner_id,
             isMinted: base.isMinted,
             labStatus: labStatusBySerial.get(serial) ?? 'untested',

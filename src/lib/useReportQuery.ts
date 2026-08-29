@@ -32,6 +32,7 @@ interface RpcParams {
   p_wash_cycle: string | null
   p_lab_verdict: string | null
   p_status: string | null
+  p_partiya_no: number | null
 }
 
 // p_directions: null (not []) for "no restriction" — matches
@@ -58,6 +59,7 @@ function toRpcParams(filters: ReportFilters): RpcParams {
     p_wash_cycle: null,
     p_lab_verdict: filters.labVerdict || null,
     p_status: filters.status || null,
+    p_partiya_no: filters.partiya.trim() && !Number.isNaN(Number(filters.partiya.trim())) ? Number(filters.partiya.trim()) : null,
   }
 }
 

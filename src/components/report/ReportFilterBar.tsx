@@ -195,6 +195,8 @@ export function ReportFilterBar({
   onDriverChange,
   labVerdict,
   onLabVerdictChange,
+  partiya,
+  onPartiyaChange,
 
   onReset,
 }: {
@@ -238,6 +240,10 @@ export function ReportFilterBar({
   onDriverChange?: (v: string) => void
   labVerdict?: LabVerdictFilter
   onLabVerdictChange?: (v: LabVerdictFilter) => void
+  // Partiya raqami -- exact match (unlike serial/barcode2's substring
+  // ilike), since it's a number: "2" should never also match "20".
+  partiya?: string
+  onPartiyaChange?: (v: string) => void
 
   onReset: () => void
 }) {
@@ -249,6 +255,7 @@ export function ReportFilterBar({
     onPlateChange ? plate : '',
     onDriverChange ? driver : '',
     onLabVerdictChange ? labVerdict : '',
+    onPartiyaChange ? partiya : '',
   ].filter((v) => (typeof v === 'boolean' ? v : !!v)).length
 
   return (
@@ -418,6 +425,20 @@ export function ReportFilterBar({
                   </option>
                 ))}
               </select>
+            </label>
+          )}
+          {onPartiyaChange && (
+            <label className="text-sm">
+              <span className="block text-slate-500 dark:text-slate-400">Partiya</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={partiya ?? ''}
+                onChange={(e) => onPartiyaChange(e.target.value)}
+                placeholder="№"
+                className={`${inputClass} w-20`}
+              />
             </label>
           )}
           <button

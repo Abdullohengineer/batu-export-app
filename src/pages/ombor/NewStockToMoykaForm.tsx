@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { TextInput } from '../../components/ui/FormField'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // §5.2 Yangi zaxira tile (two-tile picker redesign, 2026-08-28 — see
 // DECISIONS.md same date). Picks ONE raw serial by chip — serial + Qoldiq
@@ -91,6 +92,7 @@ export function NewStockToMoykaForm({
                 className="rounded-md border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <span className="font-mono">{s.serial}</span>
+                <PartiyaBadge partiyaNo={s.partiyaNo} />
                 {/* '~' marks Qoldiq as a reference figure, same convention
                     OldStockToMoykaForm's own book-weight chips use. */}
                 <span className="ml-1.5">~{Math.round(s.available).toLocaleString()} kg</span>

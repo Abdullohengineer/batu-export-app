@@ -11,6 +11,7 @@ export interface YieldCalibreMixEntry {
 export interface YieldRow {
   serial: string
   typeId: string
+  partiyaNo: number | null
   ownerId: string
   plate: string
   driver: string

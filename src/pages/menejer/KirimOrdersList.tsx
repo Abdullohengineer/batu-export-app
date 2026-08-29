@@ -14,6 +14,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import type { Tone } from '../../components/ui/tokens'
 import { SerialPassportModal } from '../reports/SerialPassportModal'
 
@@ -35,6 +36,7 @@ interface KirimLine {
   serial: string
   type_id: string
   declared_qty: number
+  partiya_no: number | null
 }
 
 interface KirimOrder {
@@ -94,7 +96,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
         supabase
           .from('kirim_orders')
           .select(
-            'order_id, order_date, plate, driver, declared_total, status, kirim_lines(serial, type_id, declared_qty)',
+            'order_id, order_date, plate, driver, declared_total, status, kirim_lines(serial, type_id, declared_qty, partiya_no)',
           )
           .eq('created_by', profile.id)
           .order('created_at', { ascending: false }),
@@ -220,6 +222,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
             className="flex min-h-12 w-full items-center gap-3 text-left"
           >
             <SerialChip>{order.kirim_lines[0]?.serial ?? '—'}</SerialChip>
+            <PartiyaBadge partiyaNo={order.kirim_lines[0]?.partiya_no ?? null} />
             <span className="min-w-0 flex-1">
               <span className="block text-base text-slate-900 dark:text-slate-100">
                 {order.plate} · {order.driver}
@@ -239,7 +242,10 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                 return (
                 <div key={line.serial} className="text-sm">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-slate-700 dark:text-slate-300">{line.serial}</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="font-mono text-slate-700 dark:text-slate-300">{line.serial}</span>
+                      <PartiyaBadge partiyaNo={line.partiya_no} />
+                    </span>
                     <span className="text-slate-600 dark:text-slate-400">{typeName(line.type_id)}</span>
                     <span className="text-slate-600 dark:text-slate-400">
                       E'lon qilingan {line.declared_qty.toLocaleString()} kg

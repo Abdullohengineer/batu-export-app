@@ -25,6 +25,7 @@ export interface RawDispatchEvent {
 export interface MoykaSerial {
   serial: string
   type_id: string
+  partiyaNo: number | null
   owner_id: string
   order_date: string
   plate: string
@@ -121,7 +122,7 @@ export function useMoykaSerials() {
       // pass them straight through instead of making fetchEffectiveQty
       // re-fetch both tables again, unfiltered, a second time.
       const [{ data: kLines }, effectiveQtyBySerial] = await Promise.all([
-        supabase.from('kirim_lines').select('serial, order_id, type_id').in('serial', serialList),
+        supabase.from('kirim_lines').select('serial, order_id, type_id, partiya_no').in('serial', serialList),
         fetchEffectiveQty(serialList, materialVariancePct, { intakes: intakes ?? [], sends: sends ?? [] }),
       ])
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
@@ -182,6 +183,7 @@ export function useMoykaSerials() {
           return {
             serial: intake.serial,
             type_id: line.type_id,
+            partiyaNo: line.partiya_no,
             owner_id: order.owner_id,
             order_date: order.order_date,
             plate: order.plate,

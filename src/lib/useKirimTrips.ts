@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 export interface KirimLine {
   serial: string
   type_id: string
+  partiya_no: number | null
   declared_qty: number
 }
 
@@ -58,7 +59,7 @@ export function useKirimTrips() {
           .select('order_id, order_date, plate, driver, owner_id, declared_total, status')
           .eq('origin', 'delivery')
           .order('created_at', { ascending: false }),
-        supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id'),
+        supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id, partiya_no'),
         supabase
           .from('gate_weighings')
           .select('id, order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')

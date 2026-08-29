@@ -49,6 +49,7 @@ export interface ClientReportRow {
   kind: ClientRowKind
   serial: string | null
   typeId: string
+  partiyaNo: number | null
   dateBasis: string | null
   nettoKg: number
   nakladnayaKg: number | null // "Накладная" — declared_qty, KIRIM-only, blank otherwise
@@ -72,6 +73,7 @@ interface ClientReportDbRow {
   row_key: string
   serial: string | null
   type_id: string
+  partiya_no: number | string | null
   plate: string | null
   driver: string | null
   date_basis: string | null
@@ -103,6 +105,7 @@ function mapRow(row: ClientReportDbRow): ClientReportRow {
     kind: row.kind,
     serial: row.serial,
     typeId: row.type_id,
+    partiyaNo: num(row.partiya_no),
     dateBasis: row.date_basis,
     nettoKg: Number(row.qty_kg),
     nakladnayaKg: num(row.declared_qty),
@@ -213,6 +216,7 @@ export interface ClientCalibreBreakdown {
 export interface ClientSerialSummary {
   serial: string
   orderDate: string | null
+  partiyaNo: number | null
   byCalibre: ClientCalibreBreakdown[]
   knKg: number
   lossKg: number // live, signed — sent minus output kg (DECISIONS.md "Moyka loss becomes live")
@@ -221,6 +225,7 @@ export interface ClientSerialSummary {
 interface ClientSerialSummaryDb {
   serial: string
   orderDate: string | null
+  partiyaNo: number | string | null
   byCalibre: { calibreId: string; weightKg: number | string }[]
   knKg: number | string
   lossKg: number | string
@@ -234,6 +239,7 @@ export async function fetchClientSerialSummary(serial: string): Promise<ClientSe
   return {
     serial: d.serial,
     orderDate: d.orderDate,
+    partiyaNo: num(d.partiyaNo),
     byCalibre: d.byCalibre.map((c) => ({ calibreId: c.calibreId, weightKg: Number(c.weightKg) })),
     knKg: Number(d.knKg),
     lossKg: Number(d.lossKg),

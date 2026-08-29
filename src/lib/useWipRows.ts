@@ -9,6 +9,7 @@ interface WipDbRow {
   request_id: string | null
   owner_id: string
   type_id: string | null
+  partiya_no: number | string | null
   days_waiting: number | string | null
   threshold_days: number | string | null
 }
@@ -21,6 +22,7 @@ function mapRow(r: WipDbRow): WipRow {
     requestId: r.request_id,
     ownerId: r.owner_id,
     typeId: r.type_id,
+    partiyaNo: r.partiya_no === null ? null : Number(r.partiya_no),
     daysWaiting: r.days_waiting === null ? null : Number(r.days_waiting),
     thresholdDays: r.threshold_days === null ? null : Number(r.threshold_days),
   }

@@ -16,6 +16,7 @@ export interface IntakeRecord {
 export interface IntakeLine {
   serial: string
   type_id: string
+  partiyaNo: number | null
   declared_qty: number
   order_id: string
   order_date: string
@@ -75,7 +76,7 @@ export function useIntakeLines() {
           .select('order_id, order_date, plate, driver, owner_id, status')
           .eq('origin', 'delivery')
           .order('created_at', { ascending: false }),
-        supabase.from('kirim_lines').select('serial, order_id, type_id, declared_qty'),
+        supabase.from('kirim_lines').select('serial, order_id, type_id, declared_qty, partiya_no'),
         supabase
           .from('gate_weighings')
           .select('order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')
@@ -98,6 +99,7 @@ export function useIntakeLines() {
           return {
             serial: line.serial,
             type_id: line.type_id,
+            partiyaNo: line.partiya_no,
             declared_qty: line.declared_qty,
             order_id: order.order_id,
             order_date: order.order_date,

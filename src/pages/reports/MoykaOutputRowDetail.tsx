@@ -1,4 +1,5 @@
 import type { MoykaOutputReportRow } from '../../lib/reportQuery'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // Row-expand content for a MOYKADAN row — sibling to ChiqimRowDetail.tsx.
 // This is the PRODUCTION event for this barcode2 (received_date), not its
@@ -21,7 +22,8 @@ export function MoykaOutputRowDetail({
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
       <div>
-        Ona seriya: <span className="font-mono">{row.serial}</span> · {typeName(row.typeId)} · {calibreLabel(row.calibreId)}
+        Ona seriya: <span className="font-mono">{row.serial}</span> <PartiyaBadge partiyaNo={row.partiyaNo} /> ·{' '}
+        {typeName(row.typeId)} · {calibreLabel(row.calibreId)}
       </div>
       <div>
         Laboratoriya: namligi {row.moisturePct !== null ? `${row.moisturePct}%` : 'tekshirilmagan'}

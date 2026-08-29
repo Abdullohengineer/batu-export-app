@@ -9,6 +9,7 @@ interface StockOnHandDbRow {
   barcode2: string | null
   owner_id: string
   type_id: string
+  partiya_no: number | string | null
   calibre_id: string | null
   qty_kg: number | string
   anchor_date: string | null
@@ -28,6 +29,7 @@ function mapRow(r: StockOnHandDbRow): StockOnHandRow {
     barcode2: r.barcode2,
     ownerId: r.owner_id,
     typeId: r.type_id,
+    partiyaNo: r.partiya_no === null ? null : Number(r.partiya_no),
     calibreId: r.calibre_id,
     qtyKg: Number(r.qty_kg),
     anchorDate: r.anchor_date,

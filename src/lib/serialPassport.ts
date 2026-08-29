@@ -29,6 +29,10 @@ export interface PassportOrder {
   targetMoisturePct: number | null
   targetSo2MgKg: number | null
   typeId: string
+  // Partiya raqami -- per-type arrival batch number. Null for opening_stock/
+  // internal_reprocess orders (isOldStock/isMinted below) — they never
+  // arrived on a truck, see DECISIONS.md "Partiya raqami".
+  partiyaNo: number | null
   // The nakladnoy attached on the KIRIM form ("Mijoz nakladnoyasini
   // biriktirish") -- captured since day one, only added here (§3.2.5
   // passport improvements task) once confirmed the passport was the one

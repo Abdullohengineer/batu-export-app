@@ -14,6 +14,7 @@ import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // Opening stock, Stage 2 (2026-08-02, see DECISIONS.md "Opening stock"):
 // line_kind widened from finished|raw to five values. old_kn has no
@@ -525,6 +526,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                             }`}
                           >
                             <span className="font-mono">{selected ? '✓ ' : ''}{s.serial}</span>
+                            <PartiyaBadge partiyaNo={s.partiyaNo} />
                             <span className="ml-1.5">{Math.round(s.available).toLocaleString()} kg mavjud</span>
                           </button>
                         )

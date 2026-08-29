@@ -149,3 +149,36 @@ export async function teardownFixtures(scope: TeardownScope): Promise<void> {
   // 12. kirim_orders
   await del(db, 'kirim_orders', 'order_id', orderIds, 'kirim')
 }
+
+// Partiya raqami counter resync (see docs/DECISIONS.md "Partiya raqami" —
+// the counter-drift incident found during this feature's own SQL-level
+// verification): partiya_counter is a live, monotonic per-type sequence
+// (supabase/migrations/0093_kirim_lines_partiya_no.sql) advanced by the
+// INSERT trigger itself, not something teardownFixtures' plain row deletes
+// above can roll back — a spec that creates N real kirim_lines rows for a
+// type permanently advances that type's counter by N, deleted rows or not.
+// Left uncorrected, the NEXT real arrival of that type would jump ahead by
+// the fixture count instead of continuing 1-past the last real row. Call
+// this AFTER teardownFixtures for any spec whose fixtures included
+// kirim_lines rows, passing the type_ids it touched — it resyncs each to
+// max(partiya_no) over what's actually left in kirim_lines post-cleanup,
+// the same corrective query used to fix the drift found live earlier this
+// feature's own development.
+export async function resyncPartiyaCounter(typeIds: string[]): Promise<void> {
+  if (typeIds.length === 0) return
+  const db = serviceClient()
+  for (const typeId of typeIds) {
+    const { data: maxRow, error: maxErr } = await db
+      .from('kirim_lines')
+      .select('partiya_no')
+      .eq('type_id', typeId)
+      .not('partiya_no', 'is', null)
+      .order('partiya_no', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (maxErr) throw new Error(`resyncPartiyaCounter: max lookup failed for type ${typeId}: ${maxErr.message}`)
+    const realMax = (maxRow?.partiya_no as number | undefined) ?? 0
+    const { error: updateErr } = await db.from('partiya_counter').update({ last_no: realMax }).eq('type_id', typeId)
+    if (updateErr) throw new Error(`resyncPartiyaCounter: update failed for type ${typeId}: ${updateErr.message}`)
+  }
+}

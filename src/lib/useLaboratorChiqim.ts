@@ -29,6 +29,7 @@ export interface AwaitingSerial {
   washCycleId: string
   serial: string
   type_id: string
+  partiyaNo: number | null
   owner_id: string
   target_moisture_pct: number | null
   target_so2_mg_kg: number | null
@@ -48,6 +49,7 @@ export interface ChiqimLabResultRow {
   wash_cycle_id: string
   serial: string
   type_id: string
+  partiyaNo: number | null
   owner_id: string
   sample_date: string
   moisture_pct: number
@@ -104,7 +106,7 @@ export function useLaboratorChiqim() {
       const [{ data: lines }, { data: results }] = await Promise.all([
         supabase
           .from('kirim_lines')
-          .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, is_sulfured')
+          .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no')
           .in('serial', serials),
         supabase
           .from('lab_results')
@@ -156,6 +158,7 @@ export function useLaboratorChiqim() {
             washCycleId: cycle.id,
             serial: cycle.serial,
             type_id: line.type_id,
+            partiyaNo: line.partiya_no,
             owner_id: order.owner_id,
             target_moisture_pct: line.target_moisture_pct,
             target_so2_mg_kg: line.target_so2_mg_kg,
@@ -172,6 +175,7 @@ export function useLaboratorChiqim() {
           wash_cycle_id: cycle.id,
           serial: cycle.serial,
           type_id: line.type_id,
+          partiyaNo: line.partiya_no,
           owner_id: order.owner_id,
           sample_date: result.sample_date,
           moisture_pct: result.moisture_pct,

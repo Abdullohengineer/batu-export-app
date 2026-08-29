@@ -8,6 +8,7 @@ import { MoykaOutputRowDetail } from './MoykaOutputRowDetail'
 import { formatDate } from '../../lib/formatDate'
 import { Card } from '../../components/ui/Card'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { type Tone } from '../../components/ui/tokens'
 
@@ -87,6 +88,7 @@ export function ReportRowCard({
         <SerialChip>
           {row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}
         </SerialChip>
+        <PartiyaBadge partiyaNo={row.partiyaNo} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-slate-900 dark:text-slate-100">
             {ownerName(row.ownerId)} · {typeName(row.typeId)}

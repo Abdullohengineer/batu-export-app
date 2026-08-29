@@ -11,6 +11,7 @@ import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // §5.2 Moykaga Chiqarish. Two windows — section mirroring (SPEC.md §5 intro;
 // DECISIONS.md "Section mirroring / derived stage membership"), NOT two
@@ -97,6 +98,7 @@ export function OmborMoykaTab() {
       <Card key={s.serial} padding="compact">
         <div className="flex items-center gap-2">
           <SerialChip>{s.serial}</SerialChip>
+          <PartiyaBadge partiyaNo={s.partiyaNo} />
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
             {ownerName(s.owner_id)} · {typeName(s.type_id)}
           </span>

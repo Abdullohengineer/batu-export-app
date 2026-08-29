@@ -4,6 +4,7 @@ import { GatePhoto } from '../../components/GatePhoto'
 import { Lightbox } from '../../components/Lightbox'
 import { formatStockDate } from '../../lib/oldStock'
 import { formatDate, formatDateTime } from '../../lib/formatDate'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 type OpenPhoto = (url: string, label: string) => void
 
@@ -86,7 +87,21 @@ export function SerialPassportModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-          <h2 className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">Seriya pasporti — {serial}</h2>
+          <h2 className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-lg font-bold text-slate-900 dark:text-slate-100">
+            <span>
+              Seriya: <span className="font-mono">{serial}</span>
+            </span>
+            {passport?.order && (
+              <>
+                <span className="text-slate-400 dark:text-slate-500">·</span>
+                <span className="inline-flex items-center gap-1.5 text-base font-semibold">
+                  Partiya: <PartiyaBadge partiyaNo={passport.order.partiyaNo} />
+                  {passport.order.partiyaNo === null && <span className="text-slate-400">—</span>}
+                  <span className="font-normal text-slate-500 dark:text-slate-400">({typeName(passport.order.typeId)})</span>
+                </span>
+              </>
+            )}
+          </h2>
           <button
             type="button"
             onClick={onClose}

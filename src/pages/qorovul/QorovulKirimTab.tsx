@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { formatDate } from '../../lib/formatDate'
 
 async function uploadGatePhoto(file: File) {
@@ -57,6 +58,10 @@ export function QorovulKirimTab() {
   // KirimOrdersList.tsx.
   function primarySerial(trip: KirimTrip) {
     return trip.lines[0]?.serial ?? trip.order.order_id
+  }
+
+  function primaryPartiyaNo(trip: KirimTrip) {
+    return trip.lines[0]?.partiya_no ?? null
   }
 
   function closeForm() {
@@ -146,6 +151,7 @@ export function QorovulKirimTab() {
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2">
                       <SerialChip>{primarySerial(trip)}</SerialChip>
+                    <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} />
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(trip.order.owner_id)} · {typeSummary(trip)}
                       </span>
@@ -204,6 +210,7 @@ export function QorovulKirimTab() {
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-center gap-2">
                     <SerialChip>{primarySerial(trip)}</SerialChip>
+                    <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} />
                     <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                       {ownerName(trip.order.owner_id)} · {typeSummary(trip)}
                     </span>

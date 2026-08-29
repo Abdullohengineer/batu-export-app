@@ -5,6 +5,7 @@ import type { YieldRow, YieldCalibreMixEntry } from './yield'
 interface YieldDbRow {
   serial: string
   type_id: string
+  partiya_no: number | string | null
   owner_id: string
   plate: string
   driver: string
@@ -32,6 +33,7 @@ function mapRow(r: YieldDbRow): YieldRow {
   return {
     serial: r.serial,
     typeId: r.type_id,
+    partiyaNo: r.partiya_no === null ? null : Number(r.partiya_no),
     ownerId: r.owner_id,
     plate: r.plate,
     driver: r.driver,

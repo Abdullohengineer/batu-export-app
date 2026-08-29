@@ -142,6 +142,8 @@ export function HisobotTab() {
             onDriverChange={(v) => setFilters({ ...filters, driver: v })}
             labVerdict={filters.labVerdict}
             onLabVerdictChange={(v) => setFilters({ ...filters, labVerdict: v })}
+            partiya={filters.partiya}
+            onPartiyaChange={(v) => setFilters({ ...filters, partiya: v })}
             onReset={() => setFilters(defaultReportFilters(filters.from, filters.to))}
           />
         }

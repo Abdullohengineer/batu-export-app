@@ -123,6 +123,7 @@ export interface ClientReportDeliveredLab extends ClientReportLabReading {
 export interface ClientReportQualityRow {
   serial: string
   typeId: string
+  partiyaNo: number | null
   plate: string
   driver: string
   arrivalDate: string

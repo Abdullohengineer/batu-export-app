@@ -4,6 +4,7 @@ import type { OutputSerial, FinishedPallet } from '../../lib/useMoykaOutput'
 import { FinishedReceiptForm, type ReceiptValues } from './FinishedReceiptForm'
 import { Barcode2Display } from './Barcode2Display'
 import { Card } from '../../components/ui/Card'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // §5.3 single-tile receive picker (2026-08-28 — see DECISIONS.md "Section 3
 // single-tile receive picker"). Chip-picks ONE in-Moyka serial (serial +
@@ -128,6 +129,7 @@ export function ReceiveFromMoykaForm({
                 className="rounded-md border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <span className="font-mono">{s.serial}</span>
+                <PartiyaBadge partiyaNo={s.partiyaNo} />
                 <span className="ml-1.5">~{Math.round(s.inProcess).toLocaleString()} kg</span>
               </button>
             ))}

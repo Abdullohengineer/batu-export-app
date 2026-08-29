@@ -54,6 +54,12 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'direction', label: "Yo'nalish", kind: 'context', defaultVisible: true },
   { key: 'date', label: 'Sana', kind: 'context', defaultVisible: true },
   { key: 'serial', label: 'Seriya', kind: 'context', defaultVisible: true },
+  // Partiya raqami (per-type arrival batch number) -- SPEC.md new
+  // subsection, see DECISIONS.md "Partiya raqami". Visible by default and
+  // filterable per the task; blank (not 0) on rows with no serial or on
+  // opening_stock/internal_reprocess arrivals, same as the underlying
+  // column itself.
+  { key: 'partiya', label: 'Partiya', kind: 'context', defaultVisible: true },
   { key: 'owner', label: 'Buyurtmachi', kind: 'context', defaultVisible: false },
   { key: 'type', label: 'Tur', kind: 'context', defaultVisible: true },
   { key: 'calibre', label: 'Kalibr', kind: 'context', defaultVisible: false },

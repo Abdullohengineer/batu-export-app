@@ -17,6 +17,7 @@ import { sortByDateDesc } from './sortByDate'
 export interface AwaitingLine {
   serial: string
   type_id: string
+  partiyaNo: number | null
   owner_id: string
   plate: string
   order_date: string
@@ -58,6 +59,7 @@ export interface LabResultRow {
   // Carried through for display — same fields as AwaitingLine, minus the
   // FIFO/gate fields which no longer matter once sampled.
   type_id: string
+  partiyaNo: number | null
   owner_id: string
   plate: string
   declared_qty: number
@@ -84,7 +86,7 @@ export function useLaboratorKirim() {
       const [{ data: lines }, { data: intakes }, { data: weighings }, { data: results }] = await Promise.all([
         supabase
           .from('kirim_lines')
-          .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg, is_sulfured'),
+          .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no'),
         supabase.from('storage_intake').select('serial, actual_qty'),
         supabase.from('gate_weighings').select('order_id, gruzheny_kg').eq('dir', 'kirim'),
         supabase
@@ -138,6 +140,7 @@ export function useLaboratorKirim() {
           awaitingRows.push({
             serial: line.serial,
             type_id: line.type_id,
+            partiyaNo: line.partiya_no,
             owner_id: order.owner_id,
             plate: order.plate,
             order_date: order.order_date,
@@ -154,6 +157,7 @@ export function useLaboratorKirim() {
         const row: LabResultRow = {
           ...result,
           type_id: line.type_id,
+          partiyaNo: line.partiya_no,
           owner_id: order.owner_id,
           plate: order.plate,
           declared_qty: line.declared_qty,

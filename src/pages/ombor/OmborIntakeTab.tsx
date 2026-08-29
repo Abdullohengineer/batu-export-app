@@ -20,6 +20,7 @@ import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { FormField, TextInput } from '../../components/ui/FormField'
 
 // Tara correction (2026-08-15) -- tara is the only figure Ombor enters
@@ -262,6 +263,7 @@ export function OmborIntakeTab() {
               <Card key={line.serial}>
                 <div className="flex items-center gap-2">
                   <SerialChip>{line.serial}</SerialChip>
+                  <PartiyaBadge partiyaNo={line.partiyaNo} />
                   <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                     {ownerName(line.owner_id)} · {typeName(line.type_id)}
                   </span>
@@ -333,6 +335,7 @@ export function OmborIntakeTab() {
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <SerialChip variant="emphasized">{line.serial}</SerialChip>
+                    <PartiyaBadge partiyaNo={line.partiyaNo} />
                     <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                       {ownerName(line.owner_id)} · {typeName(line.type_id)}
                     </span>

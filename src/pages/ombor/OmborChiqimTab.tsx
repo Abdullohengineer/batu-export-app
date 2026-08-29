@@ -18,6 +18,7 @@ import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { Stat } from '../../components/ui/Stat'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { TextInput } from '../../components/ui/FormField'
 import type { Tone } from '../../components/ui/tokens'
@@ -755,7 +756,8 @@ export function OmborChiqimTab() {
                                       <p className="text-xs text-slate-400">Manba seriya belgilanmagan.</p>
                                     ) : (
                                       line.rawSerialPool.map((serial) => {
-                                        const available = rawSerials.find((s) => s.serial === serial)?.available ?? null
+                                        const poolSerial = rawSerials.find((s) => s.serial === serial) ?? null
+                                        const available = poolSerial?.available ?? null
                                         const selected = composer.serial === serial
                                         return (
                                           <button
@@ -769,6 +771,7 @@ export function OmborChiqimTab() {
                                             }`}
                                           >
                                             <span className="font-mono">{selected ? '✓ ' : ''}{serial}</span>
+                                            <PartiyaBadge partiyaNo={poolSerial?.partiyaNo ?? null} />
                                             <span className="ml-1.5">{available === null ? '—' : `${Math.round(available).toLocaleString()} kg mavjud`}</span>
                                           </button>
                                         )
@@ -842,6 +845,7 @@ export function OmborChiqimTab() {
                                         <li key={d.key} className="flex items-center justify-between gap-2 text-xs">
                                           <span className="min-w-0 flex-1 truncate">
                                             <span className="font-mono text-slate-700 dark:text-slate-300">{d.serial}</span>
+                                            <PartiyaBadge partiyaNo={rawSerials.find((s) => s.serial === d.serial)?.partiyaNo ?? null} />
                                             {d.outOfPool && (
                                               <span className="ml-1 font-medium text-amber-600 dark:text-amber-400">⚠ pool tashqarisida</span>
                                             )}

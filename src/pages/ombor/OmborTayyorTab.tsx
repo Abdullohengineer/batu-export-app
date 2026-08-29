@@ -7,13 +7,16 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useMoykaOutput, type OutputSerial } from '../../lib/useMoykaOutput'
 import { sortByDateDesc } from '../../lib/sortByDate'
 import { formatDateTime } from '../../lib/formatDate'
+import { computeLossDisplay, formatLossKg } from '../../lib/formatLoss'
 import { ReceiveFromMoykaForm } from './ReceiveFromMoykaForm'
 import type { ReceiptValues } from './FinishedReceiptForm'
+import { Barcode2Display } from './Barcode2Display'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 // §5.3 Tayyor Mahsulot: single-tile receive picker (2026-08-28 — see
 // DECISIONS.md "Section 3 single-tile receive picker"). Replaces the old
@@ -62,6 +65,13 @@ export function OmborTayyorTab() {
   const { serials, receivedSerials, loading, refresh } = useMoykaOutput()
   const [tileOpen, setTileOpen] = useState(false)
   const [expandedSerial, setExpandedSerial] = useState<string | null>(null)
+  // Yakunlash confirm (2026-08-29, Prompt 10 — see DECISIONS.md "Serial
+  // close-out (Yakunlash)"): which Window 2 row (if any) is showing its
+  // inline confirm. Not a modal — this app has none; matches the existing
+  // inline-expand idiom every other confirm-shaped action here already
+  // uses (NewStockToMoykaForm's own success note, etc.).
+  const [confirmingClose, setConfirmingClose] = useState<string | null>(null)
+  const [closeError, setCloseError] = useState<string | null>(null)
 
   function typeName(id: string) {
     return productTypes.find((t) => t.id === id)?.name ?? id
@@ -113,6 +123,31 @@ export function OmborTayyorTab() {
       if (noteErr) throw noteErr
     }
 
+    // Natural close (2026-08-29, Prompt 10 — see DECISIONS.md "Serial
+    // close-out (Yakunlash)"): inline, right after the write that can bring
+    // a serial's balance to 0, not a trigger — the code path that writes
+    // finished_pallets is exactly where this belongs, so a future reader
+    // finds it here rather than in an implicit DB-side hook. Silent no-op
+    // (server-side) for every ordinary partial receive; only actually
+    // flips closed_at the moment this save happens to be the one that
+    // settles the serial.
+    const { error: closeErr } = await supabase.rpc('close_wash_cycle_if_settled', { p_serial: serial.serial })
+    if (closeErr) throw closeErr
+
+    refresh()
+  }
+
+  // Manual close (Yakunlash) — see this file's header + DECISIONS.md
+  // "Serial close-out (Yakunlash)". Role-gated server-side (Ombor only,
+  // security definer); this is just the confirm-dialog plumbing.
+  async function handleYakunlash(serial: string) {
+    setCloseError(null)
+    const { error } = await supabase.rpc('close_wash_cycle_serial', { p_serial: serial })
+    if (error) {
+      setCloseError(error.message)
+      return
+    }
+    setConfirmingClose(null)
     refresh()
   }
 
@@ -151,6 +186,17 @@ export function OmborTayyorTab() {
           {receivedSerials.map((s) => {
             const expanded = expandedSerial === s.serial
             const sortedPallets = sortByDateDesc(s.pallets, (p) => p.created_at)
+            const loss = computeLossDisplay(s.sent, s.received, s.closedAt)
+            const residualKg = s.sent - s.received
+            // Yakunlash button: visible on the COLLAPSED row (below the
+            // toggle, not inside the expanded pallet list — it's an action
+            // on the serial, not on individual pallets, per the task's own
+            // placement requirement). Gated exactly per spec: still open,
+            // a real residual to book, and lab-passed (closing a serial
+            // that never passed makes no sense — same reasoning as the
+            // server-side RPC's own check).
+            const canYakunlash = s.closedAt === null && s.labStatus === 'passed' && residualKg > 0
+            const confirming = confirmingClose === s.serial
             return (
               <Card key={s.serial} padding="compact">
                 <button
@@ -163,17 +209,64 @@ export function OmborTayyorTab() {
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                     {ownerName(s.owner_id)} · {typeName(s.type_id)}
                   </span>
-                  <span className="shrink-0 text-sm text-slate-500 dark:text-slate-400">
-                    {Math.round(s.received).toLocaleString()} kg · {s.pallets.length} ta pallet
+                  <span className="shrink-0 text-right text-sm text-slate-500 dark:text-slate-400">
+                    <span className="block">
+                      Moykada {Math.round(loss.moykadaKg).toLocaleString()} kg · Yo'qotish{' '}
+                      {loss.yoqotishKg === null ? '—' : formatLossKg(loss.yoqotishKg)}
+                    </span>
+                    <span className="block">{s.pallets.length} ta pallet</span>
                   </span>
                   <span className="shrink-0 text-slate-400">{expanded ? '▲' : '▼'}</span>
                 </button>
+
+                {canYakunlash && !confirming && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCloseError(null)
+                      setConfirmingClose(s.serial)
+                    }}
+                    className="mt-2 rounded-md border border-amber-300 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                  >
+                    Yakunlash
+                  </button>
+                )}
+                {confirming && (
+                  <div className="mt-2 space-y-2 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950/30">
+                    <p className="text-sm text-slate-700 dark:text-slate-300">
+                      Bu seriya uchun {Math.round(residualKg).toLocaleString()} kg yo'qotish sifatida qayd etiladi. Davom
+                      etasizmi?
+                    </p>
+                    {closeError && <StatusNote tone="problem">{closeError}</StatusNote>}
+                    <div className="flex gap-2">
+                      <Button variant="primary" size="md" onClick={() => handleYakunlash(s.serial)}>
+                        Yakunlash
+                      </Button>
+                      <Button variant="ghost" size="md" onClick={() => setConfirmingClose(null)}>
+                        Bekor qilish
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {expanded && (
                   <ul className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-sm dark:border-slate-700">
                     {sortedPallets.map((p) => (
-                      <li key={p.barcode2} className="text-slate-600 dark:text-slate-400">
-                        <span className="font-mono">{p.barcode2}</span> · {calibreLabel(p.calibre_id)} ·{' '}
-                        {p.weight_kg.toLocaleString()} kg · {formatDateTime(p.created_at)}
+                      <li key={p.barcode2} className="flex items-center justify-between gap-2">
+                        <span className="text-slate-600 dark:text-slate-400">
+                          <span className="font-mono">{p.barcode2}</span> · {calibreLabel(p.calibre_id)} ·{' '}
+                          {p.weight_kg.toLocaleString()} kg · {formatDateTime(p.created_at)}
+                        </span>
+                        <Barcode2Display
+                          data={{
+                            barcode2: p.barcode2,
+                            serial: s.serial,
+                            type: typeName(s.type_id),
+                            calibre: calibreLabel(p.calibre_id),
+                            weightKg: p.weight_kg,
+                            owner: ownerName(s.owner_id),
+                          }}
+                        />
                       </li>
                     ))}
                   </ul>

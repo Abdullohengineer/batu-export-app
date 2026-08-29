@@ -62,10 +62,13 @@
 --
 -- REBASED, do not drop these two lines: `serial_base.closed_at` and the
 -- `AND serial_base.closed_at IS NOT NULL` gate in finished_serials come
--- from migration `20260829090543_yakunlash_realized_loss_split`, which was
--- applied to the live project by another session WHILE this fix was being
--- written and is not present in this repo's migrations folder. This
--- rewrite carries that change forward verbatim rather than reverting it.
+-- from `0101_yakunlash_realized_loss_split.sql`, which was applied to the
+-- live project by another session WHILE this fix was being written. This
+-- rewrite carries that change forward verbatim rather than reverting it,
+-- which is why this migration must stay ordered AFTER 0101. Verified by
+-- diffing 0101's own `yield_rows`, `rahbar_stock_snapshot` and
+-- `get_serial_passport` bodies against the three rewritten here: the only
+-- differences are the `bekor_qilindi` filters, nothing of 0101's is lost.
 -- One consequence worth knowing: no wash_cycle currently has closed_at
 -- set (0 of 19), so yield_rows returns ZERO rows on live right now and the
 -- double count below is masked rather than visible. It is still a real bug

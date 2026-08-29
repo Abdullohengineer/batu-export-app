@@ -32,6 +32,10 @@ export interface OutputSerial {
   // by OmborTayyorTab so every pallet packed out of it gets a note
   // recording its old-stock lineage.
   isMinted: boolean
+  closedAt: string | null // wash_cycles.closed_at (2026-08-29, Prompt 10 — see
+  // DECISIONS.md "Serial close-out (Yakunlash)"). null = still open (unrealized
+  // gap, Moykada); set = closed (realized, Yo'qotish). Drives isInMoyka's third
+  // param and computeLossDisplay everywhere this hook's data reaches.
   sent: number // Yuborilgan — Σ moyka_sends.qty_kg (derived)
   received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void (derived).
   // Deliberately still counts 'consumed' pallets (only 'bekor_qilindi' is skipped):
@@ -146,14 +150,16 @@ export function useMoykaOutput() {
         .select('serial, order_id, type_id, partiya_no')
         .in('serial', serialList)
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
-      const [{ data: orders }, { data: types }] = await Promise.all([
+      const [{ data: orders }, { data: types }, { data: cycles }] = await Promise.all([
         supabase.from('kirim_orders').select('order_id, owner_id, origin').in('order_id', orderIds),
         supabase.from('product_types').select('id, category_id'),
+        supabase.from('wash_cycles').select('serial, closed_at').in('serial', serialList),
       ])
 
       const lineBySerial = new Map((kLines ?? []).map((l) => [l.serial, l]))
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
       const categoryByType = new Map((types ?? []).map((t) => [t.id, t.category_id]))
+      const closedAtBySerial = new Map((cycles ?? []).map((c) => [c.serial, c.closed_at as string | null]))
 
       // Shared join/derivation for both windows — avoids fetching or
       // computing sent/received/pallets twice for the same serial shape.
@@ -175,6 +181,7 @@ export function useMoykaOutput() {
           partiyaNo: line.partiya_no,
           owner_id: order.owner_id,
           isMinted: order.origin === 'internal_reprocess',
+          closedAt: closedAtBySerial.get(serial) ?? null,
           sent,
           received,
           pallets: serialPallets,
@@ -201,6 +208,7 @@ export function useMoykaOutput() {
             partiyaNo: base.partiyaNo,
             owner_id: base.owner_id,
             isMinted: base.isMinted,
+            closedAt: base.closedAt,
             labStatus: labStatusBySerial.get(serial) ?? 'untested',
             sent: base.sent,
             received: base.received,
@@ -237,7 +245,7 @@ export function useMoykaOutput() {
   // anything, balance irrelevant, so a fully-packed serial (received =
   // sent, in-Moyka balance 0) stays visible for the record instead of
   // disappearing the moment packing catches up.
-  const serials = useMemo(() => allSerials.filter((s) => isInMoyka(s.sent, s.received)), [allSerials])
+  const serials = useMemo(() => allSerials.filter((s) => isInMoyka(s.sent, s.received, s.closedAt)), [allSerials])
   const receivedSerials = useMemo(() => allSerials.filter((s) => s.received > 0), [allSerials])
 
   return { serials, receivedSerials, loading, refresh }

@@ -32,16 +32,14 @@ interface LineRow {
   // Declared net kg -- always Menejer's own number now (§5.4 FIFO dispatch,
   // 2026-08-28, see DECISIONS.md "CHIQIM quantity-based dispatch: FIFO
   // cascade, consumption table"). No pallet picker any more: a
-  // finished/old_washed row is quantity + declared tare, exactly like every
-  // other line kind already was, and Ombor's own loaded-kg entry at
-  // finalization is what the FIFO cascade actually attributes against —
-  // this is a declared figure, never overwritten by that (CLAUDE.md
-  // "declared vs actual are separate persisted fields").
+  // finished/old_washed row is quantity-only, exactly like every other line
+  // kind already was, and Ombor's own loaded-kg entry at finalization is
+  // what the FIFO cascade actually attributes against — this is a declared
+  // figure, never overwritten by that (CLAUDE.md "declared vs actual are
+  // separate persisted fields"). No tara — Menejer never enters box mass;
+  // that's Ombor's field, at KIRIM intake and raw-dispatch load only (see
+  // DECISIONS.md "Menejer CHIQIM: quantity-only entry, no tara").
   qty: string
-  // Declared tare (finished/old_washed only) -- additive to qty (net), per
-  // migration 0087's chiqim_lines.declared_tara_kg. NULL/unused for every
-  // other kind.
-  taraKg: string
   // Raw dispatch pool — every serial Menejer names as a SOURCE for this
   // line, persisted to chiqim_line_raw_serials on submit. Unlike the old
   // finished/old_washed picker this has no relationship to qty — "these are
@@ -50,7 +48,7 @@ interface LineRow {
 }
 
 function newRow(): LineRow {
-  return { key: crypto.randomUUID(), kind: 'finished', typeId: '', calibreId: '', qty: '', taraKg: '', rawSerialPool: new Set() }
+  return { key: crypto.randomUUID(), kind: 'finished', typeId: '', calibreId: '', qty: '', rawSerialPool: new Set() }
 }
 
 interface SavedLine {
@@ -60,7 +58,6 @@ interface SavedLine {
   calibreId: string
   rawSerialPool: string[]
   qtyKg: number | null
-  taraKg: number | null
 }
 
 const PALLET_KINDS: LineKind[] = ['finished', 'old_washed']
@@ -74,15 +71,24 @@ const OLD_STOCK_KINDS: LineKind[] = ['old_washed', 'old_kn', 'old_raw']
 // §5.4 FIFO dispatch (2026-08-28, reverses the 2026-07-26/27 "Option B"
 // pallet-reservation design — see DECISIONS.md "CHIQIM quantity-based
 // dispatch: FIFO cascade, consumption table"): a finished/old_washed line
-// is quantity-only again (calibre + declared net kg + declared tare kg),
-// same shape as every other line kind — no pallet picker, no reservation.
-// Which specific finished_pallets rows actually get consumed is decided at
-// Ombor's finalize click, by FIFO over receipt date (attribute_chiqim_line_
-// fifo, migrations 0087/0089), never here. The feasibility hint below is a
-// soft warning only (never blocks) against the SAME canonical availability
+// is quantity-only again (calibre + declared net kg), same shape as every
+// other line kind — no pallet picker, no reservation. Which specific
+// finished_pallets rows actually get consumed is decided at Ombor's
+// finalize click, by FIFO over receipt date (attribute_chiqim_line_fifo,
+// migrations 0087/0089), never here. The feasibility hint below is a soft
+// warning only (never blocks) against the SAME canonical availability
 // balance that FIFO draws down against at finalization — it can go stale
 // between form-load and finalize (another request claims the stock first);
 // FIFO's own hard-fail-if-insufficient is the real guard for that race.
+//
+// No tara (2026-08-29, Prompt 11 — see DECISIONS.md "Menejer CHIQIM:
+// quantity-only entry, no tara"). `chiqim_lines.declared_tara_kg` (added
+// alongside this very redesign, 0087) was a mistake carried over from
+// KIRIM/raw-dispatch's own box-mass fields — Menejer never weighs a box;
+// tara is Ombor's own entry, at KIRIM intake (`storage_intake.box_mass_kg`)
+// and at raw-dispatch load (`raw_dispatch_lines.box_mass_kg`) only. Dropped
+// outright (migration 0103) rather than left unused — confirmed zero real
+// finished/old_washed/old_raw rows existed yet, so nothing to migrate.
 export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   const { profile } = useAuth()
   const { owners } = useOwners()
@@ -190,7 +196,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
     setError(null)
 
     const validRows = rows.filter((r) => {
-      if (PALLET_KINDS.includes(r.kind)) return r.typeId && r.calibreId && parseFloat(r.qty) > 0 && parseFloat(r.taraKg) >= 0
+      if (PALLET_KINDS.includes(r.kind)) return r.typeId && r.calibreId && parseFloat(r.qty) > 0
       if (POOL_KINDS.includes(r.kind)) return r.typeId && r.rawSerialPool.size > 0
       return r.typeId // old_kn — no calibre, no pool, just a type against the one pool that owner/type has
     })
@@ -232,7 +238,6 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
         calibre_id: PALLET_KINDS.includes(r.kind) ? r.calibreId : null,
         line_kind: r.kind,
         qty_kg: r.qty ? parseFloat(r.qty) : null,
-        declared_tara_kg: PALLET_KINDS.includes(r.kind) ? parseFloat(r.taraKg) : null,
       }))
       const { data: lines, error: lineErr } = await supabase.from('chiqim_lines').insert(lineInserts).select('id')
       if (lineErr) throw lineErr
@@ -260,7 +265,6 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
           calibreId: r.calibreId,
           rawSerialPool: [...r.rawSerialPool],
           qtyKg: r.qty ? parseFloat(r.qty) : null,
-          taraKg: PALLET_KINDS.includes(r.kind) && r.taraKg ? parseFloat(r.taraKg) : null,
         })),
       )
       setPlate('')
@@ -357,7 +361,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => updateRow(row.key, { kind: 'finished', rawSerialPool: new Set(), qty: '', taraKg: '' })}
+                  onClick={() => updateRow(row.key, { kind: 'finished', rawSerialPool: new Set(), qty: '' })}
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                     row.kind === 'finished'
                       ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
@@ -368,7 +372,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => updateRow(row.key, { kind: 'raw', calibreId: '', qty: '', taraKg: '' })}
+                  onClick={() => updateRow(row.key, { kind: 'raw', calibreId: '', qty: '' })}
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                     row.kind === 'raw'
                       ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
@@ -381,7 +385,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   type="button"
                   onClick={() =>
                     !OLD_STOCK_KINDS.includes(row.kind) &&
-                    updateRow(row.key, { kind: 'old_washed', rawSerialPool: new Set(), qty: '', taraKg: '' })
+                    updateRow(row.key, { kind: 'old_washed', rawSerialPool: new Set(), qty: '' })
                   }
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                     OLD_STOCK_KINDS.includes(row.kind)
@@ -409,7 +413,6 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                             calibreId: subKind === 'old_washed' ? row.calibreId : '',
                             rawSerialPool: new Set(),
                             qty: '',
-                            taraKg: '',
                           })
                         }
                         className={`rounded px-1.5 py-0.5 text-xs font-medium ${
@@ -424,11 +427,26 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   </span>
                 )}
               </div>
+              {/* Mavjud reference (2026-08-29, Prompt 11) — a plain,
+                  read-only reminder of the same canonical availability
+                  balance the feasibility hint below warns against, shown
+                  proactively above the qty input rather than only after
+                  Menejer types something too high. Never gates submit — an
+                  over-target line is still allowed, same "never blocks"
+                  philosophy as the hint itself. finished/old_washed only:
+                  raw/old_raw already show "X kg mavjud" per-serial on each
+                  source button below, and old_kn shows its own pool balance
+                  in its own note — neither needed a second copy here. */}
+              {PALLET_KINDS.includes(row.kind) && row.typeId && row.calibreId && (
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Mavjud: {Math.round(availableKg(row)).toLocaleString()} kg
+                </p>
+              )}
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <select
                   required
                   value={row.typeId}
-                  onChange={(e) => updateRow(row.key, { typeId: e.target.value, rawSerialPool: new Set(), qty: '', taraKg: '' })}
+                  onChange={(e) => updateRow(row.key, { typeId: e.target.value, rawSerialPool: new Set(), qty: '' })}
                   className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="" disabled>
@@ -467,22 +485,6 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   onChange={(e) => updateRow(row.key, { qty: e.target.value })}
                   className="w-36"
                 />
-                {/* Declared tara (§5.4 FIFO dispatch, 2026-08-28) — additive
-                    to the net kg above, chiqim_lines.declared_tara_kg
-                    (migration 0087). finished/old_washed only, same as
-                    calibre. */}
-                {PALLET_KINDS.includes(row.kind) && (
-                  <TextInput
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    required
-                    placeholder="Tara (kg)"
-                    value={row.taraKg}
-                    onChange={(e) => updateRow(row.key, { taraKg: e.target.value })}
-                    className="w-32"
-                  />
-                )}
                 {rows.length > 1 && (
                   <IconButton label="Qatorni o'chirish" tone="danger" onClick={() => removeRow(row.key)}>
                     ✕
@@ -591,7 +593,6 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
               </span>
               <span className="font-mono text-slate-900 dark:text-slate-100">
                 {line.qtyKg === null ? '—' : `${line.qtyKg.toLocaleString()} kg`}
-                {line.taraKg !== null && ` (+${line.taraKg.toLocaleString()} kg tara)`}
               </span>
             </div>
           ))}

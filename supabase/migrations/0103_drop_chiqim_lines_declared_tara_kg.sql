@@ -1,0 +1,14 @@
+-- Prompt 11: Menejer never enters tara -- box mass belongs to Ombor, at
+-- KIRIM intake (storage_intake.box_mass_kg) and at raw-dispatch load
+-- (raw_dispatch_lines.box_mass_kg) only. chiqim_lines.declared_tara_kg
+-- (added 0087, alongside the FIFO quantity-only dispatch redesign) was a
+-- mistake -- confirmed before dropping: 0 real finished/old_washed/old_raw
+-- rows exist yet (only raw/old_kn lines have ever been created, neither of
+-- which ever wrote this column), and no SQL function or view reads it
+-- (checked pg_proc.prosrc and pg_views.definition directly for the column
+-- name -- zero hits). Written only by ChiqimForm.tsx, displayed only by
+-- useOmborChiqimRequests.ts/OmborChiqimTab.tsx -- both updated in the same
+-- commit as this migration. No RLS policy on chiqim_lines references this
+-- column either (checked pg_policies -- menejer_writes' own WITH CHECK is
+-- role-only).
+alter table public.chiqim_lines drop column declared_tara_kg;

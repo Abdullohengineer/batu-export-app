@@ -15,13 +15,6 @@ export interface ChiqimLine {
   line_kind: 'finished' | 'raw' | 'old_washed' | 'old_kn' | 'old_raw'
   calibre_id: string | null
   qty_kg: number | null
-  // §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
-  // dispatch: FIFO cascade, consumption table") — Menejer's declared tare
-  // for a finished/old_washed line (migration 0087). Null for every other
-  // kind. Declared only — never overwritten by Ombor's own loaded-kg entry
-  // at finalization (CLAUDE.md "declared vs actual are separate persisted
-  // fields").
-  declared_tara_kg: number | null
   // Raw dispatch pool -- every serial Menejer pooled for this line. Ombor's
   // draw UI reads this to offer per-serial draws; a draw against a serial
   // NOT in this list is the "out of pool" warning path (requirement 7).
@@ -59,7 +52,9 @@ export interface ChiqimRequest {
 // deferred-commit pattern the raw/old_kn draw UI already uses) and
 // finalize_chiqim_dispatch (migration 0087) FIFO-attributes it against
 // finished_pallets by receipt date — this hook has nothing to fetch for
-// that beyond the line's own declared qty_kg/declared_tara_kg.
+// that beyond the line's own declared qty_kg. No tara (2026-08-29, Prompt
+// 11, see DECISIONS.md "Menejer CHIQIM: quantity-only entry, no tara") —
+// declared_tara_kg was dropped from chiqim_lines entirely (migration 0103).
 export function useOmborChiqimRequests() {
   const [open, setOpen] = useState<ChiqimRequest[]>([])
   const [finished, setFinished] = useState<ChiqimRequest[]>([])
@@ -76,7 +71,7 @@ export function useOmborChiqimRequests() {
           // reason to ever see one.
           .select(
             'id, request_date, plate, driver, owner_id, ombor_finished_at, ' +
-              'chiqim_lines(id, type_id, calibre_id, line_kind, qty_kg, declared_tara_kg, ' +
+              'chiqim_lines(id, type_id, calibre_id, line_kind, qty_kg, ' +
               'chiqim_line_raw_serials(serial))',
           )
           .is('voided_at', null),
@@ -93,7 +88,6 @@ export function useOmborChiqimRequests() {
         calibre_id: string | null
         line_kind: 'finished' | 'raw' | 'old_washed' | 'old_kn' | 'old_raw'
         qty_kg: number | null
-        declared_tara_kg: number | null
         chiqim_line_raw_serials: { serial: string }[] | null
       }
       type RawRequest = {
@@ -122,7 +116,6 @@ export function useOmborChiqimRequests() {
             calibre_id: l.calibre_id,
             line_kind: l.line_kind,
             qty_kg: l.qty_kg,
-            declared_tara_kg: l.declared_tara_kg,
             rawSerialPool: (l.chiqim_line_raw_serials ?? []).map((s) => s.serial),
           })),
           gateStage1CompletedAt: weighing?.stage1_completed_at ?? null,

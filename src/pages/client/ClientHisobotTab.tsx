@@ -80,6 +80,9 @@ function TotalsBar({ totals }: { totals: ClientReportTotals }) {
           <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.otgruzkaSyroyeKg)}</span>
         </span>
         <span className="text-slate-700 dark:text-slate-300">
+          Мойка: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.moykadaKg)}</span>
+        </span>
+        <span className="text-slate-700 dark:text-slate-300">
           Убыток:{' '}
           <span className="font-medium text-slate-900 dark:text-slate-100">
             {formatLossKg(totals.ubytokKg, 'кг')}
@@ -234,6 +237,7 @@ export function ClientHisobotTab() {
                 <th className="px-3 py-2 text-right">Остаток (сырьё), кг</th>
                 <th className="px-3 py-2 text-right">Отгрузка (готовый продукт), кг</th>
                 <th className="px-3 py-2 text-right">Отгрузка (сырьё) — возврат, кг</th>
+                <th className="px-3 py-2 text-right">Мойка, кг</th>
                 <th className="px-3 py-2 text-right">Убыток, кг</th>
                 <th className="px-3 py-2" />
               </tr>
@@ -241,7 +245,7 @@ export function ClientHisobotTab() {
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={14} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={15} className="px-3 py-6 text-center text-slate-400">
                     Ничего не найдено
                   </td>
                 </tr>
@@ -286,6 +290,7 @@ export function ClientHisobotTab() {
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.ostatokSyroyeKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.otgruzkaGotoviyKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.otgruzkaSyroyeKg)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{kg(row.moykadaKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{row.ubytokKg === null ? '—' : formatLossKg(row.ubytokKg, 'кг')}</td>
                     <td className="px-3 py-2">
                       {clickable && (

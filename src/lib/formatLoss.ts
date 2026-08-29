@@ -33,3 +33,35 @@ export function formatLossPct(signedPct: number): string {
   if (signedPct < 0) return `+${Math.abs(signedPct)}%`
   return '0%'
 }
+
+// Realized-vs-unrealized loss split (2026-08-29, Prompt 10, see DECISIONS.md
+// "Serial close-out (Yakunlash) + realized-vs-unrealized loss"). Before
+// this, "Moykada" (sent - received, floored) and "Yo'qotish" (sent -
+// received, signed) were the SAME gap read two different ways at once --
+// correct under 0086's "no serial ever closes" model (every gap was
+// genuinely still in-process, `lossKg` on an open serial was never anything
+// but a to-date snapshot), but conflated once Yakunlash reintroduces a real
+// closure event: an OPEN serial's gap is still-in-process (Moykada, not a
+// loss yet); a CLOSED serial's gap is booked loss (Yo'qotish), and Moykada
+// reads exactly 0 -- the material isn't "still in Moyka" once its serial
+// has been declared done.
+//
+// This is the canonical TS-side split for the few screens that already hold
+// raw sent/received/closedAt from useMoykaOutput (OmborTayyorTab's Window 2,
+// OmborMoykaTab's Window 2). Every SQL-sourced payload (passport, Hisobot,
+// Yield, client report, Rahbar) gets pre-split fields computed by the
+// identical rule server-side (wash_cycles.closed_at gated, same two
+// branches) -- this helper is not re-called there, there is nothing left
+// for it to compute once the fields already arrive split.
+export interface LossDisplay {
+  moykadaKg: number
+  yoqotishKg: number | null
+  isRealized: boolean
+}
+
+export function computeLossDisplay(sent: number, received: number, closedAt: string | null): LossDisplay {
+  if (closedAt === null) {
+    return { moykadaKg: Math.max(0, sent - received), yoqotishKg: null, isRealized: false }
+  }
+  return { moykadaKg: 0, yoqotishKg: sent - received, isRealized: true }
+}

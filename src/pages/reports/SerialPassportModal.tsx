@@ -632,14 +632,20 @@ function PassportBody({
                 <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Moykada: {cycle.inMoykaKg.toLocaleString()} kg</div>
                 <div
                   className={
-                    cycle.lossKg > 0
-                      ? 'text-xs font-medium text-red-600 dark:text-red-400'
-                      : cycle.lossKg < 0
-                        ? 'text-xs font-medium text-amber-600 dark:text-amber-400'
-                        : 'text-xs font-medium text-slate-500 dark:text-slate-400'
+                    cycle.lossKg === null
+                      ? 'text-xs font-medium text-slate-400 dark:text-slate-500'
+                      : cycle.lossKg > 0
+                        ? 'text-xs font-medium text-red-600 dark:text-red-400'
+                        : cycle.lossKg < 0
+                          ? 'text-xs font-medium text-amber-600 dark:text-amber-400'
+                          : 'text-xs font-medium text-slate-500 dark:text-slate-400'
                   }
                 >
-                  Yo'qotish: {formatLossKg(cycle.lossKg)}
+                  {/* Realized-vs-unrealized split (2026-08-29, Prompt 10 --
+                      DECISIONS.md "Serial close-out (Yakunlash)"): dash
+                      while still open (nothing booked yet), the signed
+                      figure once Yakunlash (manual or natural) closes it. */}
+                  Yo'qotish: {cycle.lossKg === null ? '—' : formatLossKg(cycle.lossKg)}
                 </div>
               </div>
               <div className={`mt-1 ${label}`}>Yuborilgan: {cycle.sentKg.toLocaleString()} kg</div>

@@ -115,9 +115,20 @@ export function ClientSerialSummaryModal({ serial, onClose }: { serial: string; 
                     <td className="py-1 text-slate-600 dark:text-slate-400">Кондитерский (КН)</td>
                     <td className="py-1 text-right tabular-nums text-slate-900 dark:text-slate-100">{kg(summary.knKg)}</td>
                   </tr>
+                  {/* Realized-vs-unrealized split (2026-08-29, Prompt 10 --
+                      DECISIONS.md "Serial close-out (Yakunlash)"): Мойка is
+                      the live unrealized balance (0 once closed); Убыток is
+                      the booked figure, dash while still open -- the client
+                      never sees an in-limbo loss. */}
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <td className="py-1 text-slate-600 dark:text-slate-400">Мойка</td>
+                    <td className="py-1 text-right tabular-nums text-slate-900 dark:text-slate-100">{kg(summary.moykadaKg)}</td>
+                  </tr>
                   <tr>
                     <td className="py-1 font-medium text-slate-700 dark:text-slate-300">Убыток</td>
-                    <td className="py-1 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">{formatLossKg(summary.lossKg, 'кг')}</td>
+                    <td className="py-1 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">
+                      {summary.lossKg === null ? '—' : formatLossKg(summary.lossKg, 'кг')}
+                    </td>
                   </tr>
                 </tbody>
               </table>

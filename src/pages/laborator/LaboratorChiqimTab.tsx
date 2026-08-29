@@ -22,6 +22,17 @@ import { StatusPill } from '../../components/ui/StatusPill'
 
 const VERDICT_LABEL: Record<string, string> = { o_tdi: "O'tdi", qayta_yuvish: 'Qayta yuvish' }
 
+// KIRIM-stage reading, inline (2026-08-29, Prompt 6) — read-only, "—" (not
+// "0") when this serial never had a KIRIM lab pass (e.g. an old-stock
+// re-wash mint). Shared by all three windows below.
+function KirimReadingLine({ moisturePct, so2MgKg }: { moisturePct: number | null; so2MgKg: number | null }) {
+  return (
+    <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+      Kirim natijasi: {moisturePct !== null ? `${moisturePct}%` : '—'} · SO₂ {so2MgKg !== null ? `${so2MgKg} ppm` : '—'}
+    </div>
+  )
+}
+
 // §5.5.3 Laborator CHIQIM — decisive check, hard-gates BOTH Barcode #2
 // assignment (OmborTayyorTab.tsx, since 2026-07-28 Laborator v2) and
 // dispatch (useAvailableFinishedStock/chiqimScan.ts). Three windows: Tahlil
@@ -214,6 +225,7 @@ export function LaboratorChiqimTab() {
                     <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
                       {item.sentKg.toLocaleString()} kg · yuborilgan {formatDate(item.sentDate)}
                     </div>
+                    <KirimReadingLine moisturePct={item.kirimMoisturePct} so2MgKg={item.kirimSo2MgKg} />
                     {item.rejected && (
                       <div className="mt-1 text-sm font-medium text-red-700 dark:text-red-400">
                         Rad etildi — qayta tekshirish kerak
@@ -273,6 +285,7 @@ export function LaboratorChiqimTab() {
               <div className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
                 Namligi {row.moisture_pct}% kiritildi · sera hali yo'q
               </div>
+              <KirimReadingLine moisturePct={row.kirimMoisturePct} so2MgKg={row.kirimSo2MgKg} />
               <div className="mt-2 space-y-2">
                 {/* Classification, correctable here too (2026-08-15) -- see
                     LaboratorKirimTab.tsx's identical block. */}
@@ -363,6 +376,7 @@ export function LaboratorChiqimTab() {
                     {formatDate(row.sample_date)}
                     {row.sampledPallet ? ` · namuna manbai: ${row.sampledPallet}` : ''}
                   </div>
+                  <KirimReadingLine moisturePct={row.kirimMoisturePct} so2MgKg={row.kirimSo2MgKg} />
                   {row.note && <div>Qayd: {row.note}</div>}
                   <GatePhoto path={row.sample_photo} label="Namuna rasmi" bucket="lab-photos" />
                   {editingFinished !== row.id && (

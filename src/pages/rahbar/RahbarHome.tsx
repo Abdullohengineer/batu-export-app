@@ -3,6 +3,7 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarStockSnapshot, useRahbarDashboardLedger } from '../../lib/useRahbarDashboardV2'
 import { SCOPE_LABEL, type ZaxiraScope, type ByCalibreTypeRow } from '../../lib/rahbarDashboardV2'
+import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 
@@ -519,7 +520,7 @@ export function RahbarHome() {
               <div>
                 <LedgerRow label="Kalibrli" value={`${fmt(ledger.moyka.calibreKg)} kg`} />
                 <LedgerRow label="Konditirskiy" value={`${fmt(ledger.moyka.konditirskiyKg)} kg`} />
-                <LedgerRow label="Yo'qotish" value={`${fmt(ledger.moyka.lossKg)} kg · ${ledger.moyka.lossPct}%`} sign="−" tone="loss" />
+                <LedgerRow label="Yo'qotish" value={`${formatLossKg(ledger.moyka.lossKg)} · ${formatLossPct(ledger.moyka.lossPct)}`} sign="−" tone="loss" />
                 <LedgerSubtotal label="Yuvib tugallangan" value={`${fmt(ledger.moyka.processedKg)} kg`} />
                 <div className="mt-3">
                   <LedgerRow label="Jami olib ketilgan" value={`${fmt(ledger.finished.dispatchedKg)} kg`} sign="−" tone="departed" />
@@ -610,7 +611,7 @@ export function RahbarHome() {
               {processedKn.map((r) => (
                 <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={processedMax} color={C.kn} pctOfLabel={ledger.moyka.processedKg > 0 ? `${Math.round((r.kg / ledger.moyka.processedKg) * 100)}%` : undefined} />
               ))}
-              <Bar label="Yo'qotish" value={Math.max(0, ledger.moyka.lossKg)} max={processedMax} color={C.loss} pctOfLabel={`${ledger.moyka.lossPct}%`} />
+              <Bar label="Yo'qotish" value={Math.max(0, ledger.moyka.lossKg)} max={processedMax} color={C.loss} pctOfLabel={formatLossPct(ledger.moyka.lossPct)} />
             </div>
             <p className="mt-3 text-xs text-slate-400">
               Turlar tugmasi orqali bir yoki bir nechta mahsulot turini tanlash mumkin — hech narsa tanlanmasa hammasi ko'rsatiladi. Konditirskiy kalibrli qatorlarga qo'shilmagan, alohida qator.

@@ -14,6 +14,7 @@ import {
   type ClientReportTotals,
 } from '../../lib/clientPortalReport'
 import { formatDate } from '../../lib/formatDate'
+import { formatLossKg } from '../../lib/formatLoss'
 import { defaultDateRange } from '../../lib/dateRange'
 import { ClientSerialSummaryModal } from './ClientSerialSummaryModal'
 
@@ -81,7 +82,7 @@ function TotalsBar({ totals }: { totals: ClientReportTotals }) {
         <span className="text-slate-700 dark:text-slate-300">
           Убыток:{' '}
           <span className="font-medium text-slate-900 dark:text-slate-100">
-            {kg(totals.ubytokKg)}
+            {formatLossKg(totals.ubytokKg, 'кг')}
             {totals.ubytokSerialCount < totals.serialCount && totals.serialCount > 0
               ? ` (по ${totals.ubytokSerialCount} из ${totals.serialCount})`
               : ''}
@@ -285,7 +286,7 @@ export function ClientHisobotTab() {
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.ostatokSyroyeKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.otgruzkaGotoviyKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.otgruzkaSyroyeKg)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{kg(row.ubytokKg)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.ubytokKg === null ? '—' : formatLossKg(row.ubytokKg, 'кг')}</td>
                     <td className="px-3 py-2">
                       {clickable && (
                         <span aria-hidden className="block text-slate-400">

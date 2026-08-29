@@ -8,6 +8,7 @@ import { CLIENT_REPORT_LABELS, type ReportLocale } from '../../lib/clientReportL
 import { downloadClientReportExcel } from '../../lib/clientReportExport'
 import { SerialPassportModal } from './SerialPassportModal'
 import { formatDate } from '../../lib/formatDate'
+import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { Button } from '../../components/ui/Button'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
@@ -157,7 +158,7 @@ export function ClientReportTab() {
               <BalanceLine label={t.konditirskiy} value={report.raw.processedBreakdown.konditirskiyKg} indent />
               <BalanceLine
                 label={t.processLoss}
-                value={`${Math.round(report.raw.processedBreakdown.lossKg).toLocaleString()} kg (${report.raw.processedBreakdown.lossPct}%)`}
+                value={`${formatLossKg(report.raw.processedBreakdown.lossKg)} (${formatLossPct(report.raw.processedBreakdown.lossPct)})`}
                 indent
               />
             </div>

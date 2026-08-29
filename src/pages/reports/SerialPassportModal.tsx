@@ -4,6 +4,7 @@ import { GatePhoto } from '../../components/GatePhoto'
 import { Lightbox } from '../../components/Lightbox'
 import { formatStockDate } from '../../lib/oldStock'
 import { formatDate, formatDateTime } from '../../lib/formatDate'
+import { formatLossKg } from '../../lib/formatLoss'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 type OpenPhoto = (url: string, label: string) => void
@@ -638,8 +639,7 @@ function PassportBody({
                         : 'text-xs font-medium text-slate-500 dark:text-slate-400'
                   }
                 >
-                  Yo'qotish: {cycle.lossKg > 0 ? '' : cycle.lossKg < 0 ? '+' : ''}
-                  {Math.abs(cycle.lossKg).toLocaleString()} kg
+                  Yo'qotish: {formatLossKg(cycle.lossKg)}
                 </div>
               </div>
               <div className={`mt-1 ${label}`}>Yuborilgan: {cycle.sentKg.toLocaleString()} kg</div>

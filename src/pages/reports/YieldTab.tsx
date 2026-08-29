@@ -6,6 +6,7 @@ import { useYieldRows } from '../../lib/useYieldRows'
 import { YIELD_LOSS_BASIS_NOTE } from '../../lib/yield'
 import { defaultDateRange } from '../../lib/dateRange'
 import { downloadYieldExcel } from '../../lib/yieldExport'
+import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { YieldTable } from './YieldTable'
 import { SerialPassportModal } from './SerialPassportModal'
 import { Button } from '../../components/ui/Button'
@@ -130,7 +131,7 @@ export function YieldTab() {
             </span>
             <span className="text-slate-700 dark:text-slate-300">
               Yo'qotish: <span className="font-medium text-slate-900 dark:text-slate-100">
-                {Math.round(totalLoss).toLocaleString()} kg ({totalRawConsumed > 0 ? Math.round((totalLoss / totalRawConsumed) * 1000) / 10 : 0}%)
+                {formatLossKg(totalLoss)} ({formatLossPct(totalRawConsumed > 0 ? Math.round((totalLoss / totalRawConsumed) * 1000) / 10 : 0)})
               </span>
             </span>
             <span className="text-slate-700 dark:text-slate-300">

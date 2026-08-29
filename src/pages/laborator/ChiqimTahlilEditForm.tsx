@@ -155,6 +155,16 @@ export function ChiqimTahlilEditForm({
             {row.verdict === 'o_tdi' ? "O'tdi" : 'Qayta yuvish'}
           </span>
         </div>
+        {/* KIRIM-stage reading, inline (2026-08-29, Prompt 6) -- read-only,
+            "—" (not "0") when this serial never had a KIRIM lab pass (e.g.
+            an old-stock re-wash mint). */}
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500 dark:text-slate-400">Kirim natijasi</span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">
+            {row.kirimMoisturePct !== null ? `${row.kirimMoisturePct}%` : '—'} · SO₂{' '}
+            {row.kirimSo2MgKg !== null ? `${row.kirimSo2MgKg} ppm` : '—'}
+          </span>
+        </div>
       </div>
 
       <FormField label="Namuna manbai (ixtiyoriy)">

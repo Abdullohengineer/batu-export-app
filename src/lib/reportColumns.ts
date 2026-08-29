@@ -96,6 +96,25 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'both' },
   { key: 'xom_jonatilgan', label: "Xom holda jo'natilgan, kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'olib_ketilgan', label: 'Olib ketilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  // Output-by-kalibr (2026-08-15 pattern, added 2026-08-29 -- Prompt 6, see
+  // DECISIONS.md "Hisobot: output-by-kalibr columns"): same per-serial
+  // standing-total shape as the 7 columns above (totalBasis: 'state' -- a
+  // serial's own total-ever-produced-under-this-kalibr figure, repeated on
+  // every row that serial owns), one column per kalibr K1-K8 in numeric
+  // order, then a separate KN column -- never summed together (KN is a
+  // distinct product, not a 9th calibre). All default-hidden, same
+  // "expandable via the column picker" precedent as every other
+  // serial-state column in this family, to avoid overwhelming the default
+  // view with 9 more columns on top of the 8 already default-visible.
+  { key: 'k1', label: 'K1, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k2', label: 'K2, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k3', label: 'K3, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k4', label: 'K4, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k5', label: 'K5, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k6', label: 'K6, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k7', label: 'K7, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k8', label: 'K8, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'kn', label: 'KN, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
 ]
 
 export function defaultVisibleColumnKeys(): Set<string> {

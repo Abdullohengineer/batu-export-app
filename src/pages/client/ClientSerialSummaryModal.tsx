@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchClientSerialSummary, type ClientSerialSummary } from '../../lib/clientPortalReport'
 import { useCalibres } from '../../lib/useCalibres'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { formatLossKg } from '../../lib/formatLoss'
 
 function kg(v: number): string {
   return `${Math.round(v).toLocaleString()} кг`
@@ -110,7 +111,7 @@ export function ClientSerialSummaryModal({ serial, onClose }: { serial: string; 
                   </tr>
                   <tr>
                     <td className="py-1 font-medium text-slate-700 dark:text-slate-300">Убыток</td>
-                    <td className="py-1 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">{kg(summary.lossKg)}</td>
+                    <td className="py-1 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">{formatLossKg(summary.lossKg, 'кг')}</td>
                   </tr>
                 </tbody>
               </table>

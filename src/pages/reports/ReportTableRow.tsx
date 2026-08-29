@@ -229,6 +229,24 @@ export function ReportTableRow({
         return <StateCell value={state?.xomJonatilgan} />
       case 'olib_ketilgan':
         return <StateCell value={state?.olibKetilgan} />
+      case 'k1':
+        return <StateCell value={state?.k1} />
+      case 'k2':
+        return <StateCell value={state?.k2} />
+      case 'k3':
+        return <StateCell value={state?.k3} />
+      case 'k4':
+        return <StateCell value={state?.k4} />
+      case 'k5':
+        return <StateCell value={state?.k5} />
+      case 'k6':
+        return <StateCell value={state?.k6} />
+      case 'k7':
+        return <StateCell value={state?.k7} />
+      case 'k8':
+        return <StateCell value={state?.k8} />
+      case 'kn':
+        return <StateCell value={state?.kn} />
       default:
         return null
     }

@@ -32,7 +32,7 @@ async function switchRole(page: Page, role: TestRole): Promise<void> {
 // The serial's OWN card, found via its SerialChip and walked up to the
 // nearest rounded-md ancestor — NOT a plain `div.rounded-md:has-text()`
 // match, which several of this screen's own inline forms would also
-// satisfy once open (MoykaSendForm/ChiqimTahlilForm/FinishedReceiptForm all
+// satisfy once open (ChiqimTahlilForm/FinishedReceiptForm all
 // render the serial's own text inside their own rounded-md wrapper,
 // nested one level inside the row's card). Re-queried fresh on every call
 // (a Playwright locator is lazy), so it stays correct across the DOM
@@ -136,23 +136,22 @@ async function seedReadyForMoyka(page: Page, plate: string): Promise<string> {
   return serial
 }
 
+// Two-tile picker (2026-08-28, see DECISIONS.md "Two-tile Moyka send
+// picker") — the send action is no longer inside the serial's own row card;
+// it's the Yangi zaxira tile's chip-select flow. Playwright's own
+// auto-waiting on the tile's collapsed button covers the ~1.5s the previous
+// send's "Yuborildi." confirmation holds before the tile re-collapses, so
+// calling this twice in a row (as this test's two-serial scenario does)
+// needs no manual wait.
 async function sendToMoyka(page: Page, serial: string) {
-  const card = serialCard(page, serial)
-  await expect(card).toBeVisible()
-  await card.getByRole('button', { name: '+ Moykaga yuborish' }).click()
-  await serialCard(page, serial).locator('input[type="number"]').fill('1000')
-  // '+ Moykaga yuborish' vanishes on the click above (it's the toggle that
-  // opens the form, not the submit) -- the old toHaveCount(0) check here
-  // asserted something already true before the submit click even happened
-  // and gave zero synchronization on the actual moyka_sends write. Same
-  // defect already found and fixed in lab-relocation-loss-verification.spec.ts
-  // (DECISIONS.md "Lab moves inside Moyka, wash-cycle concept removed",
-  // 2026-07-28) and confirmed live via trace on full-chain.spec.ts's
-  // identical send action -- just never ported to this spec. Wait on the
-  // actual response instead.
+  await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
+  const chip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
+  await expect(chip).toBeVisible({ timeout: 20_000 })
+  await chip.click()
+  await page.locator('#new-stock-weighed').fill('1000')
   const [sendResponse] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/moyka_sends') && r.request().method() === 'POST'),
-    serialCard(page, serial).getByRole('button', { name: 'Moykaga yuborish' }).click(),
+    page.getByRole('button', { name: 'Moykaga yuborish' }).click(),
   ])
   expect(sendResponse.ok(), `moyka_sends insert must succeed, got HTTP ${sendResponse.status()}: ${await sendResponse.text()}`).toBe(true)
 }
@@ -183,11 +182,16 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
   await sendToMoyka(page, serialReject)
 
   // --- Part 1: prove the gate BEFORE any verdict exists ---
+  // Single-tile receive picker (2026-08-28, see DECISIONS.md "Section 3
+  // single-tile receive picker") — an untested serial doesn't appear as a
+  // receivable chip at all any more (not shown-but-blocked), so the proof
+  // is its absence from the chip list, not a missing/disabled button on a
+  // per-serial card.
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-  await expect(serialCard(page, serialPass)).toBeVisible()
-  // The pack action must not exist at all -- not disabled, absent.
-  await expect(serialCard(page, serialPass).getByRole('button', { name: '+ Qabul qilish' })).toHaveCount(0)
-  await expect(serialCard(page, serialPass).getByText('Tahlil kutilmoqda')).toBeVisible()
+  await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(`^${serialPass}\\b`) })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: new RegExp(`^${serialReject}\\b`) })).toHaveCount(0)
+  await expect(page.getByText("Qabul qilinadigan serial yo'q.")).toBeVisible()
 
   // Database-level proof, not just UI absence: a direct finished_pallets
   // insert as Ombor for the untested serial must be REFUSED by RLS. This is
@@ -255,16 +259,20 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
   // --- Part 3: passing serialPass unlocks packing ---
   await switchRole(page, 'OMBOR')
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-  await expect(serialCard(page, serialPass)).toBeVisible()
-  await expect(serialCard(page, serialPass).getByText('Tahlil kutilmoqda')).toHaveCount(0)
-  await serialCard(page, serialPass).getByRole('button', { name: '+ Qabul qilish' }).click()
-  await serialCard(page, serialPass).locator('select').selectOption({ label: 'Kalibr 6' })
-  await serialCard(page, serialPass).locator('input[type="number"]').fill('500')
-  await serialCard(page, serialPass).getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
-  await expect(serialCard(page, serialPass).getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+  const passChip = page.getByRole('button', { name: new RegExp(`^${serialPass}\\b`) })
+  await expect(passChip).toBeVisible({ timeout: 20_000 })
+  await passChip.click()
+  await page.locator('select').selectOption({ label: 'Kalibr 6' })
+  await page.locator('input[type="number"]').fill('500')
+  await page.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
+  await expect(page.getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
 
   // --- Part 4: the rejected serial STILL cannot pack, even after its
-  // sibling passed -- the gate is per-serial, not per-batch/session. ---
-  await expect(serialCard(page, serialReject)).toBeVisible()
-  await expect(serialCard(page, serialReject).getByRole('button', { name: '+ Qabul qilish' })).toHaveCount(0)
+  // sibling passed -- the gate is per-serial, not per-batch/session. Close
+  // back to the tile default (the form stays open after a save, by design)
+  // and reopen to get a fresh chip list.
+  await page.getByRole('button', { name: 'Yopish' }).click()
+  await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(`^${serialReject}\\b`) })).toHaveCount(0)
 })

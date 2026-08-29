@@ -7,6 +7,7 @@ import { OldKnRowDetail } from './OldKnRowDetail'
 import { MoykaSendRowDetail } from './MoykaSendRowDetail'
 import { MoykaOutputRowDetail } from './MoykaOutputRowDetail'
 import { formatDate } from '../../lib/formatDate'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 const STATUS_LABEL: Record<string, string> = {
   omborda: 'Omborda',
@@ -108,9 +109,16 @@ export function ReportTableRow({
         return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">{formatDate(row.dateBasis)}</span>
       case 'serial':
         return (
-          <span className="whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">
             {row.kind === 'chiqim_old_kn' ? '—' : row.serial}
+            {row.kind !== 'chiqim_old_kn' && <PartiyaBadge partiyaNo={row.partiyaNo} />}
           </span>
+        )
+      case 'partiya':
+        return row.kind === 'chiqim_old_kn' ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <PartiyaBadge partiyaNo={row.partiyaNo} />
         )
       case 'owner':
         return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">{ownerName(row.ownerId)}</span>
@@ -221,6 +229,24 @@ export function ReportTableRow({
         return <StateCell value={state?.xomJonatilgan} />
       case 'olib_ketilgan':
         return <StateCell value={state?.olibKetilgan} />
+      case 'k1':
+        return <StateCell value={state?.k1} />
+      case 'k2':
+        return <StateCell value={state?.k2} />
+      case 'k3':
+        return <StateCell value={state?.k3} />
+      case 'k4':
+        return <StateCell value={state?.k4} />
+      case 'k5':
+        return <StateCell value={state?.k5} />
+      case 'k6':
+        return <StateCell value={state?.k6} />
+      case 'k7':
+        return <StateCell value={state?.k7} />
+      case 'k8':
+        return <StateCell value={state?.k8} />
+      case 'kn':
+        return <StateCell value={state?.kn} />
       default:
         return null
     }

@@ -14,6 +14,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { TextInput } from '../../components/ui/FormField'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { Stat } from '../../components/ui/Stat'
 import { formatDate } from '../../lib/formatDate'
 
@@ -197,6 +198,7 @@ export function LaboratorKirimTab() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <SerialChip>{line.serial}</SerialChip>
+                      <PartiyaBadge partiyaNo={line.partiyaNo} />
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(line.owner_id)} · {typeName(line.type_id)}
                       </span>
@@ -244,6 +246,7 @@ export function LaboratorKirimTab() {
             <Card key={row.id} tone="pending">
               <div className="flex items-center gap-2">
                 <SerialChip>{row.parent_serial}</SerialChip>
+                <PartiyaBadge partiyaNo={row.partiyaNo} />
                 <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                   {ownerName(row.owner_id)} · {typeName(row.type_id)}
                 </span>
@@ -311,6 +314,7 @@ export function LaboratorKirimTab() {
                 className="flex w-full items-center gap-2 text-left"
               >
                 <SerialChip>{row.parent_serial}</SerialChip>
+                <PartiyaBadge partiyaNo={row.partiyaNo} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                   {ownerName(row.owner_id)} · {typeName(row.type_id)}
                 </span>

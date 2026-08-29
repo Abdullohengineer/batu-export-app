@@ -5,6 +5,7 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarExceptions } from '../../lib/useRahbarDashboard'
 import { EXCEPTION_KIND_LABEL, EXCEPTION_KIND_ORDER, type ExceptionKind, type ExceptionRow } from '../../lib/rahbarDashboard'
 import { SerialPassportModal } from '../reports/SerialPassportModal'
+import { formatLossPct } from '../../lib/formatLoss'
 import { StatusPill } from '../../components/ui/StatusPill'
 import type { Tone } from '../../components/ui/tokens'
 
@@ -36,7 +37,12 @@ function detailText(row: ExceptionRow): string {
     case 'lab_overdue':
       return `${d.daysWaiting} kun kutilmoqda (chegara: ${d.thresholdDays} kun)`
     case 'high_loss':
-      return `Yo'qotish ${d.lossPct}% (chegara: ${d.thresholdPct}%), xom ${Math.round(Number(d.rawConsumedKg))} kg`
+      // d.lossPct is always positive here (rahbar_exceptions' own WHERE
+      // clause only surfaces yield_rows.loss_pct > threshold -- a surplus
+      // cycle never qualifies as "high loss"), so formatLossPct renders
+      // identically to the bare number today; applied anyway so every
+      // loss-pct display in the app goes through the one helper.
+      return `Yo'qotish ${formatLossPct(Number(d.lossPct))} (chegara: ${d.thresholdPct}%), xom ${Math.round(Number(d.rawConsumedKg))} kg`
     case 'high_rewash':
       return `${d.ratePct}% (${d.rewashCount}/${d.serialCount} seriya), chegara: ${d.thresholdPct}%`
     default:

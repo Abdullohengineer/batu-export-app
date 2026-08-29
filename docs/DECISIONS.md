@@ -4960,3 +4960,872 @@ the raw tables.
 
 No code change — pure data correction + one flagged-not-fixed UI observation (Tugallash's own
 stuck state, likely a staleness issue, not chased further without a live browser).
+
+## 2026-08-28 — Moyka loss becomes live; remove Tugallash
+
+**Prompt:** replace the "one `wash_cycles` row per serial, `Tugallash` locks `final_loss_pct`"
+model with a live, continuously-computed, signed per-serial balance — `loss = moyka_sends.qty −
+finished_pallets.qty`, always, for every serial with `sent > 0`, recomputed on every read. No
+user action ever closes a serial; `Tugallash` (button, handler, §5.3 Window 2/"Tugallangan") is
+removed entirely. Hard gate in the brief: full read-path inventory + proposed migration SQL shown
+in one message, confirmed before any code/migration touched — see that message for the complete
+current-vs-new SQL/TS per site.
+
+**Three premises in the brief were checked against the schema/codebase and found wrong — reported
+back before designing anything, per this file's own "stop, report, do not invent a design" rule:**
+1. `finished_pallets.parent_serial_id` does not exist. The only serial link is the pre-existing
+   `finished_pallets.serial` (text) → `kirim_lines.serial` FK, already what every read path uses.
+2. `wash_cycles.status` is a plain `text` column (`not null default 'active'`), not a Postgres
+   enum — no `ALTER TYPE`, no enum-value question, anywhere in this change.
+3. `computeSignedLossPct` did not exist — only the floored `computeFinalLossPct` did. No TS-side
+   signed-loss helper was needed in the end: every consumer that needs the live figure now reads
+   it from SQL (`client_serial_loss_kg`, `yield_rows.loss_kg`, `get_serial_passport`'s
+   `cycles[].lossKg`), and Ombor's own UI no longer displays a loss number at all (see below) —
+   `computeFinalLossPct`/`completionBadge`/`tugallashWarnings` were deleted outright, not replaced.
+
+A fourth check, not in the brief: migration numbering was audited (`list_migrations` vs. local
+`supabase/migrations/`) and found to have **no drift** — 85 local files map 1:1 in order to the
+live migration history, including 0072/0073.
+
+**Five design calls, made by the user after the site inventory (not invented):**
+1. `yield_rows` scope widens from "only finalized" to every serial with `sent > 0` — a still-
+   packing serial now shows a live, updating figure instead of being absent until Tugallash.
+2. §5.3 Window 2 ("Tugallangan") is dropped outright, not redefined by another criterion. Window 1
+   becomes the tab's only window, filtered to a positive live in-Moyka balance (`isInMoyka`); a
+   serial disappears on its own once packing catches up. The interim shape isn't worth building
+   since the section 3 UI redesign (a later prompt) replaces this tab's whole layout anyway.
+3. `wip_rows.moyka_not_returned` switches from `wash_cycles.status='active'` to a live balance —
+   `wash_cycles` becomes lab-linkage-only (see #4).
+4. `wash_cycles.status`/`final_loss_pct`/`finalized_at` — columns kept, historical `'final'` rows
+   never mutated (an audit trail of pre-cutover Tugallash actions, matching the void-not-delete
+   convention), but the app never writes `'final'` again and no read path branches on `status`.
+   No `ALTER`, no `DROP` (moot anyway per correction #2 above).
+5. `SerialPassportModal.tsx`'s Yakunlangan/Faol badge is replaced with two live numbers —
+   "Moykada: X kg" (floored, physical) and "Yo'qotish: Y kg" (signed) — rather than kept or
+   repointed at a proxy.
+
+**One further call, surfaced only once the SQL was drafted (not in the original five):** the old
+model kept "moykada" (WIP, floored ≥0) and "loss" (locked at Tugallash) mutually exclusive per
+serial by construction, so `get_client_report`'s `balancesKg` mass-balance identity could sum
+both safely. Under the live model they're the *same* magnitude for a still-open serial — summing
+both would double-count. Resolved (user's explicit pick, offered as two options): **loss absorbs
+the identity term** — `cumulative_loss_total` becomes the sole ledger contribution (signed,
+unconditional), `moykadaKg` stays in the JSON as a **display-only** alias (still its own floored,
+per-line sum — not `greatest(0, cumulativeLoss)`, since summing-then-flooring and flooring-then-
+summing differ whenever some lines are net-negative) and is no longer subtracted a second time in
+`balancesKg`. Verified live post-migration: `get_client_report`'s `balancesKg` for the real Global
+Export owner over 2026-01-01..2026-08-28 returns exactly `0`.
+
+**Migration `supabase/migrations/0086_moyka_loss_live_remove_tugallash.sql`** (applied live,
+`qohoqbapevrcjqxbstxi`) — 8 objects:
+- `yield_rows` (view): `finished_serials` filter `wash_cycle_status='final'` → `raw_consumed_kg >
+  0`; `output` CTE's join to `finished_pallets`/`calibres` switched from inner to left + `group
+  by`, so a serial with zero pallets so far still produces one row (`output_kg=0`,
+  `loss_kg=raw_consumed_kg` — fully open, reads as 100%, exactly the live model's point).
+- `get_client_report`: `moykada_total`/`moykada_by_type` unconditional (drop the finalization
+  case, keep the floor); `loss_totals` scoped by `completed_date` alone (drop the
+  `wash_cycle_status`/`finalized_at` gate); `cumulative_loss_total` signed and unconditional, now
+  the sole `balancesKg` ledger term (see above); `client_lines`' dead `wash_cycle_status`/
+  `finalized_at` selects dropped (`wash_cycle_id` kept — still needed for `quality_record`'s lab
+  join).
+- `rahbar_dashboard_ledger`: `moyka_in_process`/`moyka_opening_total` unconditional (display-only,
+  same as `moykadaKg` above — no double-count risk here since this function's own
+  `moyka_identity_residual` never summed loss and WIP together in the first place);
+  `processed_lines` drops its `wc.status='final'` gate, scoped by `completed_date` alone, same
+  treatment as `get_client_report`'s `loss_totals`; its own now-unused `wash_cycles` join dropped.
+- `rahbar_stock_snapshot`: `moykada_total` unconditional, `wash_cycles` join dropped entirely
+  (was only feeding the removed gate).
+- `wip_rows`: `moyka_not_returned` rewritten to reuse `kirim_line_state()` (`kls.moykada > 0`)
+  instead of `wash_cycles.status='active'` — reuse, not reimplement (CLAUDE.md). Necessary beyond
+  a mechanical rename: without a "still has a positive live balance" filter, a fully-packed serial
+  sent long ago would alert here forever, since nothing ever flips `status` away from `'active'`
+  any more. `awaiting_lab`/`so2_pending` untouched — genuine lab-linkage uses.
+- `client_serial_loss_kg`: fully rewritten — signed, unconditional, no `wash_cycles` reference at
+  all. Never returns `null` any more (`client_report_rows`/`client_report_totals`/
+  `client_serial_summary` all consume it, so their loss figures went live with no further SQL
+  change needed).
+- `client_serial_summary`: drops the now-dead `washCycleStatus` field (confirmed unused by
+  `ClientSerialSummaryModal.tsx` before removing it).
+- `get_serial_passport`: `cycles[]`'s `status`/`finalLossPct` → `inMoykaKg`
+  (`greatest(0, sent−returned)`) / `lossKg` (`sent−returned`, signed). Everything else in this
+  large function is byte-for-byte unchanged.
+
+Live verification post-apply (real data, `qohoqbapevrcjqxbstxi`): `yield_rows` now surfaces
+`180826-001` (7,960kg sent, 0 pallets yet, `loss_kg=7960`, `loss_pct=100.0`) — invisible under the
+old filter. `client_serial_loss_kg` returns a real signed number (including negative — the six
+serials corrected the prior session, e.g. `290726-072: loss_kg=-2280`) for every sent serial,
+zero-pallet ones included. `wip_rows.moyka_not_returned` returns rows with no error, `kls.moykada`
+gate confirmed working. `get_serial_passport('150826-001')` returns `cycles[0] =
+{inMoykaKg: 7947, lossKg: 7947, sentKg: 7947, ...}`, no `status` field. `get_client_report`'s
+`balancesKg` = `0` exactly for the real Global Export owner (see above).
+
+**Frontend:**
+- `src/lib/useMoykaOutput.ts`: dropped the `wash_cycles` fetch, `CompletedSerial`/`completed`/
+  `finalCycleBySerial`/`lossPctBySerial`/`finalizedAtBySerial`/`completedSerials`; `activeSerials`
+  now filters on `isInMoyka(sent, received)`.
+- `src/pages/ombor/OmborTayyorTab.tsx`: `handleTugallash`, the Tugallash button/confirm panel, and
+  the whole Window 2 (Tugallangan) section removed. No loss/percentage display added in their
+  place — decision #2 explicitly moves historical loss to reports/passport, not this screen.
+- `src/lib/tayyorCompletion.ts`: `computeFinalLossPct`/`completionBadge`/`CompletionBadge`/
+  `tugallashWarnings`/`TugallashWarningReason` deleted (kept `jarayonda`/`ortiqcha`, both still
+  correct and used).
+- `src/lib/stageMembership.ts`: `isAwaitingTugallash(sent, finalized)` → `isInMoyka(sent,
+  received)` — same shared-predicate role (§5.2 W2 = §5.3's only window), new signature since
+  there's no `finalized` flag to read any more.
+- `src/pages/ombor/OmborMoykaTab.tsx`: no functional change (Window 2 already reused
+  `useMoykaOutput().serials` directly, so it inherits the new filter automatically) — comments
+  updated only. `handleSend`'s `wash_cycles` upsert kept (still mints the row lab needs).
+- `src/lib/serialPassport.ts` / `SerialPassportModal.tsx`: `PassportCycle.status`/`finalLossPct` →
+  `inMoykaKg`/`lossKg`; badge replaced per decision #5 (loss red when positive, amber `+Nkg` when
+  negative/overage, slate at exactly 0).
+- `src/lib/clientPortalReport.ts` / `ClientSerialSummaryModal.tsx`: `washCycleStatus` field
+  dropped from the client-portal type/RPC mapping; `ClientSerialSummary.lossKg`/
+  `ClientReportTotals.ubytokSerialCount` comments updated (no longer "null until finished" —
+  `ubytokKg` on report rows stays nullable only for the no-serial case, e.g. `chiqim_old_kn`); the
+  modal's dead `lossKg === null` branch removed (the type no longer allows it).
+- Two e2e specs exercised the removed Tugallash flow and were adapted, not deleted:
+  `tests/e2e/lab-relocation-loss-verification.spec.ts` drops the Tugallash click/confirm-dialog
+  check (the same 150kg/15.0% assertion now reads straight off the packed pallet, no action
+  needed); `tests/e2e/full-chain.spec.ts` replaces its Tugallash-then-check-Tugallangan block with
+  a direct `yield_rows` read for the same 400kg/8.0% figure, taken while the serial still sits in
+  Window 1 (400 of its 5,000kg sent is still unpacked) — proving the number is live, not gated on
+  finishing packing. A few unrelated comments elsewhere (`OmborChiqimTab.tsx`, `ChiqimForm.tsx`,
+  `useLaboratorChiqim.ts`, `chiqimScan.ts`) still cite old Tugallash-based philosophy as rhetorical
+  precedent for an unrelated CHIQIM-side soft-warning pattern — left as-is, out of scope.
+
+**Verified:** `npx tsc -b --noEmit` clean; full `node --test` suite (72 tests, including the two
+rewritten `tayyorCompletion.test.ts`/`stageMembership.test.ts` files) passes; `npx oxlint` clean
+on every touched file; `npm run build` succeeds. No live-browser Playwright run this session (same
+network-policy limitation as the client-portal work — `*.supabase.co` blocked from this
+environment's Chromium) — the two adapted e2e specs are updated for correctness but not run.
+
+SPEC.md §5 intro (windows table, "Placement windows vs. acceptance windows", the now-removed
+"Finishing is always manual" named invariant) and §5.3 amended inline (struck old text, not
+deleted, per this file's own convention) rather than rewritten wholesale.
+
+## 2026-08-28 — Two-tile Moyka send picker
+
+**Prompt:** redesign §5.2 Window 1 from the all-in-one card-per-serial layout to a two-tile
+launcher — Yangi zaxira (raw serials with balance) and Eski zaxira (old washed pallets, existing
+flow, relocated unchanged). The Yangi zaxira tile opens a picker: raw serials as tappable chips
+(serial + available kg only, no company/type/kalibr dropdowns), select one, enter weighed kg,
+confirm. UI-only — no schema change, no read-path change, `useMoykaSerials.available` as the sole
+data source. Hard gate in the brief: render-tree diff (kept/replaced/relocated) + confirmation the
+old-stock form embeds as-is, shown in one message before any code touched.
+
+**Two premises in the brief didn't match the codebase — reported back before designing, per this
+file's own "stop, report, do not invent a design" rule:**
+1. **No "Rezka/Moyka pill" exists anywhere.** Grepped the whole `src/` tree — "rezka" appears only
+   as data fields (`rezkaSent`, `rezka_sends`) in `useMoykaSerials.ts`/`serialPassport.ts`; the
+   Rezka data layer (`0076_rezka_data_layer.sql`) has always been backend-only, 0 live rows, no
+   frontend page/tab/toggle ever built (confirmed against this file's own prior Rezka entries).
+   `OmborMoykaTab.tsx` had no pill or segmented control of any kind before this change. Nothing
+   was preserved because nothing existed to preserve.
+2. **No toast component/pattern exists anywhere in the app.** Grepped app-wide for `toast`/`Toast`
+   — zero matches. The app's one existing success/error idiom is inline `StatusNote` plus the form
+   collapsing on success (e.g. `OldStockToMoykaForm`'s `onSaved()`). User's call, offered as three
+   options: **inline `StatusNote tone="ok"` ("Yuborildi."), shown ~1.5s, then auto-collapse** —
+   matches the existing idiom exactly, introduces no new UI primitive in a UI-only prompt scoped
+   to one tab.
+
+**Two further calls, made by the user after the investigation (not invented):**
+3. Row-level detail the redesign has no room for — per-serial send history, Qaydlar, and the
+   `§2.15.2` provisional-variance warning — **dropped outright**, not relocated. Not asked for by
+   the brief's own picker shape (image 3/4 in the design brief).
+4. `MoykaSendForm.tsx` — the old per-row send form — **deleted**, not left in place. It became
+   fully dead (only caller was the row list this redesign replaces) and its own behavior actively
+   conflicts with the new requirement (it blocks over-send; the picker must allow it), so keeping
+   it around wouldn't even serve as a future reference for the same shape.
+
+**Investigation, before writing any code:**
+- `OldStockToMoykaForm.tsx` confirmed embeddable as-is — already takes exactly `{ onCancel,
+  onSaved }`, fully self-contained. Zero prop/wrapper changes; Tile 2 just relocates the existing
+  `oldStockOpen ? <OldStockToMoykaForm/> : <Button.../>` pair.
+- Dashed-tile pattern located via grep (not guessed): `border border-dashed !border-amber-400
+  !text-amber-800 hover:bg-amber-50 dark:!border-amber-700 dark:!text-amber-400
+  dark:hover:bg-amber-950/30` on a `Button variant="ghost" size="md" fullWidth`. Reused verbatim
+  for both tiles — same amber color on both, per "look identical," not a differentiated color per
+  tile.
+- `MoykaSendForm.tsx` couldn't be reused for the new sub-form: it pre-fills from `available` and
+  **blocks** over-send (`overSend` → submit refused), the opposite of this prompt's explicit
+  requirement. The requested copy ("Kitob bo'yicha (1 ta seriya): ~X kg" + an empty, uncapped
+  weight input) instead mirrors `OldStockToMoykaForm`'s own shape (book figure as plain-text
+  reference, weight input starts empty, never capped) — built as a new sibling component,
+  `NewStockToMoykaForm.tsx`, following that precedent rather than `MoykaSendForm`'s.
+- One deliberate section-mirroring deviation, flagged rather than silently applied: the new chip
+  list's membership (`available > 0`) differs from §5.1's own Window 2 predicate (`hasRawRemainder`,
+  which ignores raw-dispatch/rezka draws) — the brief explicitly asked for `available`, which is
+  the more correct figure now that those exits exist, but this does mean §5.1 W2 / §5.2 W1 no
+  longer mirror byte-for-byte at this one boundary (every other section-mirroring boundary in the
+  app is unaffected).
+
+**Implementation:**
+- `src/pages/ombor/NewStockToMoykaForm.tsx` (new) — chip list (`serials.filter(s => s.available >
+  0)`), single-select, sub-form (plain-text `available` reference + mandatory empty weight input,
+  no cap), inline `StatusNote tone="ok"` on success with a 1.5s `setTimeout` before calling
+  `onCancel` to collapse. Props mirror `OldStockToMoykaForm`'s shape (`onCancel`) but pass the
+  selected `MoykaSerial` back through `onSubmit(serial, qtyKg)` since selection happens inside
+  this component, not the parent.
+- `src/pages/ombor/OmborMoykaTab.tsx` — Window 1's per-serial `row()`/`serialDetail()` and the
+  `activeSerial`/`expanded` state removed; replaced with a single `expandedTile: 'yangi' | 'eski' |
+  null` state (mutual exclusion and the `null`-default cold-load requirement both fall out of using
+  one variable, no extra logic needed) driving the two tiles. `handleSend`'s body (the
+  `wash_cycles` upsert + `moyka_sends` insert) is byte-for-byte unchanged — only the UI calling it
+  changed, and it now just calls `refresh()` instead of also clearing the deleted `activeSerial`
+  state. Window 2 ("2 · Moykada") untouched.
+- `src/pages/ombor/MoykaSendForm.tsx` deleted.
+- Three e2e specs drove the old per-row send flow and needed adapting to the tile/chip flow (not
+  deleted — same treatment as the previous prompt's affected specs): `tests/e2e/lab-packing-hard-
+  gate.spec.ts`'s `sendToMoyka()`, `tests/e2e/full-chain.spec.ts`'s Subxon-send block, and
+  `tests/e2e/lab-relocation-loss-verification.spec.ts`'s send block — all three now click the
+  Yangi zaxira tile, select the chip by serial (`getByRole('button', { name: /^SERIAL\b/ })`), fill
+  `#new-stock-weighed`, and wait on the real `moyka_sends` POST response rather than a button-
+  label/visibility change (matching this suite's own established convention for that exact race).
+
+**Verified:** `npx tsc -b --noEmit` clean; `node --test` suite passes; `npx oxlint` clean on every
+touched/new file; `npm run build` succeeds. No live-browser Playwright run this session (same
+network-policy limitation as prior client-portal/Moyka-loss work) — the three adapted e2e specs
+are updated for correctness but not run.
+
+SPEC.md §5.2 amended inline (struck the old per-row Window 1 description and the stale pre-0086
+Tugallash-based Window 2 description — the latter had been missed by the 2026-08-28 "Moyka loss
+becomes live" entry's own SPEC pass and is corrected here) — not rewritten wholesale.
+
+## 2026-08-28 — Section 3 single-tile receive picker
+
+**Prompt:** redesign §5.3 (Moykadan qabul qilish) from the per-serial card layout to a single
+dashed tile, "+ Moykadan qabul qilish." Tapping opens a picker — every serial with a positive live
+in-Moyka balance and a passing lab verdict, as chips (`SERIAL ~KG kg`) — select one, the existing
+kalibr+weight+save+Barcode#2 form opens for it. UI-only, no schema/read-path/balance change; reuse
+`useMoykaOutput`'s already-live figure. Hard gate in the brief: render-tree diff + confirmation the
+existing receipt form embeds as-is, shown before any code touched — same shape as the last two
+prompts.
+
+**Investigation, before writing any code — nothing needed correcting this time** (unlike the prior
+two prompts): `useMoykaOutput()`'s `OutputSerial.inProcess` is already `jarayonda(sent, received) =
+max(0, sent − received)` — the live in-Moyka balance the brief asked for, already floored, no new
+read. `FinishedReceiptForm.tsx` already matches "image 5" exactly — serial header, owner·type
+readonly, **"Shu paytgacha qabul" running total already present**, sana, Kalibr dropdown, Og'irlik
+input, "Saqlash va shtrix-kod chiqarish," "Yopish" — every field the brief describes was already
+there. It already clears its own `calibreId`/`weight` state after a successful save and does
+**not** call `onCancel()` itself; the old "closes on every submit" behavior was entirely the
+*parent's* doing (`OmborTayyorTab.handleReceipt` called `setActiveForm(null)` after every save).
+So "stay in the form after save" (this prompt's explicit reversal of that old behavior) needed
+**zero changes to `FinishedReceiptForm.tsx`** — only to the code that was unmounting it.
+
+**One real design problem surfaced during the investigation, solved before writing code:** the
+brief requires "still allow further pallets from this serial in the same session" even after a
+save drops its live balance to ≤0 (over-receive stays allowed, per 0086) — but on next full
+refresh it should drop off the picker. `useMoykaOutput()`'s own `serials` array is *always*
+pre-filtered to `isInMoyka` (balance > 0), so naively re-deriving the selected serial from that
+prop after every `refresh()` would make the form vanish mid-session the instant a save brought the
+balance to exactly 0 — the opposite of what's asked. Resolved by capturing the selected
+`OutputSerial` as local component state at chip-click time (not re-derived reactively from the
+prop) and patching it locally after each save (`received += weightKg`, append to `pallets`, bump
+`barcodeSeqByCalibre`) — correct for the running total, the "Shu seriyaga qabul qilingan" history,
+and the next barcode sequence number, all without a new read. Only closing the tile ("Yopish") and
+reopening re-derives the picker's own chip list from the live, refreshed `serials` prop.
+
+**One explicit visibility change, applied as instructed, not silently:** the old per-row layout
+showed *every* in-Moyka serial as its own card, with a "Tahlil kutilmoqda"/"Rad etildi" note in
+place of the receive button when the lab hadn't passed yet. The brief's chip list is scoped to
+`labStatus === 'passed'` from the start — an untested/rejected serial doesn't appear in this tile
+at all any more, not shown-but-blocked. Matches this prompt's own explicit filter description
+("every serial where in_moyka > 0 AND lab verdict passed"); same treatment as the analogous
+`wip_rows`/chip-list decisions in the two prior prompts.
+
+**Why no old/new-stock split on the receive side** (the brief's own question, answered): §5.2 needs
+two tiles because *how a serial gets sent to Moyka* genuinely forks into two different write paths
+— a real raw serial (`moyka_sends` insert against an existing serial) vs. old washed stock (a
+whole separate mint-and-consume RPC minting a brand-new serial). §5.3 has no such fork: by the time
+a serial is sitting in Moyka waiting on output, it is just a serial — `finished_pallets` gets
+written the same way regardless of how that serial came to exist. A minted serial's old-stock
+lineage is metadata (`serial.isMinted`, already read internally by `handleReceipt` to write the
+lineage note) — never a workflow branch Ombor has to pick between. One tile, one picker, one form.
+
+**Shared chip-picker primitive — not extracted, per the brief's own judgment call.** Compared
+`ReceiveFromMoykaForm.tsx`'s chip list against §5.2's `NewStockToMoykaForm.tsx`: different source
+types (`OutputSerial` vs `MoykaSerial`), different filters (`labStatus==='passed'` vs
+`available>0`), and completely different post-selection content (the existing `FinishedReceiptForm`
+component vs. a bespoke weight-entry sub-form). The shared surface is ~10 lines of "button styled
+as a chip, serial + ~kg" — not extracted, same reasoning as the prior prompt's identical call.
+
+**Implementation:**
+- `src/pages/ombor/ReceiveFromMoykaForm.tsx` (new) — chip list (`serials.filter(s => s.labStatus
+  === 'passed')`; membership on `inProcess > 0` already guaranteed by `useMoykaOutput`), single
+  selection held as local state, `FinishedReceiptForm` embedded as-is, the local same-session patch
+  described above, a "Shu seriyaga qabul qilingan" collapsible history (reusing the old per-row
+  layout's own `palletList()` shape — barcode/kalibr/kg/received_date, each reprintable via
+  `Barcode2Display`), and the "Oxirgi Barcode #2" auto-open sticker display the old parent used to
+  render after each save (needed to keep the on-screen QR/print-trigger behavior identical — this
+  wasn't in the brief's own bullet list but is exactly what "prints Barcode #2 as today" requires).
+- `src/pages/ombor/OmborTayyorTab.tsx` — per-serial `row()`/`serialDetail()`/`palletList()` and the
+  `activeForm`/`lastBarcode`/`expandedPallets` state removed; replaced with a single `tileOpen:
+  boolean`. `handleReceipt`'s body (the `finished_pallets` insert + the minted-serial lineage note)
+  is byte-for-byte unchanged — only the UI calling it changed, and it now just calls `refresh()`.
+  Section heading changed from "Moyka — chiqishi kutilmoqda" to **"Moykadan qabul qilish"** — the
+  old wording described a list ("awaiting output"); the new one describes the tile's own action,
+  matching §5.2's heading-above-tile pattern. The now-meaningless "1 ·" numbering (there is no
+  Window 2 left in this tab) is dropped along with it.
+- Three e2e specs drove the old per-row receive flow and needed adapting (not deleted): `tests/e2e/
+  lab-packing-hard-gate.spec.ts` (both the "gate absent" proof — now the serial's chip simply isn't
+  in the list, a cleaner proof than a missing button on a visible card — and the actual pack step),
+  `tests/e2e/full-chain.spec.ts` (receive step + the two now-renamed heading lookups), and `tests/
+  e2e/lab-relocation-loss-verification.spec.ts` (pack step) — all three now open the tile, select
+  the chip by serial (`getByRole('button', { name: /^SERIAL\b/ })`), and drive the unchanged
+  `FinishedReceiptForm` fields directly.
+
+**Verified:** `npx tsc -b --noEmit` clean; `node --test` suite passes; `npx oxlint` clean on every
+touched/new file; `npm run build` succeeds. No live-browser Playwright run this session (same
+network-policy limitation as the prior two prompts) — the three adapted e2e specs are updated for
+correctness but not run.
+
+SPEC.md §5.3 amended inline (struck the old per-row description) — not rewritten wholesale.
+
+## 2026-08-28 — CHIQIM quantity-based dispatch: FIFO cascade, consumption table
+
+Reverses the 2026-08-18 "loading takes the whole calibre" decision, and with it "CHIQIM Option B"
+(2026-07-26/27, pallet-level reservation + Ombor scan-to-load) wholesale — not just the narrower
+batch decision the brief itself named. Ombor no longer scans anything; a finished/old_washed CHIQIM
+line is quantity-only again (calibre + declared net kg + declared tara kg, Menejer's form), and
+which specific `finished_pallets` rows actually get consumed is decided at Ombor's finalize click,
+by FIFO over receipt date, tracked in a new append-only `chiqim_pallet_consumption` ledger rather
+than mutating `finished_pallets`. This is the shape Option A had before Option B existed, but with
+a genuinely new fulfillment mechanism neither prior design had: a batch can now be **partially**
+consumed, split across several requests, which is exactly what removes the double-count risk that
+motivated 2026-08-18's whole-calibre rule in the first place.
+
+**Three premises the brief itself got wrong, corrected via investigation before writing any code**
+(all confirmed with the user via `AskUserQuestion` before proceeding):
+1. **FIFO trigger event.** The brief assumed Qorovul's gate stage 2. Traced the actual code
+   (`useAvailableFinishedStock.ts`, `stock_on_hand_rows`' pre-migration definition) and confirmed a
+   pallet becomes unavailable the instant it's written to `dispatch_manifest`, at Ombor's own
+   `Yuklashni yakunlash` click — cross-checked against SPEC.md's "CHIQIM per-role finalization"
+   named invariant, which explicitly states there is no single shared completing event by design.
+   User confirmed Ombor's finish click as the FIFO trigger, preserving current-day
+   availability-reduction timing exactly.
+2. **FIFO tie-break key.** `finished_pallets` had no timestamp finer than `received_date` (day
+   granularity, frequently tied across same-day pallets). User confirmed adding
+   `finished_pallets.created_at timestamptz`, backfilled deterministically for historical rows
+   (`received_date` midnight + a per-day barcode2-lexical-order offset).
+3. **"Per-calibre batch" shape.** The brief assumed `finished_pallets` was already consolidated
+   one-row-per-calibre-batch. Confirmed via `FinishedReceiptForm.tsx` (already read in full for a
+   prior prompt) that the 2026-08-20 per-calibre entry was a one-time **manual data correction** for
+   exactly two historical serials — the real receive-form consolidation change was explicitly
+   deferred and never built. Doesn't block the design: the consumption-ledger approach treats every
+   `finished_pallets` row as independently, partially consumable regardless of whether it represents
+   one physical pallet or several.
+
+**Migration 0087** — the core mechanism, applied first:
+- `finished_pallets.created_at` (see premise 2 above) — FIFO ordering key.
+- `chiqim_lines.declared_tara_kg` — Menejer's declared tare for a finished/old_washed line,
+  additive to the existing `qty_kg` (declared net, unchanged meaning).
+- `chiqim_pallet_consumption(id, chiqim_line_id, barcode2, qty_kg, created_at, created_by)` —
+  append-only. A trigger backstops `sum(qty_kg) per barcode2 <= finished_pallets.weight_kg` (defense
+  in depth; the real guard is the FIFO function's own row lock, below). RLS: `read_all` +
+  `client_read_own_...` (same serial→kirim_lines→kirim_orders→owner_id chain as
+  `finished_pallets`' own client policy) + `ombor_writes`/`ombor_deletes` (delete window matches
+  `dispatch_manifest`'s own pre-gate-stage-2 policy exactly).
+- Three views — `finished_pallet_availability`, `finished_calibre_availability`,
+  `finished_serial_calibre_availability` — the ONE canonical availability read (brief's own
+  constraint: "no new balance calculation beyond the one canonical availability read"). Per-pallet
+  remaining balance (`weight_kg - consumed_kg`, floored at 0), then the two aggregate levels the
+  brief asked for: total-by-calibre and per-parent-serial-by-calibre.
+- `attribute_chiqim_line_fifo(line_id, loaded_kg, actor)` — `security definer`, `for update`-locks
+  candidate `finished_pallets` rows (type+calibre+isOldStock, `status='in_stock'`) for the call's
+  duration, cascades the loaded kg oldest-`created_at`-first, and **hard-fails** (raises, aborting
+  the whole call, nothing partially written) if the requested kg can't be fully covered right then —
+  "no partial dispatch," the one place in this whole area that is NOT "never blocks," because an
+  actually-impossible dispatch is a different class of problem than an under/over-target one.
+- `finalize_chiqim_dispatch(request_id, lines, actor)` — loops every finished/old_washed line's
+  loaded kg through the function above, then stamps `chiqim_requests.ombor_finished_at/by`.
+- `chiqim_line_pallets` (Option B's reservation table) dropped outright — confirmed empty first
+  (0 rows), along with `dispatch_manifest` (0 rows) and any `chiqim_lines` with
+  `line_kind in ('finished','old_washed')` (0 rows): finished-goods CHIQIM had never actually been
+  dispatched through Option B in production, so no backfill/reconciliation was needed anywhere in
+  this migration series. `dispatch_manifest`'s TABLE is kept (never written to again) as a
+  historical artifact — same "keep table, stop writing" precedent as `wash_cycles` (0086).
+
+**Migration 0088** — the read-path rewrite, all 9 sites that read the old `dispatch_manifest`+gate
+model, switched to `chiqim_pallet_consumption` (+ the same gate-completion check for "truly
+departed," unchanged in meaning): `kirim_line_state`, `stock_on_hand_rows` (a partially-consumed
+pallet now correctly splits into an `available` portion and a `band_qilingan` portion, both nonzero
+at once — impossible under the old whole-pallet model), `get_client_report` (`client_pallets` CTE
+split into a "still held" branch + one row per gate-completed consumption portion, preserving the
+exact old "claimed-but-undeparted has zero effect" semantics), `rahbar_dashboard_ledger` (identical
+split), `get_serial_passport` (`dispatch_ids`/`dispatch_pallets`/`finished_dispatched_total`
+switched to consumption; new `dispatchedByCalibre` block, the brief's own explicit requirement,
+scoped to gate-completed consumption only). `useAvailableFinishedStock.ts` (2026-08-28.5.4-scoped
+frontend read) rewritten separately, below. `rahbar_stock_snapshot` and `client_calibre_split`
+confirmed needing NO changes (the former only aggregates `stock_on_hand_rows`' own bucket, inheriting
+its fix automatically; the latter computes gross produced totals straight off `finished_pallets`,
+never touched `dispatch_manifest`).
+
+**Migration 0089 — a gap caught before any UI was built on top of it.** `attribute_chiqim_line_fifo`
+and the availability views selected candidates on `status = 'in_stock'` alone, missing the
+pre-existing hard gate (`labVerdict.ts`, SPEC.md Laborator v2) that a serial's CURRENT wash-cycle
+verdict must be `o_tdi` before its pallets are dispatchable — untested and `qayta_yuvish`-flagged
+stock was reachable by both the FIFO cascade and Menejer's feasibility hint. Fixed by adding the
+identical wash_cycles+latest-lab_results-by-scope='chiqim' join `stock_on_hand_rows` already used
+for its own `available` bucket. No effect on the live total at the time (every in-stock pallet's
+serial already carried an `o_tdi` verdict) — a correctness fix for future data, not a live-data
+change.
+
+**A real-data test-pollution incident during hard-fail verification — caught, reverted, disclosed
+per this session's standing transparency rule (CLAUDE.md "Testing workflow").** While verifying
+`attribute_chiqim_line_fifo`'s hard-fail behavior with an intentionally-over-large request, the
+isolated `TEST-FIFO-*` fixture's chosen type/calibre combination turned out to already have real
+production stock. The FIFO cascade correctly did its job — cascading across ALL matching stock
+globally — which meant it also consumed 720kg+160kg from real serial `240826-001` and 69kg from
+`110826-001` (a serial already corrected once earlier in this session's own work). Caught
+immediately by checking `finished_serial_calibre_availability` for those two real serials right
+after the test and noticing the drop; the four erroneous `chiqim_pallet_consumption` rows were
+identified by exact UUID and hard-deleted, and both serials' availability was verified restored to
+their known-correct pre-test figures (`110826-001`: 1127/4657/20/1350 across calibres; `240826-001`:
+140+880=1020) — plus the fleet-wide `finished_calibre_availability` total matched the pre-test
+baseline (76650kg) exactly, both before and after. The hard-fail test was then re-run properly
+isolated, against `Subxon`/`Kalibr 5` (a combination with zero real stock), via an explicit
+DO-block-with-BEGIN/EXCEPTION harness asserting the exception fires and zero consumption rows leak —
+passed cleanly. All `TEST-FIFO%`-plated fixtures (both batches) were hard-deleted afterward
+(these are genuinely disposable SQL test rows, never app-visible — distinct from the app's own
+void-only business-data rule), verified via a final zero-count query and the availability total
+still matching baseline.
+
+**A second, broader gap — caught by an active post-deploy sweep, not by chance.** After the
+frontend rewrite (below) was done and 0087-0089 were already live, a deliberate
+`pg_get_functiondef`/`pg_get_viewdef` sweep across every live function and view for lingering
+`dispatch_manifest`/`chiqim_line_pallets` references turned up SEVEN more objects 0087 had silently
+broken by dropping/abandoning those two tables without checking every dependent:
+- **Migration 0090** — `chiqim_requests_release_reservations` (a 0033 trigger, AFTER UPDATE ON
+  `chiqim_requests`) still called `release_chiqim_reservations()`, which directly referenced the
+  now-dropped `chiqim_line_pallets`. Since this trigger fires on ANY update setting `voided_at` or
+  `ombor_finished_at`, this meant **every CHIQIM void and every Ombor finish click** — including the
+  brand-new `finalize_chiqim_dispatch` path this very prompt built — would throw `relation
+  chiqim_line_pallets does not exist` the moment it ran. Caught via code archaeology before either
+  path was ever exercised through the new UI. Fixed by dropping the trigger and function outright —
+  the reservation-release mechanism it implemented has nothing left to release.
+- **Migration 0091** — six more objects, two failure modes. THROWS:
+  `mint_serial_from_sources` (Rezka's pallet-source eligibility check) also queried
+  `chiqim_line_pallets` directly — any pallet-source mint would have thrown. SILENTLY WRONG (worse:
+  no error, just a wrong answer) since `dispatch_manifest` is now permanently empty:
+  `close_out_old_stock`'s `old_washed` branch and `old_stock_closeout_lines` (both would count every
+  in-stock old_washed pallet as "still remaining" even once FIFO had departed some or all of it, and
+  the close-out would mis-void pallets that should already read as gone); `client_filtered_report_rows`
+  (the client portal's own `'chiqim'` rows always got `date_basis = NULL` via the dead join, which
+  the function's own WHERE clause then silently filtered out entirely — **every client's own
+  dispatched-finished-goods rows had vanished from their own report**); `report_chiqim_rows` and
+  `report_moyka_output_rows` (`pallet_status` always fell through to `'omborda'` for a departed
+  pallet — feeds `get_serial_passport`'s own `cycles[].pallets[]` list directly, so a dispatched
+  pallet's passport badge would have silently read "still in warehouse"). All six fixed by the same
+  pattern already established in 0088/0089: swap the dead `dispatch_manifest`/`chiqim_line_pallets`
+  read for `chiqim_pallet_consumption` (+ gate-completion, where "departed" specifically matters).
+  Where the original object was whole-pallet-boolean (`close_out_old_stock`,
+  `old_stock_closeout_lines`), the fix kept that same granularity rather than inventing a third,
+  finer balance calculation for a close-out/audit context that never needed one before either.
+- **Migration 0092 — a genuine security gap, not just a correctness one.** `get_advisors` (security)
+  flagged `attribute_chiqim_line_fifo` and `finalize_chiqim_dispatch` as callable by the `anon` role
+  over PostgREST — unlike every other `security definer` write RPC in this schema
+  (`mint_serial_from_sources`, `close_out_old_stock`), both were missing the `my_role() = 'ombor'`
+  gate every sibling function already has as its first check. An unauthenticated caller could have
+  invoked either directly to attribute arbitrary FIFO consumption against arbitrary `chiqim_lines`,
+  or stamp `ombor_finished_at` on any request. Fixed by adding the identical gate.
+
+This second sweep is the reason this entry runs longer than a typical migration writeup: dropping a
+table this deeply embedded turned out to have eight total dependents across two migrations' worth of
+initial rewrite work, not the handful anticipated going in. Worth naming as a process point, not just
+a fix list — the lesson carried forward is that dropping/abandoning a table needs the SAME
+`pg_get_functiondef`/`pg_get_viewdef ilike` sweep this session eventually ran, run BEFORE the drop is
+applied, not after the fact once something downstream throws or goes quiet.
+
+**Frontend, `src/lib/`:**
+- `useAvailableFinishedStock.ts` — rewritten (same file, new export
+  `useFinishedCalibreAvailability`): the old per-pallet picker list is gone; reads
+  `finished_calibre_availability` directly, returning `{type_id, calibre_id, is_old_stock,
+  available_kg}[]`. Reused as-is by both Menejer's form and Ombor's new loaded-kg entry, so the two
+  screens' soft-warning hints can never disagree.
+- `useOmborChiqimRequests.ts` — `chiqim_line_pallets` nested select removed (the table it read no
+  longer exists); `ChiqimLine` drops `reservedPallets`, gains `declared_tara_kg`.
+- `useDispatchManifestLines.ts` — reads `chiqim_pallet_consumption` instead of `dispatch_manifest`;
+  `weight_kg` is now the portion actually attributed to that request (`qty_kg`), not the whole
+  pallet's book weight — a pallet can now appear split across several requests' own detail views.
+- `chiqimScan.ts`, `chiqimFeasibility.ts` (+ both `.test.ts`), `useReservedPalletBarcodes.ts` —
+  deleted outright (Option B's scan-resolution, whole-pallet feasibility-matching, and reservation
+  machinery; nothing left references any of them). `sortFinishedByOmborFinish` (still needed, W2's
+  own sort) and `lineStatus`/`shortfallLines` (still needed, now generic across every CHIQIM line
+  kind including finished/old_washed's own loaded-kg entry) were split out into two new
+  dependency-free modules — `sortChiqimFinished.ts`, `chiqimLineStatus.ts` — before the rest of
+  `chiqimScan.ts` was deleted, each carrying its own tests forward unchanged.
+
+**Frontend, pages:**
+- `ChiqimForm.tsx` (Menejer) — the picker (`matchingPallets`/`togglePallet`/`selectedBarcodes`,
+  the `chiqim_line_pallets` reservation insert with its 23505-race handling) removed entirely for
+  finished/old_washed rows. Replaced with a plain net-kg input (no longer read-only) plus a new
+  required tara-kg input, and a feasibility hint that's now a simple "declared kg ≤
+  `finished_calibre_availability`" check instead of the old whole-pallet nearest-below/above
+  matching (`checkFeasibility`, deleted with `chiqimFeasibility.ts` above — FIFO can now split any
+  pallet arbitrarily, so "does it map to whole pallets" stopped being a meaningful question). raw/
+  old_raw/old_kn rows are untouched — out of this change's scope, confirmed via the brief's own
+  explicit exclusion list.
+- `OmborChiqimTab.tsx` — the "Yig'ish kerak" prep-list and the scan zone
+  (`BarcodeCameraScanner`/manual barcode form/`processBarcode`/`handleScan`) are gone. Replaced with
+  a per-line "Yuklangan og'irlikni kiriting" entry (one number, declared net+tara shown as context,
+  the live available-kg hint from `useFinishedCalibreAvailability`), held client-side until
+  `Yuklashni yakunlash` — same deferred-commit shape the raw/old_kn draw composers already used.
+  `handleFinish` now calls `attribute_chiqim_line_fifo` per finished/old_washed line FIRST, before
+  any raw/old_kn commit — a hard-fail there aborts the whole click before anything else is written,
+  so a retry is clean rather than partial (this ordering is a deliberate departure from calling the
+  bundled `finalize_chiqim_dispatch` RPC, which would stamp `ombor_finished_at` before the raw/old_kn
+  commits below it, risking a duplicate-draw retry on a later, unrelated failure). W2's undo
+  (`handleUndoScan`) now DELETEs from `chiqim_pallet_consumption` instead of `dispatch_manifest`,
+  same RLS-enforced pre-gate-stage-2 window as before, same "empty `.select()` result means
+  RLS-refused, not already-gone" reasoning.
+- `serialPassport.ts`/`SerialPassportModal.tsx` — new `dispatchedByCalibre` block (brief's own
+  explicit requirement) wired through and rendered as a small per-calibre table.
+  `PassportPendingDispatch`'s `kind='finished'` case is gone, not replaced — flagged, not silently
+  dropped: it read `chiqim_line_pallets` (Option B's reservation, its only source), and there is no
+  equivalent any more — FIFO attribution happens only at Ombor's finalize click, so a still-open
+  finished/old_washed line has no specific pallets reserved in advance to report as "pending" for
+  any one serial. `kind='raw'` (a different table, untouched) is unaffected.
+
+**e2e:** `chiqim-undo-scan.spec.ts` rewritten end-to-end for the new flow (kept its filename — still
+the exact right word, "undo," just for a loaded-kg entry now, not a scan); now requests the FULL
+4000kg across two fixture pallets so the FIFO cascade deterministically consumes both, then
+discovers via a direct `chiqim_pallet_consumption` query which barcode landed in which row rather
+than assuming a specific tie-break order between two same-instant-created pallets. `full-chain.spec.ts`'s
+CHIQIM section updated to the new form (net+tara, no picker) and Ombor's new loaded-kg entry (no
+scan). `tests/e2e/helpers/teardown.ts` gained a `chiqim_pallet_consumption` cleanup step (resolved
+via `chiqim_line_id`, since it FKs there and not to `request_id` directly) ahead of the `chiqim_lines`
+delete — every future e2e run's teardown would otherwise leave orphaned consumption rows behind for
+any test that drives this flow.
+
+**Not built — flagged, not silently skipped:** old_washed pallets' barcode-label printing had no
+trigger point left. The old prep-list's per-row/print-all buttons existed specifically because a
+reserved old_washed pallet got its first physical label at reservation time (old-stock pallets
+aren't labeled at intake, unlike regular finished pallets). With the reservation step gone, there is
+no UI moment left where an old_washed pallet's label naturally gets printed for the first time before
+dispatch. Out of this task's explicit scope (labeling wasn't named in the brief); a real gap for
+whoever picks up old-stock dispatch UX next.
+
+**Verified:** `npx tsc -b --noEmit` clean; `npx oxlint` clean (one pre-existing, unrelated warning on
+`AuthProvider.tsx`); `node --test` full suite passes (52/52, including two new/moved test files).
+`npm run build` succeeds. SQL verified extensively and directly against live data after every
+migration (0087 through 0092): `finished_calibre_availability`'s fleet-wide total held at exactly
+76650kg across every single change in this series (a strong signal nothing was silently
+double-counted or dropped along the way); every rewritten function/view executed cleanly against
+real rows; the FIFO hard-fail path was exercised twice (once with real-data contamination, caught
+and fully reverted; once cleanly isolated). **No live-browser Playwright run this session** — this
+sandbox has no `.env.test` (test-role credentials), so the rewritten e2e specs are updated for
+correctness but not executed; flagging this explicitly rather than claiming a UI-level pass this
+session couldn't actually perform.
+
+SPEC.md §5.4 amended inline (struck the scan-to-load/whole-pallet-only bullets, added the FIFO
+cascade description) — plus two smaller mentions elsewhere that had gone stale in the same way
+("a pallet is atomic... loaded whole or not at all" in the Barcode #2 notes row; the CHIQIM form's
+own "whole-pallet soft warning" bullet) — both amended the same inline way, not rewritten wholesale.
+
+## 2026-08-29 — Partiya raqami (per-type arrival batch number)
+**Context:** Task asked for a per-type arrival batch number on every `kirim_lines` row ("partiya
+raqami"), shown next to the serial everywhere a serial appears — Laborator KIRIM/CHIQIM, Ombor's
+four tabs, Menejer's KIRIM list and CHIQIM raw picker, Qorovul's gate queue, the serial passport,
+Hisobot (as a new filterable column), and the Global Export client portal.
+
+**Two wrong premises in the task's own brief, caught by schema inspection (CLAUDE.md "Inspect live/
+migration schema before assuming") before writing any code:**
+- The brief's own suggested tie-break, `kirim_lines.id`, doesn't exist — `kirim_lines`' PK is the
+  generated text `serial`, no surrogate id column at all.
+- The brief's own memory of the arrival-date column, `kirim_orders.arrival_date`, doesn't exist —
+  the real column is `order_date`, already what every other read path in this codebase treats as
+  "arrival" (`report_kirim_rows` aliases it `date_basis`/`arrival_date`).
+
+Both corrected, then surfaced via `AskUserQuestion` rather than silently substituted (CLAUDE.md
+"stop, report, do not invent a design" for ambiguous premises) — confirmed with the user:
+**ordering key** `(kirim_orders.order_date, kirim_orders.created_at, kirim_lines.serial)`
+(order_date for the date, the order's own created_at to break same-date ties between orders, serial
+as the final tie-break between two lines of the same type on one multi-type order); **assignment
+timing** eager, at `kirim_lines` INSERT time (matches order_date already being decided at that
+point, and avoids a visible gap on Menejer's own screens between line creation and Ombor's later
+intake confirmation).
+
+**A third, self-contradiction in the brief itself:** one line said `kirim_lines.partiya_no int not
+null`, two other lines said opening-stock rows leave it null, displayed as a blank badge never "0"
+or "1". The column cannot be both — resolved in favor of the unambiguous, twice-stated requirement
+(plain nullable `int`, no NOT NULL constraint), documented as a deliberate correction in the
+migration's own header rather than silently picking one side.
+
+**Decision — mechanism:** a `partiya_counter` table (one row per `type_id`, RLS-locked with zero
+policies, same shape as the existing `serial_counter`), advanced by a `security definer` BEFORE
+INSERT trigger on `kirim_lines` doing an atomic `insert ... on conflict (type_id) do update set
+last_no = last_no + 1 returning last_no` — not a live `count(*) + 1` scan, which would race under
+two concurrent Menejer submissions for the same type. Origin-gated inside the trigger: only
+`kirim_orders.origin = 'delivery'` rows get a number; `opening_stock`/`internal_reprocess` leave
+`new.partiya_no` untouched (stays NULL). A second trigger enforces immutability (`old.partiya_no is
+not null and new is distinct from old → raise exception`) — defense in depth, since `kirim_lines`
+has no UPDATE policy for any role today anyway. Backfilled once for every pre-existing
+`origin='delivery'` row via the same ordering key, guarded `where partiya_no is null` so a re-run is
+a no-op. `supabase/migrations/0093_kirim_lines_partiya_no.sql` — applied, backfilled (Subxon 1-16,
+Isfara 1-3 on the live data at apply time), and verified: a disposable `TEST-PARTIYA-1/2/3` SQL-level
+fixture (Subxon-only → Subxon+Isfara mixed → Isfara-only) confirmed Subxon numbered 1,2 and Isfara
+1,2 within that isolated run, immutability trigger refused a direct `UPDATE ... SET partiya_no`, and
+origin-gating correctly left an `opening_stock` fixture's `partiya_no` null.
+
+**Incident, disclosed per CLAUDE.md "Testing workflow":** the isolated SQL fixture above was hard-
+deleted after verification (a legitimate disposable SQL-only fixture, not app-visible data), but this
+left `partiya_counter.last_no` advanced to the fixture's own consumed values (Subxon 18, Isfara 5)
+even though real data's actual max had dropped back to 16/3 after cleanup — a counter-drift, not a
+numbering-logic bug, but one that would have caused the NEXT real arrival of either type to jump
+ahead by the fixture count instead of continuing 1-past the last real row. Caught by a drift-check
+query (`counter.last_no` vs `max(kirim_lines.partiya_no)` per type) immediately after cleanup, fixed
+with `update partiya_counter set last_no = coalesce((select max(partiya_no) from kirim_lines where
+type_id = pc.type_id), 0)`, re-verified both types' counters exactly match real data again. Recorded
+here as the standing risk with ANY fixture that exercises this trigger — the e2e spec below
+(`tests/e2e/partiya-raqami.spec.ts`) carries its own `resyncPartiyaCounter` teardown step for exactly
+this reason, run after every test that creates real `kirim_lines` rows.
+
+**Read-path migration (`0094_partiya_no_read_path.sql`) — a real Postgres signature-change discovery
+along the way:** the first apply attempt failed with `ERROR 42P16: cannot change name of view column
+"calibre_id" to "partiya_no"`. `CREATE OR REPLACE VIEW` only allows APPENDING a new output column at
+the very end of the SELECT list — inserting one in the middle (originally placed right after
+`type_id`, before `calibre_id`, to read naturally next to the serial) shifts every column after it,
+which Postgres reads as an implicit, disallowed rename of each shifted column. Fixed by moving
+`partiya_no` to the LAST column of every view's own outer/exposed SELECT list (CTEs inside a view
+are NOT "view columns" and are unaffected by this rule, so it stays wherever convenient inside
+those). The same restriction applies even harder to any function using `RETURNS TABLE`
+(`report_kirim_rows_as_of`, `report_query_page`, `client_filtered_report_rows`,
+`client_report_rows`): `CREATE OR REPLACE FUNCTION` refuses ANY change to the OUT-parameter list —
+RETURNS TABLE is implemented as OUT parameters — regardless of position; appending one still errors
+"cannot change return type of existing function." Those four (plus the two new
+`report_filtered_rows`/`report_totals` parameter additions below) needed `DROP FUNCTION` +
+`CREATE FUNCTION` instead, each with the exact live argument-type list first. Sixteen objects
+threaded through in total: `report_kirim_rows`, `report_kirim_rows_as_of`, `report_chiqim_rows`,
+`report_moyka_output_rows`, `report_moyka_send_rows`, `report_raw_dispatch_rows`,
+`report_old_kn_rows` (no serial at all — `null::int`, for shape consistency with the other five in
+the union below), `report_rows_v2`, `report_query_page`, `stock_on_hand_rows`, `wip_rows`,
+`yield_rows`, `get_serial_passport`, `get_client_report`, `client_filtered_report_rows`,
+`client_serial_summary` — the last four are `jsonb`-returning, unaffected by the RETURNS TABLE
+restriction, `CREATE OR REPLACE FUNCTION` worked fine for them.
+
+**A gap in that same 16-object list, found while wiring the client-portal TS layer, fixed in
+`0095_client_report_rows_partiya_no.sql`:** `client_report_rows` (the actual RPC
+`clientPortalReport.ts` calls) wraps `client_filtered_report_rows` but has its OWN explicit
+`RETURNS TABLE` selecting NAMED columns from `f`, not `f.*` — so it did not inherit the new column
+automatically the way `report_query_page`'s `select f.*, ...` over `report_filtered_rows` does.
+Caught by reasoning through what the frontend actually calls (`clientPortalReport.ts`'s own
+`.rpc('client_report_rows', ...)`), not by re-deriving the read-path list from scratch — same
+DROP+CREATE fix.
+
+**Hisobot's own "filterable, visible column" requirement — a genuine SQL parameter addition, not
+just a new display column:** `report_query_page` is LIMIT/OFFSET paginated server-side, so a
+client-side narrow of an already-fetched page would silently miss matches beyond it. Added
+`p_partiya_no integer default null` to `report_filtered_rows` (`0096_report_partiya_no_filter.sql`)
+and threaded it through `report_query_page` in the same migration, then discovered `report_totals`
+(the totals-strip RPC) ALSO calls `report_filtered_rows` and would otherwise silently sum the FULL
+unfiltered set while the row table showed a partiya-filtered subset — added the same parameter there
+too (`0097_report_totals_partiya_no_filter.sql`). All three parameter additions used `default null`
+appended at the end specifically so every existing positional caller (`report_totals` itself calling
+`report_filtered_rows` with exactly its old 13 args) keeps resolving correctly against the new,
+longer signature — confirmed live (see Verified below) rather than assumed. Filter UI: an exact-match
+number input (`ReportFilterBar.tsx`'s "Ko'proq filtrlar" panel, `type="number"`) — never substring
+`ilike` like serial/barcode2, since "2" must never also match "20".
+
+**"Sortable per type" interpretation, not escalated:** the existing Hisobot table has no click-to-
+sort UI on ANY column today (fixed `order by date_basis desc, row_key desc`). Read as describing a
+data-SHAPE property (partiya numbers are meaningfully ordered once a user filters to one type) 
+rather than a request for a brand-new generic column-sort mechanism — a scope-proportionate reading
+of one subordinate clause in a much larger brief, not silently decided without disclosure (recorded
+here). Implemented as a plain visible+filterable column, no new sort UI.
+
+**Legacy overloads left untouched, confirmed unused before skipping:** the singular
+`report_query_page(p_direction text, ...)` / `report_filtered_rows(p_direction text, ...)` /
+`report_totals(p_direction text, ...)` overloads and the old `report_rows` view (pre-dating the
+`p_directions text[]` multi-select direction filter) are dead code — the app only ever calls the
+plural `text[]` overloads (`useReportQuery.ts`'s own `toRpcParams` always builds `p_directions:
+string[] | null`). Confirmed via `reportQuery.ts`/`useReportQuery.ts` before deciding to skip, not
+assumed; `rahbar_dashboard_ledger`/`rahbar_stock_snapshot` (aggregate-only, no per-serial listing)
+and `old_stock_closeout_lines` (owner+type aggregate) are likewise out of scope — none display a
+serial.
+
+**Frontend:** new `src/components/ui/PartiyaBadge.tsx` — a small amber pill ("P{n}"), reusing the
+design system's own `pending` tone (the same precedent `OmborChiqimTab.tsx`'s `oldStockBadge` set
+for "reuse the amber palette rather than inventing a new color"), returning `null` (no badge, not
+"0"/"1") when `partiyaNo` is null. `partiyaNo`/`partiya_no` threaded through every serial-carrying
+hook (`useMoykaSerials`, `useMoykaOutput`, `useIntakeLines`, `useIntakeHistory`,
+`useLaboratorKirim`, `useLaboratorChiqim`, `useLaboratorHistory`, `useKirimTrips`) and every
+report/RPC-mapper file (`reportQuery.ts`'s `ReportDbRow` + all 5 serial-carrying row kinds +
+`mapDbRowToReportRow`; `stockOnHand.ts`/`useStockOnHand.ts`; `wip.ts`/`useWipRows.ts`;
+`yield.ts`/`useYieldRows.ts`; `serialPassport.ts`; `clientReport.ts`; `clientPortalReport.ts`), then
+rendered next to the serial across ~30 components spanning Laborator (KIRIM/CHIQIM live+Tarix+all 4
+Tahlil forms), Ombor (Moyka/Intake/Chiqim/receive-from-Moyka/new-stock-to-Moyka/Hisobotlar),
+Menejer (KIRIM orders list, CHIQIM raw-serial pool picker + its saved-draws list), Qorovul (KIRIM
+gate queue), Hisobot (`ReportTableRow`'s serial cell AND its own new `partiya` column,
+`ReportRowCard`, all 5 row-detail components, `StockOnHandTable`, `WipTable`, `YieldTable`), the
+serial passport modal (header reworked to "Seriya: X · Partiya: Y (Tur)", prominently, matching the
+task's own exact requested format), and the client portal (`ClientHisobotTab`, its serial-summary
+modal, and the internal `ClientReportTab`'s quality-record table).
+
+**Verified live, directly against real data (not just SQL-level unit assertions):**
+`report_kirim_rows`/`report_query_page`/`stock_on_hand_rows`/`wip_rows`/`yield_rows` all return the
+correct `partiya_no` for real serials; `get_serial_passport('290726-068')` returns
+`order.partiyaNo = 1`; `get_client_report(...)`'s `qualityRecord[].partiyaNo` returns the correct
+mixed-type sequence (`[1,1,2,3,4,5,2,6,8,7,3,9,10,12,11,13,14,15,null,16]` across two product types
+in one period — the interleaving itself confirms two independent per-type sequences, not one shared
+counter); `client_serial_summary`/`client_report_rows`/`client_filtered_report_rows` all compile and
+execute cleanly (return empty under a service-role/no-owner SQL console session, as expected — these
+three gate on `my_owner_id()`, which is null outside a real authenticated client session; not a bug,
+confirmed by `get_client_report`'s own positive result above exercising the identical underlying
+data through a path that doesn't require that gate). `npx tsc -b --noEmit` clean, `npx oxlint` clean,
+`node --test` 52/52, `npm run build` succeeds.
+
+**Not executed this session:** `tests/e2e/partiya-raqami.spec.ts` (two specs — the three-arrival
+per-type sequencing scenario with a Laborator-queue badge check, and an opening-stock-shows-no-badge
+check against Ombor qoldig'i with "Eski zaxira" toggled) is written, ad-hoc typechecked clean against
+this repo's actual tsconfig options (zero errors in the new file or its `resyncPartiyaCounter`
+teardown addition), and follows this suite's established fixture/teardown/role-switching
+conventions throughout — but **not run**, same disclosed limitation as the CHIQIM FIFO work earlier
+in this same file: this sandbox has no `.env.test` (test-role credentials), so there is no way to
+actually launch a browser session against the live app here. Flagged explicitly rather than claimed;
+whoever picks this up next should run `npx playwright test partiya-raqami` locally, where
+`.env.test` exists, before treating this as end-to-end-verified.
+
+**Not built — flagged, not silently skipped:** the task's own read list named `useAvailableFinishedStock`/
+`useOmborChiqimRequests` as sites needing `partiyaNo` — investigated directly and confirmed neither
+selects `kirim_lines` or any of the 16 updated read-path objects (they read `chiqim_lines`/
+`chiqim_requests`/`finished_pallets`/`finished_calibre_availability` instead, none of which carry a
+serial's own arrival batch number as a concept). No number to show there; not a gap, a premise in
+the task's own brief that didn't hold once checked against the actual query shape.
+
+## 2026-08-29 — Lab CHIQIM inline readings, loss sign convention, Hisobot output-by-kalibr columns
+
+Three bundled display-layer changes (SPEC.md §2.18 NEW, §5.5.3, §3.2.4). No schema change, no new
+balance calculation anywhere — display and one new per-serial-per-calibre breakdown reusing an
+existing read pattern.
+
+**Two wrong premises in the task's own read list, surfaced before coding, same pattern as Prompt
+5's own wrong premises:**
+
+1. The task's read list named `computeSignedLossPct`/`computeFinalLossPct` as TS-side functions to
+   read. Neither exists anywhere in `src/` — confirmed via `tayyorCompletion.ts`'s own explicit
+   header comment: "Tugallash and its locked final_loss_pct are removed (see DECISIONS.md 'Moyka
+   loss becomes live'): loss is now computed live, signed, and unconditionally in SQL
+   (`client_serial_loss_kg`/`yield_rows.loss_kg`/`get_serial_passport`'s `cycles[].lossKg`) —
+   there is no TS-side equivalent any more." Immaterial to the actual work (the task only asked to
+   *read* these as context, not extend them), but recorded since it's the second time this specific
+   stale premise has appeared in a task brief this project.
+2. The "before coding" section's own literal formula for the kalibr columns —
+   `sum(finished_pallets.qty) − sum(chiqim_pallet_consumption.qty_kg)` — computes the **live
+   available balance** (identical to `finished_pallet_availability`), not what the "Requirements"
+   section two paragraphs later explicitly asks for: "total ever produced under that kalibr for
+   that serial (available + already-dispatched) ... the full production picture, not just what's
+   currently sitting in stock." These are genuinely different numbers for any serial with active
+   consumption. Resolved by arithmetic, not guesswork, per CLAUDE.md's "stop, report, do not invent
+   a design": `available + already-dispatched = (produced − consumed) + consumed = produced =
+   sum(finished_pallets.weight_kg)` — the Requirements text's own formula collapses to plain gross
+   production once "already-dispatched" is read as **all** consumption ever recorded (gate-completed
+   or still in transit), not just gate-completed departures. Went with gross production — it's also
+   exactly `kirim_line_state`'s own `moyka_out`/`Moykadan chiqgan` figure (0074/0088), split by
+   calibre instead of totalled, so this is a pure breakdown of a number Hisobot already shows, not a
+   new balance concept.
+
+**(1) Lab CHIQIM inline KIRIM readings.** `useLaboratorChiqim.ts` gained a third parallel
+`lab_results` fetch (`scope='kirim'`, `parent_serial in (...)`, same latest-wins-by-`created_at`
+pattern `useLaboratorKirim.ts` already established) alongside its existing wash_cycles/moyka_sends/
+CHIQIM-scope fetches — `latestKirimResultBySerial`, keyed by serial. `AwaitingSerial` and
+`ChiqimLabResultRow` both gained `kirimMoisturePct`/`kirimSo2MgKg: number | null`, populated at both
+row-construction sites (the awaiting-row push and the finished/sulfur-pending row build), defaulting
+to `null` — never `0` — when no KIRIM reading exists (the `internal_reprocess`-origin old-stock
+re-wash mint case the task itself names, which never passes through KIRIM Tahlil by construction).
+`LaboratorChiqimTab.tsx` gained one shared `KirimReadingLine` component, rendered on: Window 1's
+card (directly under the existing "sentKg · yuborilgan date" line — the literal "alongside the
+existing serial/kg/date" the task asked for), Window 2's card, and Window 3's expanded detail panel
+(not the collapsed header — every other CHIQIM-result field on a Window 3 row is already
+expand-gated, so this follows the same existing convention rather than introducing a new
+always-visible line on an already-decided, historical row). `ChiqimTahlilForm.tsx` and
+`ChiqimTahlilEditForm.tsx` (Tahlil entry + Yakunlangan edit) both gained a "Kirim natijasi" row in
+their existing Seriya/Egasi/Tur kv-summary box. Read-only throughout — no write path touches
+`lab_results.scope='kirim'` from this tab, by construction (only `useLaboratorKirim.ts`'s own forms
+insert those rows).
+
+**(2) Loss sign convention.** Full audit of every loss-display site in the app before writing the
+helper (same audit shape the task asked for, mirroring the earlier Rezka fix):
+
+| Site | Field | Before | Fix |
+|---|---|---|---|
+| `SerialPassportModal.tsx` (per-cycle) | `cycle.lossKg` | Already correct (manual `Math.abs`+conditional `+`) | Extracted into `formatLossKg`, tone-color logic (red/amber/slate by sign) kept as its own small conditional — a color concern, not a text-format one |
+| `SerialPassportModal.tsx` (`joriyHolat`) | `storageLossKg` | Plain `${v} kg`, conditional on `>0` | **Untouched** — structurally non-negative book-value write-off, a different concept, not the signed wash-process family |
+| `YieldTable.tsx` | `row.lossKg`/`lossPct` | Native `-50 kg` on a surplus row | `formatLossKg`/`formatLossPct` |
+| `YieldTab.tsx` | `totalLoss` (locally summed) | Same | `formatLossKg`/`formatLossPct` |
+| `ClientHisobotTab.tsx` (totals + per-row) | `ubytokKg` | Local `kg()` helper (generic, non-signed) | `formatLossKg(v, 'кг')` at the two `ubytokKg` call sites only — `kg()` itself untouched, still used for every non-loss figure on the same screen |
+| `ClientSerialSummaryModal.tsx` | `summary.lossKg` | Same local-`kg()` pattern | `formatLossKg(v, 'кг')` |
+| `RahbarHome.tsx` (Ledger B row) | `ledger.moyka.lossKg`/`lossPct` | Manual `fmt()` + bare `%` | `formatLossKg`/`formatLossPct`; `LedgerRow`'s `sign="−"` prop is a static ledger-flow-direction icon, unrelated to the value's own numeric sign — left unchanged |
+| `RahbarHome.tsx` (Bar chart) | same, `pctOfLabel` | Bare `${lossPct}%` | `formatLossPct` on the label text only; the bar's own `value={Math.max(0, lossKg)}` geometry clamp is chart-rendering concern, left as-is |
+| `ClientReportTab.tsx` | `processedBreakdown.lossKg`/`lossPct` | Native negative | `formatLossKg`/`formatLossPct` |
+| `MenejerExceptionsTab.tsx` (`high_loss`) | `d.lossPct` (from `rahbar_exceptions`/`yield_rows.loss_pct`) | Bare `${lossPct}%` | `formatLossPct` applied for consistency, though **provably a no-op today**: `rahbar_exceptions`'s own SQL only ever surfaces this row when `loss_pct > threshold`, so the value is always positive by construction — a surplus cycle can never trigger a "high loss" exception |
+| `clientReportExport.ts` / `yieldExport.ts` | Excel cells | Raw numeric cell | **Untouched, deliberate** — a spreadsheet numeric cell has its own native negative-number convention; forcing a "+"-prefixed string into it would be a different, arguably wrong, convention for that surface |
+
+`formatLossKg(signedKg, unit = 'kg')`/`formatLossPct(signedPct)` (`src/lib/formatLoss.ts`) — one
+helper, sign/prefix logic in one place. The `unit` parameter (default `'kg'`, matching the task's own
+literal spec) exists because two real screens in this app (`ClientHisobotTab`/
+`ClientSerialSummaryModal`, the Global Export client portal) are Russian-labelled end to end and need
+`'кг'` to match every other figure on the same row — the sign convention itself is identical either
+way, only the unit string differs. Unit test coverage in `src/lib/formatLoss.test.ts` (sign, zero,
+rounding, custom unit).
+
+**(3) Hisobot output-by-kalibr columns.** Live `calibres` checked before writing any SQL (not
+assumed): a single category ("O'rik"), codes `01`-`08` (Kalibr 1-8), `KN` (Konditirskiy), and `RKN`
+(Rezka KN, numberless) — `finished_pallets` grouped by calibre code today has rows under `01, 02, 04,
+06, 08, KN` only; `RKN` has zero rows (Rezka's own KN variant has never gone through the
+finished-goods pipeline this migration reads). K1-K8 + KN therefore covers 100% of live
+`finished_pallets` rows today; noted in the migration's own header that `RKN` would silently fall
+outside these 9 columns if it ever did produce a row — a real gap if the production process changes,
+not fixed here since it doesn't exist yet.
+
+New `kirim_line_calibre_output(p_serial)` SQL function (`supabase/migrations/0098_hisobot_output_by_
+kalibr.sql`) — sibling to `kirim_line_state`, same `base_pallets` CTE and exclusion set (`status not
+in ('bekor_qilindi','storage_loss')`, not consumed into a re-wash via `serial_mint_sources`), summed
+`filter (where code = ...)` per calibre instead of totalled. `report_query_page`/`report_totals`
+(`text[]` overloads) both needed `DROP FUNCTION` + `CREATE FUNCTION` — the same `RETURNS TABLE`
+signature-change constraint discovered live during the Partiya raqami work (`CREATE OR REPLACE
+FUNCTION` refuses any OUT-parameter-list change, regardless of position) — each gained a second
+`LEFT JOIN LATERAL`/`CROSS JOIN LATERAL kirim_line_calibre_output(...)` alongside the existing
+`kirim_line_state` one, with the 9 new columns appended at the very end (`state_k1`...`state_k8`,
+`state_kn`) to match `report_query_page`'s own "new columns always land last" precedent from the
+Partiya raqami migration. Only the `text[]` overloads were touched — the legacy single-`text`
+overloads are confirmed dead (see the Partiya raqami entry above), same skip already made there.
+
+Default visibility: **hidden**, matching every other serial-state volume column in this family
+(`qabul_qilingan`/`omborda_qoldi`/etc., all `defaultVisible: false`) — the task's own text flagged
+the "avoid overwhelming the default view" concern, and 9 more columns on top of the 8 already
+default-visible would do exactly that. `reportColumns.ts` registers all 9 as `kind: 'volume',
+totalBasis: 'state'` (the "volume-auto-totalled kind" the task asked for); `TotalsStrip.tsx`'s
+`STATE_COLUMN_CHIPS` registry gained one chip entry per column — no per-column wiring beyond the
+registry entry, matching the file's own "general rule, not per-column wiring" design. `SerialState`
+(`reportQuery.ts`), `ReportDbRow`, `mapState`, `zeroState`, `ReportTotals`, and `useReportQuery.ts`'s
+RPC-response mapping all extended with `k1`...`k8`/`kn` (row-level) and `stateK1`...`stateK8`/
+`stateKn` (totals-level). `ReportTableRow.tsx`'s `cellContent` and `reportExport.ts`'s `columnValue`
+both gained the 9 matching `case` branches — the same "no column stays picker-only forever" pattern
+its own header comment already documents for every other column.
+
+**Verified live, directly against real data (not a local sandbox):** picked a real serial with
+`finished_pallets` across 3 distinct calibres (`020826-034`: K1=30, K6=11540, K8=6260, all others 0)
+— `kirim_line_calibre_output('020826-034')` matched a hand-written cross-check query (same exclusion
+set, computed independently) exactly. `report_query_page(...)` filtered to that serial returned the
+identical `state_k1`/`state_k6`/`state_k8` on all 3 of its rows (the per-serial repeat-per-row
+behaviour every other state column already has). `report_totals(...)` for the same filter returned
+`state_serial_count = 1` and the identical K1/K6/K8 totals — confirming the distinct-serial dedup
+(not a per-row sum) works correctly even though the serial owns 3 rows. `npx tsc -b --noEmit` clean,
+`npx oxlint` clean, `npm run build` succeeds, `node --test` 60/60 (8 new: `formatLoss.test.ts`).
+
+**Not run this session:** browser/e2e verification of the Laborator CHIQIM inline-reading UI and the
+Hisobot column picker — same disclosed sandbox limitation as the Partiya raqami and CHIQIM FIFO work
+earlier in this file: no `.env.test` (test-role credentials) exists here, so no real login session
+can be launched. Flagged, not silently skipped. Given no new UI-only failure mode exists beyond what
+`tsc`/`build` already catch (no new interaction pattern — every insertion reuses an existing card/
+form/table-cell shape verbatim) and the one genuinely new computation (`kirim_line_calibre_output`)
+was verified directly against live data above, this is a lower-risk gap than a typical unverified
+feature, but still a real one: whoever picks this up next should manually run the task's own
+Testing section (TEST- serial with/without a KIRIM reading in Laborator CHIQIM; TEST- serials with
+real loss/surplus/zero across passport/Ledger B/client report/Hisobot; a client-filtered Hisobot view
+with K1-K8/KN columns toggled on) against the deployed app before calling this feature UI-verified,
+same as the standing recommendation left for the Partiya raqami e2e spec.
+
+**No PR opened** (per standing instruction — Abdulloh reviews and opens it). Branch:
+`claude/global-export-profile-setup-t1hl6t`.

@@ -5,8 +5,9 @@ import { teardownFixtures } from './helpers/teardown'
 
 // Laborator v2 (2026-07-28 — see DECISIONS.md "Lab moves inside Moyka,
 // wash-cycle concept removed") Test 2: loss = (raw for serial − received
-// finished), computed at Ombor's receipt (Tugallash), with no cycle
-// involved — and that SAME number must flow into both get_client_report
+// finished), computed live the instant Ombor packs a pallet — no manual
+// close event any more (DECISIONS.md "Moyka loss becomes live; remove
+// Tugallash") — and that SAME number must flow into both get_client_report
 // and yield_rows, the two rewritten reporting functions this change
 // touched. This is deliberately the highest-scrutiny test in this whole
 // change: the reporting layer was flagged as the riskiest part of the
@@ -136,18 +137,20 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   )
 
   // --- Send the full 1000kg to Moyka (real UI -- mints wash_cycles) ---
+  // Two-tile picker (2026-08-28, see DECISIONS.md "Two-tile Moyka send
+  // picker") — send is now via the Yangi zaxira tile's chip-select flow,
+  // not a per-serial row form. Wait on the actual moyka_sends response, not
+  // a button-label/visibility change, for the same reason this block
+  // already documented before the redesign.
   await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
-  const sendCard = serialCard(page, serial)
-  await expect(sendCard).toBeVisible()
-  await sendCard.getByRole('button', { name: '+ Moykaga yuborish' }).click()
-  await serialCard(page, serial).locator('input[type="number"]').fill('1000')
-  // The "+ Moykaga yuborish" button is hidden the instant the form OPENS
-  // (isActive flips before any network call fires), so its absence proves
-  // nothing about whether the mutation itself succeeded -- wait for the
-  // actual moyka_sends insert's response instead.
+  await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
+  const chip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
+  await expect(chip).toBeVisible({ timeout: 20_000 })
+  await chip.click()
+  await page.locator('#new-stock-weighed').fill('1000')
   const [sendResponse] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/moyka_sends') && r.request().method() === 'POST'),
-    serialCard(page, serial).getByRole('button', { name: 'Moykaga yuborish' }).click(),
+    page.getByRole('button', { name: 'Moykaga yuborish' }).click(),
   ])
   expect(sendResponse.ok(), `moyka_sends insert must succeed, got HTTP ${sendResponse.status()}: ${await sendResponse.text()}`).toBe(true)
 
@@ -162,30 +165,20 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
     .getByRole('button', { name: "O'tdi", exact: true })
     .click()
 
-  // --- Ombor: pack exactly ONE pallet, 850kg, then Tugallash ---
+  // --- Ombor: pack exactly ONE pallet, 850kg — loss reads live from here,
+  // no separate close/confirm step. Single-tile receive picker (2026-08-28,
+  // see DECISIONS.md "Section 3 single-tile receive picker") — open the
+  // tile, select the serial's chip, same FinishedReceiptForm as before. ---
   await switchRole(page, 'OMBOR')
   await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-  const packCard = serialCard(page, serial)
-  await expect(packCard).toBeVisible()
-  await packCard.getByRole('button', { name: '+ Qabul qilish' }).click()
-  await serialCard(page, serial).locator('select').selectOption({ label: 'Kalibr 6' })
-  await serialCard(page, serial).locator('input[type="number"]').fill('850')
-  await serialCard(page, serial).getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
-  await expect(serialCard(page, serial).getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
-
-  await serialCard(page, serial).getByRole('button', { name: 'Tugallash' }).click()
-  // The confirm dialog's own "Yakuniy yo'qotish" line is the number Ombor's
-  // receipt itself produces -- check it directly before confirming, this is
-  // the "computed at receipt" half of the claim. Matched as the exact
-  // combined "150 kg · 15.0%" stat span, not a bare '15.0%' substring --
-  // this scenario's deliberately-round 15% loss also trips the app's real
-  // >10% Tugallash sanity-check warning banner ("Yo'qotish 15.0% — 10% dan
-  // yuqori..."), which contains the same substring and would otherwise
-  // make the locator ambiguous (a second, correct, unrelated feature).
-  const confirmDialog = serialCard(page, serial)
-  await expect(confirmDialog.getByText('150 kg · 15.0%')).toBeVisible()
-  await confirmDialog.getByRole('button', { name: 'Ha, tugallash' }).click()
-  await expect(page.getByText('Tugallangan serial yo\'q.')).toHaveCount(0)
+  await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+  const receiveChip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
+  await expect(receiveChip).toBeVisible({ timeout: 20_000 })
+  await receiveChip.click()
+  await page.locator('select').selectOption({ label: 'Kalibr 6' })
+  await page.locator('input[type="number"]').fill('850')
+  await page.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
+  await expect(page.getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
 
   // --- Trace the SAME number into get_client_report and yield_rows ---
   const today = new Date().toISOString().slice(0, 10)

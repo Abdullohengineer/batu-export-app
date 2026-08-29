@@ -1,6 +1,7 @@
 import type { StockOnHandRow } from '../../lib/stockOnHand'
 import { STOCK_BUCKET_LABEL, STOCK_BUCKET_BADGE_CLASS } from '../../lib/stockOnHand'
 import { formatStockDate } from '../../lib/oldStock'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top'
@@ -50,7 +51,10 @@ export function StockOnHandTable({
               className="border-b border-slate-200 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/60"
             >
               <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
-                {row.barcode2 ?? row.serial ?? '—'}
+                <span className="inline-flex items-center gap-1.5">
+                  {row.barcode2 ?? row.serial ?? '—'}
+                  <PartiyaBadge partiyaNo={row.partiyaNo} />
+                </span>
               </td>
               <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{ownerName(row.ownerId)}</td>
               <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{typeName(row.typeId)}</td>

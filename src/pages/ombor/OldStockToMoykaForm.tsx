@@ -20,8 +20,8 @@ import { TextInput } from '../../components/ui/FormField'
 //   read-only REFERENCE. Those weights were estimated over a year ago and
 //   the material has since lost mass to dehydration.
 //   "Tarozidagi og'irlik" starts EMPTY and is never pre-filled from the
-//   book total (deliberately breaking MoykaSendForm's own pre-fill
-//   convention — see that file's comment). Ombor must read a real scale.
+//   book total — Ombor must read a real scale. NewStockToMoykaForm's own
+//   weight input follows this same shape, deliberately (2026-08-28).
 // Trusting the book figure would fold a year of storage shrinkage into wash
 // loss: a pallet booked at 720 kg but actually holding 650, washed at 10%
 // real loss, would record ~19%. The gap between the two is storage loss and

@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import type { WipRow } from '../../lib/wip'
 import { WIP_KIND_LABEL } from '../../lib/wip'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top'
@@ -57,7 +58,10 @@ export function WipTable({
                   <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{ownerName(row.ownerId)}</td>
                   <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{typeName(row.typeId)}</td>
                   <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
-                    {row.serial ?? (row.requestId ? `So'rov ${row.requestId.slice(0, 8)}` : '—')}
+                    <span className="inline-flex items-center gap-1.5">
+                      {row.serial ?? (row.requestId ? `So'rov ${row.requestId.slice(0, 8)}` : '—')}
+                      {row.serial && <PartiyaBadge partiyaNo={row.partiyaNo} />}
+                    </span>
                   </td>
                   <td className={`${td} whitespace-nowrap text-right tabular-nums`}>
                     {row.daysWaiting === null ? (

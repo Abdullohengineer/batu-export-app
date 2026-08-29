@@ -11,6 +11,7 @@ export interface WipRow {
   requestId: string | null
   ownerId: string
   typeId: string | null
+  partiyaNo: number | null
   daysWaiting: number | null
   thresholdDays: number | null
 }

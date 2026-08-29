@@ -81,6 +81,10 @@ export interface ReportFilters {
   driver: string // substring match
   labVerdict: LabVerdictFilter
   status: PalletStatusFilter // CHIQIM/pallet rows only
+  // Partiya raqami -- exact match, '' = no filter. Text (not number) since
+  // it's a controlled text input, same convention as serial/barcode2 below;
+  // parsed to an integer (or null) only when building the RPC params.
+  partiya: string
 }
 
 export function defaultReportFilters(from: string, to: string): ReportFilters {
@@ -97,6 +101,7 @@ export function defaultReportFilters(from: string, to: string): ReportFilters {
     driver: '',
     labVerdict: '',
     status: '',
+    partiya: '',
   }
 }
 
@@ -116,6 +121,20 @@ export interface SerialState {
   moykadanChiqgan: number
   xomJonatilgan: number
   olibKetilgan: number
+  // Output-by-kalibr (2026-08-29, Prompt 6) -- total EVER produced under
+  // that kalibr for this serial (available + already-dispatched, i.e. gross
+  // production — see migration 0098's own header for the formula
+  // reconciliation). k1..k8 in numeric order, kn (Konditirskiy) separate,
+  // matching the calibre picker's own K1-K8/KN convention.
+  k1: number
+  k2: number
+  k3: number
+  k4: number
+  k5: number
+  k6: number
+  k7: number
+  k8: number
+  kn: number
 }
 
 export interface KirimReportRow {
@@ -124,6 +143,7 @@ export interface KirimReportRow {
   serial: string
   orderId: string
   typeId: string
+  partiyaNo: number | null // Partiya raqami — per-type arrival batch number; null for opening_stock/internal_reprocess (never arrived on a truck)
   ownerId: string
   plate: string
   driver: string
@@ -158,6 +178,7 @@ export interface ChiqimReportRow {
   barcode2: string
   serial: string // parent serial
   typeId: string
+  partiyaNo: number | null
   calibreId: string
   ownerId: string
   requestId: string
@@ -190,6 +211,7 @@ export interface RawDispatchReportRow {
   key: string // raw_dispatch_lines.id — stable row key
   serial: string
   typeId: string
+  partiyaNo: number | null
   ownerId: string
   requestId: string
   plate: string
@@ -211,6 +233,7 @@ export interface OldKnReportRow {
   kind: 'chiqim_old_kn'
   key: string // old_kn_collections.id -- stable row key
   typeId: string
+  partiyaNo: null // old-KN has no serial at all -- genuinely inapplicable, not just unassigned, same as state: null below
   ownerId: string // sourced from old_kn_pools, not chiqim_requests -- see DECISIONS.md "Old-KN reporting"
   requestId: string
   plate: string
@@ -235,6 +258,7 @@ export interface MoykaSendReportRow {
   serial: string
   orderId: string
   typeId: string
+  partiyaNo: number | null
   ownerId: string
   plate: null
   driver: null
@@ -262,6 +286,7 @@ export interface MoykaOutputReportRow {
   orderId: string
   requestId: string
   typeId: string
+  partiyaNo: number | null
   calibreId: string
   ownerId: string
   plate: null
@@ -342,6 +367,17 @@ export interface ReportTotals {
   stateMoykadanChiqgan: number
   stateXomJonatilgan: number
   stateOlibKetilgan: number
+  // Output-by-kalibr totals (2026-08-29) -- same distinct-serial summing
+  // basis as the 7 above, never the KN column folded into K1-K8's own sums.
+  stateK1: number
+  stateK2: number
+  stateK3: number
+  stateK4: number
+  stateK5: number
+  stateK6: number
+  stateK7: number
+  stateK8: number
+  stateKn: number
 }
 
 // Which real-world date each kind is governed by (§3.2.3, extended
@@ -393,6 +429,7 @@ export interface ReportDbRow {
   request_id: string | null
   owner_id: string
   type_id: string
+  partiya_no: number | string | null
   calibre_id: string | null
   plate: string | null
   driver: string | null
@@ -425,6 +462,17 @@ export interface ReportDbRow {
   state_moykadan_chiqgan?: number | string | null
   state_xom_jonatilgan?: number | string | null
   state_olib_ketilgan?: number | string | null
+  // Output-by-kalibr (2026-08-29) -- same "comes back together, null proxy"
+  // shape as the 7 columns above, from kirim_line_calibre_output (0098).
+  state_k1?: number | string | null
+  state_k2?: number | string | null
+  state_k3?: number | string | null
+  state_k4?: number | string | null
+  state_k5?: number | string | null
+  state_k6?: number | string | null
+  state_k7?: number | string | null
+  state_k8?: number | string | null
+  state_kn?: number | string | null
 }
 
 function num(v: number | string | null | undefined): number | null {
@@ -441,6 +489,15 @@ function mapState(row: ReportDbRow): SerialState | null {
     moykadanChiqgan: Number(row.state_moykadan_chiqgan),
     xomJonatilgan: Number(row.state_xom_jonatilgan),
     olibKetilgan: Number(row.state_olib_ketilgan),
+    k1: Number(row.state_k1),
+    k2: Number(row.state_k2),
+    k3: Number(row.state_k3),
+    k4: Number(row.state_k4),
+    k5: Number(row.state_k5),
+    k6: Number(row.state_k6),
+    k7: Number(row.state_k7),
+    k8: Number(row.state_k8),
+    kn: Number(row.state_kn),
   }
 }
 
@@ -457,6 +514,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       serial: row.serial ?? '',
       orderId: row.order_id ?? '',
       typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
       ownerId: row.owner_id,
       plate: row.plate ?? '',
       driver: row.driver ?? '',
@@ -484,6 +542,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       key: row.row_key,
       serial: row.serial ?? '',
       typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
       ownerId: row.owner_id,
       requestId: row.request_id ?? '',
       plate: row.plate ?? '',
@@ -501,6 +560,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       kind: 'chiqim_old_kn',
       key: row.row_key,
       typeId: row.type_id,
+      partiyaNo: null,
       ownerId: row.owner_id,
       requestId: row.request_id ?? '',
       plate: row.plate ?? '',
@@ -520,6 +580,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       serial: row.serial ?? '',
       orderId: row.order_id ?? '',
       typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
       ownerId: row.owner_id,
       plate: null,
       driver: null,
@@ -540,6 +601,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       orderId: row.order_id ?? '',
       requestId: row.request_id ?? '',
       typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
       calibreId: row.calibre_id ?? '',
       ownerId: row.owner_id,
       plate: null,
@@ -568,6 +630,7 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
     barcode2: row.barcode2 ?? '',
     serial: row.serial ?? '',
     typeId: row.type_id,
+    partiyaNo: num(row.partiya_no),
     calibreId: row.calibre_id ?? '',
     ownerId: row.owner_id,
     requestId: row.request_id ?? '',
@@ -604,5 +667,14 @@ function zeroState(): SerialState {
     moykadanChiqgan: 0,
     xomJonatilgan: 0,
     olibKetilgan: 0,
+    k1: 0,
+    k2: 0,
+    k3: 0,
+    k4: 0,
+    k5: 0,
+    k6: 0,
+    k7: 0,
+    k8: 0,
+    kn: 0,
   }
 }

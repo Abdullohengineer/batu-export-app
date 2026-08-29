@@ -28,6 +28,10 @@ export interface StockOnHandRow {
   barcode2: string | null
   ownerId: string
   typeId: string
+  // Partiya raqami -- null on an old_kn row (no serial) or any
+  // opening_stock/internal_reprocess row (never arrived on a truck), same
+  // as the underlying kirim_lines.partiya_no column.
+  partiyaNo: number | null
   calibreId: string | null
   qtyKg: number
   // Null for an old_kn row -- a pool has no single arrival event to anchor

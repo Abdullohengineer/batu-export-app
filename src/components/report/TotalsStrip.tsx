@@ -68,6 +68,17 @@ const STATE_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = {
   moykadan_chiqgan: (t) => [{ label: 'Moykadan chiqgan (joriy)', value: t.stateMoykadanChiqgan }],
   xom_jonatilgan: (t) => [{ label: "Xom holda jo'natilgan", value: t.stateXomJonatilgan }],
   olib_ketilgan: (t) => [{ label: 'Olib ketilgan', value: t.stateOlibKetilgan }],
+  // Output-by-kalibr (2026-08-29) -- each column its own chip, same group;
+  // KN deliberately its own entry, never folded into the K1-K8 sums.
+  k1: (t) => [{ label: 'K1', value: t.stateK1 }],
+  k2: (t) => [{ label: 'K2', value: t.stateK2 }],
+  k3: (t) => [{ label: 'K3', value: t.stateK3 }],
+  k4: (t) => [{ label: 'K4', value: t.stateK4 }],
+  k5: (t) => [{ label: 'K5', value: t.stateK5 }],
+  k6: (t) => [{ label: 'K6', value: t.stateK6 }],
+  k7: (t) => [{ label: 'K7', value: t.stateK7 }],
+  k8: (t) => [{ label: 'K8', value: t.stateK8 }],
+  kn: (t) => [{ label: 'KN', value: t.stateKn }],
 }
 
 function ChipGroup({ title, chips }: { title: string; chips: TotalChip[] }) {

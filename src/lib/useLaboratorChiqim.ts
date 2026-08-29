@@ -25,10 +25,22 @@ interface RawLabResult {
   created_at: string
 }
 
+// KIRIM-stage lab reading (2026-08-29, Prompt 6) -- read-only display
+// alongside the CHIQIM (Sera) test, same source/shape useLaboratorKirim.ts
+// already reads (lab_results scope='kirim', keyed by parent_serial, latest
+// created_at wins). Descriptive only, no verdict here either.
+interface RawKirimLabResult {
+  parent_serial: string
+  moisture_pct: number
+  so2_mg_kg: number | null
+  created_at: string
+}
+
 export interface AwaitingSerial {
   washCycleId: string
   serial: string
   type_id: string
+  partiyaNo: number | null
   owner_id: string
   target_moisture_pct: number | null
   target_so2_mg_kg: number | null
@@ -41,6 +53,11 @@ export interface AwaitingSerial {
   sentKg: number // Σ moyka_sends.qty_kg for this serial — the batch size Laborator sees, no pallets exist yet
   sentDate: string // earliest moyka_sends.sent_date for this serial — FIFO sort key
   rejected: boolean // true when this serial's LATEST verdict was qayta_yuvish — awaiting RE-test, not a first-time one
+  // KIRIM-stage reading for this serial (2026-08-29) -- null when none
+  // exists (e.g. an old-stock re-wash serial minted with no KIRIM lab pass),
+  // display "—" in that case, never "0".
+  kirimMoisturePct: number | null
+  kirimSo2MgKg: number | null
 }
 
 export interface ChiqimLabResultRow {
@@ -48,6 +65,7 @@ export interface ChiqimLabResultRow {
   wash_cycle_id: string
   serial: string
   type_id: string
+  partiyaNo: number | null
   owner_id: string
   sample_date: string
   moisture_pct: number
@@ -61,6 +79,10 @@ export interface ChiqimLabResultRow {
   target_moisture_pct: number | null
   target_so2_mg_kg: number | null
   is_sulfured: boolean | null
+  // Same KIRIM-stage reading as AwaitingSerial above, carried through once a
+  // serial has a CHIQIM result too.
+  kirimMoisturePct: number | null
+  kirimSo2MgKg: number | null
 }
 
 export function useLaboratorChiqim() {
@@ -101,10 +123,10 @@ export function useLaboratorChiqim() {
       }
 
       const serials = [...new Set(cycles.map((c) => c.serial))]
-      const [{ data: lines }, { data: results }] = await Promise.all([
+      const [{ data: lines }, { data: results }, { data: kirimResults }] = await Promise.all([
         supabase
           .from('kirim_lines')
-          .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, is_sulfured')
+          .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no')
           .in('serial', serials),
         supabase
           .from('lab_results')
@@ -116,6 +138,12 @@ export function useLaboratorChiqim() {
             'wash_cycle_id',
             cycles.map((c) => c.id),
           )
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('lab_results')
+          .select('parent_serial, moisture_pct, so2_mg_kg, created_at')
+          .eq('scope', 'kirim')
+          .in('parent_serial', serials)
           .order('created_at', { ascending: false }),
       ])
       const orderIds = [...new Set((lines ?? []).map((l) => l.order_id))]
@@ -130,6 +158,12 @@ export function useLaboratorChiqim() {
       const latestResultByCycleId = new Map<string, RawLabResult>()
       for (const r of (results ?? []) as RawLabResult[]) {
         if (!latestResultByCycleId.has(r.wash_cycle_id)) latestResultByCycleId.set(r.wash_cycle_id, r)
+      }
+      // Same latest-wins pattern, keyed by parent_serial — mirrors
+      // useLaboratorKirim.ts's own resultBySerial map.
+      const latestKirimResultBySerial = new Map<string, RawKirimLabResult>()
+      for (const r of (kirimResults ?? []) as RawKirimLabResult[]) {
+        if (!latestKirimResultBySerial.has(r.parent_serial)) latestKirimResultBySerial.set(r.parent_serial, r)
       }
 
       const awaitingRows: AwaitingSerial[] = []
@@ -150,12 +184,15 @@ export function useLaboratorChiqim() {
         // "Lab moves inside Moyka, wash-cycle concept removed").
         // `rejected` lets the UI highlight this distinctly from a
         // first-time test.
+        const kirimResult = latestKirimResultBySerial.get(cycle.serial)
+
         const result = latestResultByCycleId.get(cycle.id)
         if (!result || result.verdict === 'qayta_yuvish') {
           awaitingRows.push({
             washCycleId: cycle.id,
             serial: cycle.serial,
             type_id: line.type_id,
+            partiyaNo: line.partiya_no,
             owner_id: order.owner_id,
             target_moisture_pct: line.target_moisture_pct,
             target_so2_mg_kg: line.target_so2_mg_kg,
@@ -163,6 +200,8 @@ export function useLaboratorChiqim() {
             sentKg: sentBySerial.get(cycle.serial) ?? 0,
             sentDate: earliestSentDateBySerial.get(cycle.serial) ?? '',
             rejected: !!result,
+            kirimMoisturePct: kirimResult?.moisture_pct ?? null,
+            kirimSo2MgKg: kirimResult?.so2_mg_kg ?? null,
           })
           continue
         }
@@ -172,6 +211,7 @@ export function useLaboratorChiqim() {
           wash_cycle_id: cycle.id,
           serial: cycle.serial,
           type_id: line.type_id,
+          partiyaNo: line.partiya_no,
           owner_id: order.owner_id,
           sample_date: result.sample_date,
           moisture_pct: result.moisture_pct,
@@ -185,6 +225,8 @@ export function useLaboratorChiqim() {
           target_moisture_pct: line.target_moisture_pct,
           target_so2_mg_kg: line.target_so2_mg_kg,
           is_sulfured: line.is_sulfured,
+          kirimMoisturePct: kirimResult?.moisture_pct ?? null,
+          kirimSo2MgKg: kirimResult?.so2_mg_kg ?? null,
         }
         if (result.status === 'moisture_in') sulfurRows.push(row)
         else finishedRows.push(row)

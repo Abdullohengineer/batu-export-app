@@ -4,6 +4,8 @@ import { GatePhoto } from '../../components/GatePhoto'
 import { Lightbox } from '../../components/Lightbox'
 import { formatStockDate } from '../../lib/oldStock'
 import { formatDate, formatDateTime } from '../../lib/formatDate'
+import { formatLossKg } from '../../lib/formatLoss'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 type OpenPhoto = (url: string, label: string) => void
 
@@ -86,7 +88,21 @@ export function SerialPassportModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-          <h2 className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">Seriya pasporti — {serial}</h2>
+          <h2 className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-lg font-bold text-slate-900 dark:text-slate-100">
+            <span>
+              Seriya: <span className="font-mono">{serial}</span>
+            </span>
+            {passport?.order && (
+              <>
+                <span className="text-slate-400 dark:text-slate-500">·</span>
+                <span className="inline-flex items-center gap-1.5 text-base font-semibold">
+                  Partiya: <PartiyaBadge partiyaNo={passport.order.partiyaNo} />
+                  {passport.order.partiyaNo === null && <span className="text-slate-400">—</span>}
+                  <span className="font-normal text-slate-500 dark:text-slate-400">({typeName(passport.order.typeId)})</span>
+                </span>
+              </>
+            )}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -167,8 +183,22 @@ function PassportBody({
   calibreLabel: (id: string) => string
   onOpenPhoto: OpenPhoto
 }) {
-  const { order, effectiveQty, gate, intake, kirimLab, cycles, dispatches, rawDispatches, mintOrigin, notes, joriyHolat, storageLossEvents, pendingDispatches } =
-    passport
+  const {
+    order,
+    effectiveQty,
+    gate,
+    intake,
+    kirimLab,
+    cycles,
+    dispatches,
+    rawDispatches,
+    mintOrigin,
+    notes,
+    joriyHolat,
+    storageLossEvents,
+    pendingDispatches,
+    dispatchedByCalibre,
+  } = passport
 
   const effectiveQtyValue = effectiveQty && (
     <>
@@ -305,30 +335,53 @@ function PassportBody({
             </table>
           </div>
         )}
+        {/* §5.4 FIFO dispatch (2026-08-28) — this serial's own dispatched kg
+            by calibre, sourced from chiqim_pallet_consumption (migrations
+            0087/0088), gate-completed portions only (consistent with every
+            other "departed" figure on this passport). Omitted entirely when
+            empty, same "missing shows nothing" rule as the rest of this
+            page. */}
+        {dispatchedByCalibre.length > 0 && (
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={label}>
+                  <th className="px-1 py-1 text-left">Jo'natilgan — kalibr bo'yicha</th>
+                  <th className="px-1 py-1 text-right">Miqdor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dispatchedByCalibre.map((dbc) => (
+                  <tr key={dbc.calibreId} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="px-1 py-1 text-slate-900 dark:text-slate-100">{calibreLabel(dbc.calibreId)}</td>
+                    <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{dbc.kg.toLocaleString()} kg</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {/* Kutilayotgan (Pending dispatches, 2026-08-07 — Symptom A fix). A
-          request that has reserved this serial's material but hasn't
+          request that has reserved this serial's RAW material but hasn't
           produced the completed event yet was previously invisible here
-          even though it's already visible on the CHIQIM screen. Omitted
-          entirely when empty, matching this passport's "missing shows
-          nothing" rule. */}
+          even though it's already visible on the CHIQIM screen. Finished/
+          old_washed dropped out of this list entirely with §5.4 FIFO
+          dispatch (2026-08-28) — see PassportPendingDispatch's own comment
+          in serialPassport.ts for why. Omitted entirely when empty,
+          matching this passport's "missing shows nothing" rule. */}
       {pendingDispatches.length > 0 && (
         <section>
           <h3 className={sectionTitle}>Kutilayotgan yuklashlar</h3>
           <div className="mt-2 space-y-2">
             {pendingDispatches.map((pd) => (
-              <div key={`${pd.kind}-${pd.requestId}-${pd.barcode2 ?? ''}`} className="rounded-md border border-amber-200 p-2 text-sm dark:border-amber-900">
-                <span className="font-medium text-slate-900 dark:text-slate-100">
-                  {pd.kind === 'finished' ? "Tayyor mahsulot" : 'Xom ashyo'}
-                </span>
+              <div key={`${pd.kind}-${pd.requestId}`} className="rounded-md border border-amber-200 p-2 text-sm dark:border-amber-900">
+                <span className="font-medium text-slate-900 dark:text-slate-100">Xom ashyo</span>
                 <span className={`ml-2 ${label}`}>
                   {pd.plate} · {pd.driver} · {formatDate(pd.requestDate)}
-                  {pd.kind === 'finished' && pd.weightKg !== undefined && ` · ${pd.weightKg.toLocaleString()} kg`}
                 </span>
-                <div className={label}>
-                  {pd.kind === 'finished' ? "So'rovga band qilingan, hali yuklanmagan" : "Havzaga qo'shilgan, hali yig'ib olinmagan"}
-                </div>
+                <div className={label}>Havzaga qo'shilgan, hali yig'ib olinmagan</div>
               </div>
             ))}
           </div>
@@ -573,15 +626,21 @@ function PassportBody({
         <h3 className={sectionTitle}>Moyka</h3>
         {cycles.length === 0 && <p className={`mt-2 ${label}`}>Hali Moykaga yuborilmagan.</p>}
         <div className="mt-2 space-y-4">
-          {cycles.map((cycle) => (
-            <div key={cycle.status} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+          {cycles.map((cycle, i) => (
+            <div key={i} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                  {cycle.status === 'final' ? 'Yakunlangan' : 'Faol'}
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Moykada: {cycle.inMoykaKg.toLocaleString()} kg</div>
+                <div
+                  className={
+                    cycle.lossKg > 0
+                      ? 'text-xs font-medium text-red-600 dark:text-red-400'
+                      : cycle.lossKg < 0
+                        ? 'text-xs font-medium text-amber-600 dark:text-amber-400'
+                        : 'text-xs font-medium text-slate-500 dark:text-slate-400'
+                  }
+                >
+                  Yo'qotish: {formatLossKg(cycle.lossKg)}
                 </div>
-                {cycle.finalLossPct !== null && (
-                  <div className="text-xs font-medium text-red-600 dark:text-red-400">Yo'qotish: {cycle.finalLossPct.toFixed(1)}%</div>
-                )}
               </div>
               <div className={`mt-1 ${label}`}>Yuborilgan: {cycle.sentKg.toLocaleString()} kg</div>
 

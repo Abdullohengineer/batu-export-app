@@ -1,54 +1,45 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { currentLabStatus } from './labVerdict'
-import { useReservedPalletBarcodes } from './useReservedPalletBarcodes'
 
-export interface AvailablePallet {
-  barcode2: string
+export interface CalibreAvailability {
   type_id: string
   calibre_id: string
-  weight_kg: number
+  is_old_stock: boolean
+  available_kg: number
 }
 
-// §3.1/§5.4 CHIQIM feasibility input: finished pallets not yet claimed by any
-// dispatch. `finished_pallets.status='in_stock'` alone isn't yet a complete
-// "available" definition:
-// - excludes any barcode2 already in `dispatch_manifest` (nothing in the app
-//   writes `status='dispatched'`, so this is the real claimed-check).
-// - excludes any pallet whose parent serial's CURRENT wash cycle hasn't
-//   passed lab testing (`currentCycleLabStatus`, §5.5.3/§8 v1.9 hard gate) —
-//   untested and re-wash-flagged stock must be invisible here, same rule
-//   Ombor's scan screen (OmborChiqimTab/chiqimScan.ts) enforces, via the
-//   same shared helper so the two can never disagree.
-// - excludes any barcode2 actively reserved by another open CHIQIM request
-//   (Option B, `useReservedPalletBarcodes`, 2026-07-26) — otherwise this
-//   soft-warning hint could count stock that's already spoken for.
-// Read-only; feeds the feasibility checker only — the picker itself (Option
-// B) is ChiqimForm.tsx's own concern, using the same reserved-set hook.
-export function useAvailableFinishedStock() {
-  const [pallets, setPallets] = useState<AvailablePallet[]>([])
+// §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
+// dispatch: FIFO cascade, consumption table"): Menejer's feasibility hint
+// reads the ONE canonical availability view (finished_calibre_availability,
+// migrations 0087/0089 — already excludes departed stock via the
+// consumption ledger AND lab-gates on the same 'o_tdi' verdict
+// stock_on_hand_rows' own 'available' bucket enforces). This is the exact
+// same balance Ombor's FIFO attribution draws down against at Ombor's
+// finalize click, so this hint and the real dispatch outcome can never
+// structurally disagree about WHAT counts as available — a hint of "enough
+// stock" can still go stale between form-load and finalize (another
+// request claims the same stock first); attribute_chiqim_line_fifo's own
+// hard-fail-if-insufficient is the real guard for that race, not this hook.
+export function useFinishedCalibreAvailability() {
+  const [rows, setRows] = useState<CalibreAvailability[]>([])
   const [loading, setLoading] = useState(true)
-  const { reserved, loading: reservedLoading } = useReservedPalletBarcodes()
 
   useEffect(() => {
-    if (reservedLoading) return
+    let cancelled = false
     async function load() {
       setLoading(true)
       try {
-        const [{ data: fp }, { data: dm }] = await Promise.all([
-          supabase.from('finished_pallets').select('barcode2, type_id, calibre_id, weight_kg, serial').eq('status', 'in_stock'),
-          supabase.from('dispatch_manifest').select('barcode2'),
-        ])
-        const claimed = new Set((dm ?? []).map((d) => d.barcode2))
-        const candidates = (fp ?? []).filter((p) => !claimed.has(p.barcode2) && !reserved.has(p.barcode2))
-        const labStatus = await currentLabStatus(candidates.map((p) => p.serial))
-        setPallets(candidates.filter((p) => labStatus.get(p.serial) === 'passed'))
+        const { data } = await supabase.from('finished_calibre_availability').select('type_id, calibre_id, is_old_stock, available_kg')
+        if (!cancelled) setRows(data ?? [])
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     load()
-  }, [reserved, reservedLoading])
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  return { pallets, loading: loading || reservedLoading }
+  return { rows, loading }
 }

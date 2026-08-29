@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../lib/AuthProvider'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
 import {
@@ -13,6 +14,7 @@ import {
   type ClientReportTotals,
 } from '../../lib/clientPortalReport'
 import { formatDate } from '../../lib/formatDate'
+import { formatLossKg } from '../../lib/formatLoss'
 import { defaultDateRange } from '../../lib/dateRange'
 import { ClientSerialSummaryModal } from './ClientSerialSummaryModal'
 
@@ -80,7 +82,7 @@ function TotalsBar({ totals }: { totals: ClientReportTotals }) {
         <span className="text-slate-700 dark:text-slate-300">
           Убыток:{' '}
           <span className="font-medium text-slate-900 dark:text-slate-100">
-            {kg(totals.ubytokKg)}
+            {formatLossKg(totals.ubytokKg, 'кг')}
             {totals.ubytokSerialCount < totals.serialCount && totals.serialCount > 0
               ? ` (по ${totals.ubytokSerialCount} из ${totals.serialCount})`
               : ''}
@@ -269,7 +271,12 @@ export function ClientHisobotTab() {
                   >
                     <td className="px-3 py-2">{directionLabel(row.kind)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.dateBasis)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{row.serial ?? '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        {row.serial ?? '—'}
+                        {row.serial && <PartiyaBadge partiyaNo={row.partiyaNo} />}
+                      </span>
+                    </td>
                     <td className="px-3 py-2">{typeName(row.typeId)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.nettoKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.nakladnayaKg)}</td>
@@ -279,7 +286,7 @@ export function ClientHisobotTab() {
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.ostatokSyroyeKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.otgruzkaGotoviyKg)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{kg(row.otgruzkaSyroyeKg)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{kg(row.ubytokKg)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.ubytokKg === null ? '—' : formatLossKg(row.ubytokKg, 'кг')}</td>
                     <td className="px-3 py-2">
                       {clickable && (
                         <span aria-hidden className="block text-slate-400">

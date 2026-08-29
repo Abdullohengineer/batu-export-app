@@ -134,6 +134,24 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups): strin
       return row.state?.xomJonatilgan ?? ''
     case 'olib_ketilgan':
       return row.state?.olibKetilgan ?? ''
+    case 'k1':
+      return row.state?.k1 ?? ''
+    case 'k2':
+      return row.state?.k2 ?? ''
+    case 'k3':
+      return row.state?.k3 ?? ''
+    case 'k4':
+      return row.state?.k4 ?? ''
+    case 'k5':
+      return row.state?.k5 ?? ''
+    case 'k6':
+      return row.state?.k6 ?? ''
+    case 'k7':
+      return row.state?.k7 ?? ''
+    case 'k8':
+      return row.state?.k8 ?? ''
+    case 'kn':
+      return row.state?.kn ?? ''
     default:
       return ''
   }

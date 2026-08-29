@@ -50,16 +50,29 @@ export interface TeardownScope {
 // turned out to place lab_results after wash_cycles: a real bug, since
 // lab_results.wash_cycle_id -> wash_cycles.id means lab_results must be
 // deleted FIRST or the wash_cycles delete fails its own FK check. Real order:
-// dispatch_manifest -> chiqim_lines -> gate_weighings -> chiqim_requests ->
-// lab_results -> finished_pallets -> wash_cycles -> moyka_sends ->
-// storage_intake -> kirim_lines -> kirim_orders. gate_weighings carries BOTH
-// a CHIQIM-side shape (request_id set) and a KIRIM-side shape (order_id set)
-// — mutually exclusive by a DB check constraint (see DECISIONS.md "-2,200kg
-// failure diagnosed") — both are cleared at this one step since each must
-// precede its own parent (chiqim_requests / kirim_orders respectively).
-// dispatch_manifest also FKs to finished_pallets.barcode2, not just
-// chiqim_requests.id — harmless here since dispatch_manifest is deleted by
-// request_id first, before finished_pallets is ever touched.
+// chiqim_pallet_consumption -> dispatch_manifest -> chiqim_lines ->
+// gate_weighings -> chiqim_requests -> lab_results -> finished_pallets ->
+// wash_cycles -> moyka_sends -> storage_intake -> kirim_lines ->
+// kirim_orders. gate_weighings carries BOTH a CHIQIM-side shape (request_id
+// set) and a KIRIM-side shape (order_id set) — mutually exclusive by a DB
+// check constraint (see DECISIONS.md "-2,200kg failure diagnosed") — both
+// are cleared at this one step since each must precede its own parent
+// (chiqim_requests / kirim_orders respectively). dispatch_manifest and
+// chiqim_pallet_consumption both also FK to finished_pallets.barcode2, not
+// just chiqim_requests.id/chiqim_lines.id — harmless here since both are
+// deleted before finished_pallets is ever touched.
+//
+// §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
+// dispatch: FIFO cascade, consumption table"): dispatch_manifest is no
+// longer written to by the app (kept as a historical, permanently-empty-
+// for-new-rows table, same "keep table, stop writing" precedent as
+// wash_cycles/0086) — its own delete step below is now a defensive no-op,
+// kept rather than removed since it's harmless and a stray direct insert
+// would still need cleaning up. chiqim_pallet_consumption is the real
+// FIFO-attribution table now and needs its own delete step, resolved via
+// chiqim_lines.id (it FKs to chiqim_line_id, not request_id directly) —
+// added FIRST, since it must precede both dispatch_manifest's FK to
+// finished_pallets and chiqim_lines' own delete.
 //
 // `owners` is deliberately never touched here — every survivor spec
 // references an EXISTING real owner (never "Test Client A", which no
@@ -102,28 +115,70 @@ export async function teardownFixtures(scope: TeardownScope): Promise<void> {
   }
 
   let requestIds: string[] = []
+  let chiqimLineIds: string[] = []
   if (chiqimPlates.length > 0) {
     const { data: requests, error: requestsErr } = await db.from('chiqim_requests').select('id').in('plate', chiqimPlates)
     if (requestsErr) throw new Error(`teardown: chiqim_requests lookup failed: ${requestsErr.message}`)
     requestIds = (requests ?? []).map((r) => r.id as string)
+    if (requestIds.length > 0) {
+      const { data: lines, error: linesErr } = await db.from('chiqim_lines').select('id').in('request_id', requestIds)
+      if (linesErr) throw new Error(`teardown: chiqim_lines lookup failed: ${linesErr.message}`)
+      chiqimLineIds = (lines ?? []).map((l) => l.id as string)
+    }
   }
 
-  // 1. dispatch_manifest, 2. chiqim_lines — both reference chiqim_requests
+  // 1. chiqim_pallet_consumption, 2. dispatch_manifest, 3. chiqim_lines —
+  // consumption references chiqim_lines directly; dispatch_manifest and
+  // chiqim_lines both reference chiqim_requests
+  await del(db, 'chiqim_pallet_consumption', 'chiqim_line_id', chiqimLineIds, 'chiqim')
   await del(db, 'dispatch_manifest', 'request_id', requestIds, 'chiqim')
   await del(db, 'chiqim_lines', 'request_id', requestIds, 'chiqim')
-  // 3. gate_weighings — CHIQIM-side (request_id) and KIRIM-side (order_id)
+  // 4. gate_weighings — CHIQIM-side (request_id) and KIRIM-side (order_id)
   await del(db, 'gate_weighings', 'request_id', requestIds, 'chiqim')
   await del(db, 'gate_weighings', 'order_id', orderIds, 'kirim')
-  // 4. chiqim_requests
+  // 5. chiqim_requests
   await del(db, 'chiqim_requests', 'id', requestIds, 'chiqim')
-  // 5. lab_results — MUST precede wash_cycles (lab_results.wash_cycle_id -> wash_cycles.id)
+  // 6. lab_results — MUST precede wash_cycles (lab_results.wash_cycle_id -> wash_cycles.id)
   await del(db, 'lab_results', 'parent_serial', serials, 'kirim')
-  // 6. finished_pallets, 7. wash_cycles, 8. moyka_sends, 9. storage_intake, 10. kirim_lines
+  // 7. finished_pallets, 8. wash_cycles, 9. moyka_sends, 10. storage_intake, 11. kirim_lines
   await del(db, 'finished_pallets', 'serial', serials, 'kirim')
   await del(db, 'wash_cycles', 'serial', serials, 'kirim')
   await del(db, 'moyka_sends', 'serial', serials, 'kirim')
   await del(db, 'storage_intake', 'serial', serials, 'kirim')
   await del(db, 'kirim_lines', 'serial', serials, 'kirim')
-  // 11. kirim_orders
+  // 12. kirim_orders
   await del(db, 'kirim_orders', 'order_id', orderIds, 'kirim')
+}
+
+// Partiya raqami counter resync (see docs/DECISIONS.md "Partiya raqami" —
+// the counter-drift incident found during this feature's own SQL-level
+// verification): partiya_counter is a live, monotonic per-type sequence
+// (supabase/migrations/0093_kirim_lines_partiya_no.sql) advanced by the
+// INSERT trigger itself, not something teardownFixtures' plain row deletes
+// above can roll back — a spec that creates N real kirim_lines rows for a
+// type permanently advances that type's counter by N, deleted rows or not.
+// Left uncorrected, the NEXT real arrival of that type would jump ahead by
+// the fixture count instead of continuing 1-past the last real row. Call
+// this AFTER teardownFixtures for any spec whose fixtures included
+// kirim_lines rows, passing the type_ids it touched — it resyncs each to
+// max(partiya_no) over what's actually left in kirim_lines post-cleanup,
+// the same corrective query used to fix the drift found live earlier this
+// feature's own development.
+export async function resyncPartiyaCounter(typeIds: string[]): Promise<void> {
+  if (typeIds.length === 0) return
+  const db = serviceClient()
+  for (const typeId of typeIds) {
+    const { data: maxRow, error: maxErr } = await db
+      .from('kirim_lines')
+      .select('partiya_no')
+      .eq('type_id', typeId)
+      .not('partiya_no', 'is', null)
+      .order('partiya_no', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (maxErr) throw new Error(`resyncPartiyaCounter: max lookup failed for type ${typeId}: ${maxErr.message}`)
+    const realMax = (maxRow?.partiya_no as number | undefined) ?? 0
+    const { error: updateErr } = await db.from('partiya_counter').update({ last_no: realMax }).eq('type_id', typeId)
+    if (updateErr) throw new Error(`resyncPartiyaCounter: update failed for type ${typeId}: ${updateErr.message}`)
+  }
 }

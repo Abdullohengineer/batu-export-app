@@ -9,6 +9,7 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useLaboratorHistory, type LaboratorHistoryFilters } from '../../lib/useLaboratorHistory'
 import { Card } from '../../components/ui/Card'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { StatusPill } from '../../components/ui/StatusPill'
 
 const VERDICT_LABEL: Record<string, string> = { o_tdi: "O'tdi", qayta_yuvish: 'Qayta yuvish' }
@@ -168,6 +169,7 @@ export function LaboratorTarixTab() {
             className="flex w-full items-center gap-2 text-left"
           >
             <SerialChip>{r.serial}</SerialChip>
+            <PartiyaBadge partiyaNo={r.partiyaNo} />
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
               {ownerName(r.owner_id)} · {typeName(r.type_id)}
             </span>

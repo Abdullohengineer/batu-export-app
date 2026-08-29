@@ -29,6 +29,10 @@ export interface PassportOrder {
   targetMoisturePct: number | null
   targetSo2MgKg: number | null
   typeId: string
+  // Partiya raqami -- per-type arrival batch number. Null for opening_stock/
+  // internal_reprocess orders (isOldStock/isMinted below) — they never
+  // arrived on a truck, see DECISIONS.md "Partiya raqami".
+  partiyaNo: number | null
   // The nakladnoy attached on the KIRIM form ("Mijoz nakladnoyasini
   // biriktirish") -- captured since day one, only added here (§3.2.5
   // passport improvements task) once confirmed the passport was the one
@@ -131,9 +135,13 @@ export interface PassportCycleLab {
   note: string | null
 }
 
+// Moyka loss becomes live (DECISIONS.md "Moyka loss becomes live; remove
+// Tugallash") — status/finalLossPct (a locked, Tugallash-only figure)
+// replaced with two always-live numbers: inMoykaKg (floored, physical
+// "still sitting in Moyka") and lossKg (signed, sent - output).
 export interface PassportCycle {
-  status: string
-  finalLossPct: number | null
+  inMoykaKg: number
+  lossKg: number
   sentKg: number
   pallets: PassportCyclePallet[]
   lab: PassportCycleLab | null
@@ -238,23 +246,35 @@ export interface PassportStorageLossEvent {
   note?: string
 }
 
-// Symptom-A fix: a request that has reserved this serial's material
-// (chiqim_line_pallets / chiqim_line_raw_serials) but hasn't produced the
-// completed event yet (no dispatch_manifest / raw_dispatch_lines row) --
-// previously invisible on the passport even though it's already visible on
-// the CHIQIM screen.
+// Symptom-A fix: a request that has reserved this serial's raw material
+// (chiqim_line_raw_serials) but hasn't produced the completed event yet (no
+// raw_dispatch_lines row) -- previously invisible on the passport even
+// though it's already visible on the CHIQIM screen.
+//
+// §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
+// dispatch: FIFO cascade, consumption table"): this used to also carry a
+// kind='finished' case, sourced from chiqim_line_pallets (Option B's
+// reservation table). That table is gone, and FIFO attribution now happens
+// only at Ombor's finalize click -- a still-open finished/old_washed
+// chiqim_line has no specific pallets reserved in advance to report as
+// "pending" for any one serial, so that case is simply gone, not replaced.
+// Flagged as a real gap, not silently worked around.
 export interface PassportPendingDispatch {
-  kind: 'finished' | 'raw'
+  kind: 'raw'
   requestId: string
   requestDate: string
   plate: string
   driver: string
-  // Only present for kind='finished' -- a raw pool reservation has no
-  // per-serial pending weight (chiqim_lines.qty_kg is the whole line's plan
-  // figure, not a per-serial split).
-  barcode2?: string
-  calibreId?: string
-  weightKg?: number
+}
+
+// §5.4 FIFO dispatch (2026-08-28) -- this serial's own finished pallets'
+// dispatched kg, by calibre, sourced from chiqim_pallet_consumption
+// (migrations 0087/0088). Scoped to gate-completed (truly departed)
+// consumption only, consistent with every other "departed" figure
+// elsewhere on this passport (dispatches[], joriyHolat.finished.dispatchedKg).
+export interface PassportDispatchedByCalibre {
+  calibreId: string
+  kg: number
 }
 
 export interface SerialPassport {
@@ -275,6 +295,7 @@ export interface SerialPassport {
   joriyHolat: PassportJoriyHolat
   storageLossEvents: PassportStorageLossEvent[]
   pendingDispatches: PassportPendingDispatch[]
+  dispatchedByCalibre: PassportDispatchedByCalibre[]
 }
 
 export async function fetchSerialPassport(serial: string): Promise<SerialPassport> {

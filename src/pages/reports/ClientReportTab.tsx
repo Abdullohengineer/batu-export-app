@@ -8,8 +8,10 @@ import { CLIENT_REPORT_LABELS, type ReportLocale } from '../../lib/clientReportL
 import { downloadClientReportExcel } from '../../lib/clientReportExport'
 import { SerialPassportModal } from './SerialPassportModal'
 import { formatDate } from '../../lib/formatDate'
+import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { Button } from '../../components/ui/Button'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 const th = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400'
 const td = 'px-3 py-2 align-top text-sm'
@@ -156,7 +158,7 @@ export function ClientReportTab() {
               <BalanceLine label={t.konditirskiy} value={report.raw.processedBreakdown.konditirskiyKg} indent />
               <BalanceLine
                 label={t.processLoss}
-                value={`${Math.round(report.raw.processedBreakdown.lossKg).toLocaleString()} kg (${report.raw.processedBreakdown.lossPct}%)`}
+                value={`${formatLossKg(report.raw.processedBreakdown.lossKg)} (${formatLossPct(report.raw.processedBreakdown.lossPct)})`}
                 indent
               />
             </div>
@@ -269,7 +271,12 @@ export function ClientReportTab() {
               <tbody>
                 {report.qualityRecord.map((qr) => (
                   <tr key={qr.serial} className="border-b border-slate-200 dark:border-slate-700">
-                    <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>{qr.serial}</td>
+                    <td className={`${td} whitespace-nowrap font-mono text-slate-900 dark:text-slate-100`}>
+                      <span className="inline-flex items-center gap-1.5">
+                        {qr.serial}
+                        <PartiyaBadge partiyaNo={qr.partiyaNo} />
+                      </span>
+                    </td>
                     <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>{typeName(qr.typeId)}</td>
                     <td className={`${td} whitespace-nowrap text-slate-700 dark:text-slate-300`}>
                       {qr.intakeLab ? `${qr.intakeLab.moisturePct}% / ${qr.intakeLab.so2MgKg ?? t.naturalNoTarget}` : '—'}

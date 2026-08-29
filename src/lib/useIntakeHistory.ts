@@ -59,7 +59,7 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
 
         const { data: kLines } = await supabase
           .from('kirim_lines')
-          .select('serial, order_id, type_id, declared_qty')
+          .select('serial, order_id, type_id, declared_qty, partiya_no')
           .in('serial', serials)
 
         const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
@@ -97,6 +97,7 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
             return {
               serial: intake.serial,
               type_id: line.type_id,
+              partiyaNo: line.partiya_no,
               declared_qty: line.declared_qty,
               order_id: order.order_id,
               order_date: order.order_date,

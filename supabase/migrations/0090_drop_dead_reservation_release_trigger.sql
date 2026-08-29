@@ -1,0 +1,22 @@
+-- Corrective fix: migration 0087 dropped chiqim_line_pallets (Option B's
+-- reservation table) but missed a dependent object -- the
+-- chiqim_requests_release_reservations trigger (0033) fires AFTER UPDATE ON
+-- chiqim_requests and its function, release_chiqim_reservations(), still
+-- directly references chiqim_line_pallets. Since that table no longer
+-- exists, ANY update setting voided_at or ombor_finished_at -- i.e. every
+-- void (FinishedChiqimList.tsx's handleVoid) AND every Ombor finish click
+-- (OmborChiqimTab.tsx's handleFinish, including the RPC-based
+-- finalize_chiqim_dispatch path) -- would throw "relation
+-- chiqim_line_pallets does not exist" the moment it ran. Caught via code
+-- archaeology (grepping for stale references) before either path was
+-- exercised against live data through the new UI.
+--
+-- The whole reservation-release mechanism this trigger implemented is
+-- obsolete now that Option B's reservation model is gone (§5.4 FIFO
+-- dispatch, 2026-08-28) -- there is nothing left to release. Dropped
+-- outright, not patched to a no-op: keeping a trigger whose only job no
+-- longer exists is more confusing than removing it, and nothing else
+-- depends on it (checked: no other trigger/view/function references
+-- release_chiqim_reservations).
+drop trigger chiqim_requests_release_reservations on public.chiqim_requests;
+drop function public.release_chiqim_reservations();

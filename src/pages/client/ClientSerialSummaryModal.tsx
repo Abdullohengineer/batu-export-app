@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { fetchClientSerialSummary, type ClientSerialSummary } from '../../lib/clientPortalReport'
 import { useCalibres } from '../../lib/useCalibres'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { formatLossKg } from '../../lib/formatLoss'
 
 function kg(v: number): string {
   return `${Math.round(v).toLocaleString()} кг`
@@ -60,7 +62,10 @@ export function ClientSerialSummaryModal({ serial, onClose }: { serial: string; 
     >
       <div className="w-full max-w-lg rounded-lg bg-white shadow-xl dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-          <h2 className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">Серия — {serial}</h2>
+          <h2 className="flex items-center gap-1.5 font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
+            Серия — {serial}
+            {summary && <PartiyaBadge partiyaNo={summary.partiyaNo} />}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -106,9 +111,7 @@ export function ClientSerialSummaryModal({ serial, onClose }: { serial: string; 
                   </tr>
                   <tr>
                     <td className="py-1 font-medium text-slate-700 dark:text-slate-300">Убыток</td>
-                    <td className="py-1 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">
-                      {summary.lossKg === null ? 'ещё в переработке' : kg(summary.lossKg)}
-                    </td>
+                    <td className="py-1 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">{formatLossKg(summary.lossKg, 'кг')}</td>
                   </tr>
                 </tbody>
               </table>

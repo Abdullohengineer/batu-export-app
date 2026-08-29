@@ -1,16 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { sortFinishedByOmborFinish } from './chiqimScan'
-
-// §5.4 Option B (2026-07-26) — a line's own earmarked pallets, the prepare-
-// list's core data. weight_kg/serial come from the reserved pallet's own
-// finished_pallets row (via the barcode2 FK), not the line's aggregate
-// qty_kg — this is per-pallet, not a re-derivation of the line total.
-export interface ReservedPallet {
-  barcode2: string
-  serial: string
-  weight_kg: number
-}
+import { sortFinishedByOmborFinish } from './sortChiqimFinished'
 
 export interface ChiqimLine {
   id: string
@@ -20,15 +10,18 @@ export interface ChiqimLine {
   // a raw line now points at a POOL of candidate serials
   // (chiqim_line_raw_serials, Menejer's selection), not one pinned column.
   // qty_kg is optional for a raw line (Menejer may not know how much will
-  // actually be drawn).
-  calibre_id: string | null
-  // Kept snake_case (unlike this interface's other derived fields) to stay
-  // structurally compatible with chiqimScan.ts's ChiqimLineLike, which
-  // request.lines is passed into as-is for resolveScan/shortfallLines.
-  // Opening stock, Stage 2 (2026-08-02): widened to five kinds.
+  // actually be drawn). Opening stock, Stage 2 (2026-08-02): widened to
+  // five kinds.
   line_kind: 'finished' | 'raw' | 'old_washed' | 'old_kn' | 'old_raw'
+  calibre_id: string | null
   qty_kg: number | null
-  reservedPallets: ReservedPallet[]
+  // §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
+  // dispatch: FIFO cascade, consumption table") — Menejer's declared tare
+  // for a finished/old_washed line (migration 0087). Null for every other
+  // kind. Declared only — never overwritten by Ombor's own loaded-kg entry
+  // at finalization (CLAUDE.md "declared vs actual are separate persisted
+  // fields").
+  declared_tara_kg: number | null
   // Raw dispatch pool -- every serial Menejer pooled for this line. Ombor's
   // draw UI reads this to offer per-serial draws; a draw against a serial
   // NOT in this list is the "out of pool" warning path (requirement 7).
@@ -58,6 +51,15 @@ export interface ChiqimRequest {
 // finalization" invariant (SPEC.md §5 intro) — this is Ombor's OWN signal,
 // independent of Qorovul's gate weighing or chiqim_requests.status.
 // W2 sorts newest-first by ombor_finished_at (universal sort rule).
+//
+// §5.4 FIFO dispatch (2026-08-28): no more chiqim_line_pallets nested
+// select — a finished/old_washed line no longer earmarks specific pallets
+// in advance (Option B reservation is gone). Ombor enters a loaded kg per
+// line at finalize time (local UI state in OmborChiqimTab.tsx, same
+// deferred-commit pattern the raw/old_kn draw UI already uses) and
+// finalize_chiqim_dispatch (migration 0087) FIFO-attributes it against
+// finished_pallets by receipt date — this hook has nothing to fetch for
+// that beyond the line's own declared qty_kg/declared_tara_kg.
 export function useOmborChiqimRequests() {
   const [open, setOpen] = useState<ChiqimRequest[]>([])
   const [finished, setFinished] = useState<ChiqimRequest[]>([])
@@ -69,17 +71,12 @@ export function useOmborChiqimRequests() {
       const [{ data }, { data: weighings }] = await Promise.all([
         supabase
           .from('chiqim_requests')
-          // §5.4 Option B: voided requests never reach Ombor at all — a
-          // voided_at IS NULL filter here, not client-side, since Ombor
-          // has no business reason to ever see one (voiding is only
-          // allowed pre-scan, see 0033's menejer_voids policy). Nested
-          // three levels: each line's own reserved pallets, each pallet's
-          // own serial/weight from finished_pallets — the prepare-list's
-          // actual data, not a re-derivation of qty_kg.
+          // Voided requests never reach Ombor at all — a voided_at IS NULL
+          // filter here, not client-side, since Ombor has no business
+          // reason to ever see one.
           .select(
             'id, request_date, plate, driver, owner_id, ombor_finished_at, ' +
-              'chiqim_lines(id, type_id, calibre_id, line_kind, qty_kg, ' +
-              'chiqim_line_pallets(barcode2, finished_pallets(serial, weight_kg)), ' +
+              'chiqim_lines(id, type_id, calibre_id, line_kind, qty_kg, declared_tara_kg, ' +
               'chiqim_line_raw_serials(serial))',
           )
           .is('voided_at', null),
@@ -96,7 +93,7 @@ export function useOmborChiqimRequests() {
         calibre_id: string | null
         line_kind: 'finished' | 'raw' | 'old_washed' | 'old_kn' | 'old_raw'
         qty_kg: number | null
-        chiqim_line_pallets: { barcode2: string; finished_pallets: { serial: string; weight_kg: number } | null }[] | null
+        declared_tara_kg: number | null
         chiqim_line_raw_serials: { serial: string }[] | null
       }
       type RawRequest = {
@@ -125,13 +122,7 @@ export function useOmborChiqimRequests() {
             calibre_id: l.calibre_id,
             line_kind: l.line_kind,
             qty_kg: l.qty_kg,
-            reservedPallets: (l.chiqim_line_pallets ?? [])
-              .filter((clp) => clp.finished_pallets !== null)
-              .map((clp) => ({
-                barcode2: clp.barcode2,
-                serial: clp.finished_pallets!.serial,
-                weight_kg: clp.finished_pallets!.weight_kg,
-              })),
+            declared_tara_kg: l.declared_tara_kg,
             rawSerialPool: (l.chiqim_line_raw_serials ?? []).map((s) => s.serial),
           })),
           gateStage1CompletedAt: weighing?.stage1_completed_at ?? null,

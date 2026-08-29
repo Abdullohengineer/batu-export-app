@@ -4,12 +4,9 @@ import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useAuth } from '../../lib/AuthProvider'
-import { useAvailableFinishedStock } from '../../lib/useAvailableFinishedStock'
-import { checkFeasibility } from '../../lib/chiqimFeasibility'
+import { useFinishedCalibreAvailability } from '../../lib/useAvailableFinishedStock'
 import { useStockOnHand } from '../../lib/useStockOnHand'
-import { useReservedPalletBarcodes } from '../../lib/useReservedPalletBarcodes'
 import { useMoykaSerials, type MoykaSerial } from '../../lib/useMoykaSerials'
-import type { StockOnHandRow } from '../../lib/stockOnHand'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { FormField, TextInput } from '../../components/ui/FormField'
@@ -17,12 +14,10 @@ import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // Opening stock, Stage 2 (2026-08-02, see DECISIONS.md "Opening stock"):
-// line_kind widened from finished|raw to five values. old_washed reuses the
-// finished picker's exact shape (real pallets, chiqim_line_pallets) scoped
-// to is_old_stock pallets; old_raw reuses raw's exact shape (a serial pool,
-// chiqim_line_raw_serials) scoped to is_old_stock serials; old_kn has no
+// line_kind widened from finished|raw to five values. old_kn has no
 // precedent -- a weight pool with no pallets and no serial, Ombor resolves
 // which pool at collection time the same way an out-of-pool raw draw
 // resolves its serial (no Menejer-side pool-of-candidates to pick from,
@@ -34,28 +29,28 @@ interface LineRow {
   kind: LineKind
   typeId: string
   calibreId: string
-  // Optional for a raw/old_raw/old_kn row (requirement 3) — Menejer may not
-  // know how much will actually be drawn; Ombor decides that on the floor.
-  // Still required and picker-derived for a finished/old_washed row.
+  // Declared net kg -- always Menejer's own number now (§5.4 FIFO dispatch,
+  // 2026-08-28, see DECISIONS.md "CHIQIM quantity-based dispatch: FIFO
+  // cascade, consumption table"). No pallet picker any more: a
+  // finished/old_washed row is quantity + declared tare, exactly like every
+  // other line kind already was, and Ombor's own loaded-kg entry at
+  // finalization is what the FIFO cascade actually attributes against —
+  // this is a declared figure, never overwritten by that (CLAUDE.md
+  // "declared vs actual are separate persisted fields").
   qty: string
-  // §3.1/§5.4 Option B (2026-07-26) — the picker is no longer a calculator
-  // only: these barcodes ARE what gets persisted to chiqim_line_pallets on
-  // submit, reserving them for this request until it completes or is
-  // voided. Reset whenever it would otherwise go stale (type/calibre/owner
-  // changed) — see the picker's own comment for why. finished/old_washed
-  // rows only.
-  selectedBarcodes: Set<string>
+  // Declared tare (finished/old_washed only) -- additive to qty (net), per
+  // migration 0087's chiqim_lines.declared_tara_kg. NULL/unused for every
+  // other kind.
+  taraKg: string
   // Raw dispatch pool — every serial Menejer names as a SOURCE for this
-  // line, persisted to chiqim_line_raw_serials on submit (mirrors
-  // selectedBarcodes' own "row = named sources" shape). Unlike
-  // selectedBarcodes this has no relationship to qty — "these are your
-  // sources," not an allocation (requirement statement). raw/old_raw rows
-  // only.
+  // line, persisted to chiqim_line_raw_serials on submit. Unlike the old
+  // finished/old_washed picker this has no relationship to qty — "these are
+  // your sources," not an allocation. raw/old_raw rows only.
   rawSerialPool: Set<string>
 }
 
 function newRow(): LineRow {
-  return { key: crypto.randomUUID(), kind: 'finished', typeId: '', calibreId: '', qty: '', selectedBarcodes: new Set(), rawSerialPool: new Set() }
+  return { key: crypto.randomUUID(), kind: 'finished', typeId: '', calibreId: '', qty: '', taraKg: '', rawSerialPool: new Set() }
 }
 
 interface SavedLine {
@@ -65,6 +60,7 @@ interface SavedLine {
   calibreId: string
   rawSerialPool: string[]
   qtyKg: number | null
+  taraKg: number | null
 }
 
 const PALLET_KINDS: LineKind[] = ['finished', 'old_washed']
@@ -75,39 +71,29 @@ const OLD_STOCK_KINDS: LineKind[] = ['old_washed', 'old_kn', 'old_raw']
 // Tur + Kalibr + Miqdori rows (calibre set incl. Konditirskiy) · Jami avto.
 // 🔒 No serial, no doc photo (unlike KIRIM) — see §3.1.
 //
-// §3.1/§5.4 Option B (2026-07-26): requests now target SPECIFIC pallets,
-// not just a calibre + kg amount — the picker's selections are persisted to
-// chiqim_line_pallets on submit (see handleSubmit), reserving them until
-// Ombor finishes loading or the request is voided. Manual qty-typing stays
-// available only when zero matching pallets exist at all (nothing to
-// reserve in that case, same as before this pass) — see the qty field's
-// own disabled condition below.
-//
-// 🔒 Whole-pallet soft warning (§3.1, already locked): checks each row's
-// target against available whole pallets for that type+calibre and
-// suggests the nearest achievable totals if it doesn't map cleanly — never
-// blocks, matching every other soft-warning in the app (Kam chiqdi,
-// Tugallash's remainder/loss warnings). This is a suggestion for the
-// manager to confirm with the client before the truck is sent, not a
-// data-integrity gate.
+// §5.4 FIFO dispatch (2026-08-28, reverses the 2026-07-26/27 "Option B"
+// pallet-reservation design — see DECISIONS.md "CHIQIM quantity-based
+// dispatch: FIFO cascade, consumption table"): a finished/old_washed line
+// is quantity-only again (calibre + declared net kg + declared tare kg),
+// same shape as every other line kind — no pallet picker, no reservation.
+// Which specific finished_pallets rows actually get consumed is decided at
+// Ombor's finalize click, by FIFO over receipt date (attribute_chiqim_line_
+// fifo, migrations 0087/0089), never here. The feasibility hint below is a
+// soft warning only (never blocks) against the SAME canonical availability
+// balance that FIFO draws down against at finalization — it can go stale
+// between form-load and finalize (another request claims the stock first);
+// FIFO's own hard-fail-if-insufficient is the real guard for that race.
 export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   const { profile } = useAuth()
   const { owners } = useOwners()
   const { productTypes } = useProductTypes()
   const { calibres } = useCalibres()
-  const { pallets } = useAvailableFinishedStock()
-  // §3.1 inline picker — reuses stock_on_hand_rows (via the same hook
-  // §3.2.6 already built), not a parallel query. Deliberately a SEPARATE
-  // source from `pallets` above: that one feeds only the existing
-  // feasibility soft-warning and is not scoped to this request's own
-  // client (a pre-existing characteristic, left unchanged per the task);
-  // the picker needs real per-client pallets, which stock_on_hand_rows
-  // already carries via owner_id.
+  const { rows: availabilityRows } = useFinishedCalibreAvailability()
+  // Old KN pool balance only, now — the finished/old_washed picker that used
+  // to read stock_on_hand_rows for real pallets is gone (see module comment
+  // above); qoldig'i's own old_kn bucket is still the one source of truth
+  // for "how much is left in this pool."
   const { rows: stockRows } = useStockOnHand()
-  // Option B: excludes pallets another open request already reserved —
-  // same shared hook useAvailableFinishedStock.ts uses, so the picker and
-  // the feasibility hint can never disagree about what's really available.
-  const { reserved: reservedBarcodes } = useReservedPalletBarcodes()
   // Raw dispatch (2026-07-31) — the SAME hook the Moyka send screen reads,
   // per the "build once" decision (see DECISIONS.md "Raw dispatch"): this
   // picker and Ombor's send window can never disagree about what raw
@@ -137,28 +123,6 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
     setRows((r) => r.map((row) => (row.key === key ? { ...row, ...patch } : row)))
   }
 
-  // Available, this client's own stock, matching this line's type+calibre —
-  // the exact set the picker shows and the only pallets a click can toggle.
-  // Excludes anything another open request already reserved (Option B) —
-  // a reserved pallet must never be double-offered here. Opening stock
-  // (Stage 2) splits this same underlying bucket=available pool in two by
-  // isOldStock — finished never offers an old-washed pallet and vice versa,
-  // so there's exactly one place to dispatch each pallet from, matching the
-  // qoldig'i toggle's own "never scattered, never doubled" design.
-  function matchingPallets(row: LineRow): StockOnHandRow[] {
-    if (!PALLET_KINDS.includes(row.kind) || !ownerId || !row.typeId || !row.calibreId) return []
-    const wantOldStock = row.kind === 'old_washed'
-    return stockRows.filter(
-      (r) =>
-        r.bucket === 'available' &&
-        r.isOldStock === wantOldStock &&
-        r.ownerId === ownerId &&
-        r.typeId === row.typeId &&
-        r.calibreId === row.calibreId &&
-        !(r.barcode2 && reservedBarcodes.has(r.barcode2)),
-    )
-  }
-
   // Old KN (Stage 2) — this owner's pool balance for a given type, read off
   // the same stock_on_hand_rows old_kn bucket qoldig'i itself reads (never
   // a second source of truth for "how much is left"). At most one row per
@@ -169,18 +133,17 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
     return pool ? pool.qtyKg : null
   }
 
-  // Clicking a pallet toggles it and recomputes qty as the sum of whatever's
-  // now selected — a calculator action, not a reservation (nothing here
-  // writes to any table; chiqim_lines still gets only the resulting number).
-  function togglePallet(row: LineRow, pallet: StockOnHandRow) {
-    if (!pallet.barcode2) return
-    const next = new Set(row.selectedBarcodes)
-    if (next.has(pallet.barcode2)) next.delete(pallet.barcode2)
-    else next.add(pallet.barcode2)
-    const sumKg = matchingPallets(row)
-      .filter((p) => p.barcode2 && next.has(p.barcode2))
-      .reduce((sum, p) => sum + p.qtyKg, 0)
-    updateRow(row.key, { selectedBarcodes: next, qty: String(Math.round(sumKg * 100) / 100) })
+  // Total-by-calibre availability (finished_calibre_availability, migrations
+  // 0087/0089) for a finished/old_washed row's own type+calibre+isOldStock —
+  // the two-level balance's TOTAL level; the per-parent-serial level is
+  // reporting-only (passport), not something this form needs.
+  function availableKg(row: LineRow): number {
+    if (!PALLET_KINDS.includes(row.kind) || !row.typeId || !row.calibreId) return 0
+    const wantOldStock = row.kind === 'old_washed'
+    const match = availabilityRows.find(
+      (a) => a.type_id === row.typeId && a.calibre_id === row.calibreId && a.is_old_stock === wantOldStock,
+    )
+    return match ? match.available_kg : 0
   }
 
   // Raw dispatch pool (2026-08-01) — this client's own raw serials with a
@@ -189,8 +152,8 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   // fresh") — deliberately the OPPOSITE of useMoykaSerials' own newest-first
   // default, which stays as-is (load-bearing for §5.2 Window 1 elsewhere);
   // this is a local sort of the same data for this picker only. Opening
-  // stock (Stage 2) splits this pool by isOldStock the same way
-  // matchingPallets splits finished/old_washed — the regular Xom tab never
+  // stock (Stage 2) splits this pool by isOldStock the same way the old
+  // finished/old_washed picker used to split — the regular Xom tab never
   // offers an old-raw serial and vice versa.
   function matchingRawSerials(row: LineRow): MoykaSerial[] {
     if (!POOL_KINDS.includes(row.kind) || !ownerId || !row.typeId) return []
@@ -201,10 +164,11 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   }
 
   // Toggling a raw serial adds/removes it from this row's pool — a named
-  // list of SOURCES, not an allocation (the task's own framing): unlike
-  // togglePallet, this never touches qty. The pool's total available has
-  // no relationship to what Menejer eventually types (if anything) — Ombor
-  // decides how much comes from each serial on the floor.
+  // list of SOURCES, not an allocation (the task's own framing): unlike a
+  // finished/old_washed row's plain qty input, this never touches qty. The
+  // pool's total available has no relationship to what Menejer eventually
+  // types (if anything) — Ombor decides how much comes from each serial on
+  // the floor.
   function toggleRawSerial(row: LineRow, serial: MoykaSerial) {
     const next = new Set(row.rawSerialPool)
     if (next.has(serial.serial)) next.delete(serial.serial)
@@ -213,21 +177,12 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   }
 
   function feasibilityHint(row: LineRow): string | null {
+    if (!PALLET_KINDS.includes(row.kind)) return null
     const target = parseFloat(row.qty)
-    if (row.kind !== 'finished' || !row.typeId || !row.calibreId || !(target > 0)) return null
-
-    const weights = pallets
-      .filter((p) => p.type_id === row.typeId && p.calibre_id === row.calibreId)
-      .map((p) => p.weight_kg)
-    const result = checkFeasibility(weights, target)
-    if (result.achievable) return null // clean match — nothing to flag
-
-    const below = result.nearestBelow === null ? null : `${result.nearestBelow.toLocaleString()} kg`
-    const above = result.nearestAbove === null ? null : `${result.nearestAbove.toLocaleString()} kg`
-    if (below && above) return `Butun palletlar bilan aniq mos kelmaydi — eng yaqin: ${below} yoki ${above}`
-    if (above) return `Omborda yetarli emas — eng yaqin yetarli miqdor: ${above}`
-    if (below) return `Butun palletlar bilan aniq mos kelmaydi — omborda mavjud eng ko'p: ${below}`
-    return `Bu tur/kalibr uchun omborda pallet yo'q`
+    if (!row.typeId || !row.calibreId || !(target > 0)) return null
+    const avail = availableKg(row)
+    if (target <= avail) return null // enough stock — nothing to flag
+    return `Omborda yetarli emas — mavjud: ${Math.round(avail).toLocaleString()} kg`
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -235,7 +190,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
     setError(null)
 
     const validRows = rows.filter((r) => {
-      if (PALLET_KINDS.includes(r.kind)) return r.typeId && r.calibreId && parseFloat(r.qty) > 0
+      if (PALLET_KINDS.includes(r.kind)) return r.typeId && r.calibreId && parseFloat(r.qty) > 0 && parseFloat(r.taraKg) >= 0
       if (POOL_KINDS.includes(r.kind)) return r.typeId && r.rawSerialPool.size > 0
       return r.typeId // old_kn — no calibre, no pool, just a type against the one pool that owner/type has
     })
@@ -255,23 +210,6 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
       setError("Bir yoki bir nechta xom qatorida manba seriya tanlanmagan — kamida bitta seriya tanlang yoki qatorni o'chiring.")
       return
     }
-    // §5.4 Option B (requirement 5, "no special-casing"): a row with real
-    // matching stock MUST have picked pallets — the qty field is read-only
-    // in that case (see the TextInput above), so reaching this with zero
-    // selections only happens if stock existed when typed then vanished
-    // (another request claimed it) before submit. The zero-pallets
-    // fallback row (matches.length === 0 the whole time) is exempt, same
-    // as before this pass. Extended to old_washed in Stage 2 — same picker,
-    // same guard. Pool-kind rows never reach this check — their "pick" is
-    // rawSerialPool, already required by validRows and the empty-pool
-    // guard above.
-    const missingPicks = validRows.filter(
-      (r) => PALLET_KINDS.includes(r.kind) && matchingPallets(r).length > 0 && r.selectedBarcodes.size === 0,
-    )
-    if (missingPicks.length > 0) {
-      setError('Bir yoki bir nechta qatorda pallet tanlanmagan — palletlarni tanlang yoki qatorni yangilang.')
-      return
-    }
 
     setSubmitting(true)
     try {
@@ -288,62 +226,27 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
         .single()
       if (reqErr) throw reqErr
 
-      // Sequential, not a single batch insert: each row's own returned id
-      // is what correctly ties its own selectedBarcodes to the right line
-      // in chiqim_line_pallets below — relying on batch-insert RETURNING
-      // order to match input order isn't a guarantee worth trusting for a
-      // mapping this load-bearing (a mismatch would silently reserve
-      // pallets under the wrong line).
-      const lineIdByRowKey = new Map<string, string>()
-      for (const r of validRows) {
-        const { data: line, error: lineErr } = await supabase
-          .from('chiqim_lines')
-          .insert({
-            request_id: request.id,
-            type_id: r.typeId,
-            calibre_id: PALLET_KINDS.includes(r.kind) ? r.calibreId : null,
-            line_kind: r.kind,
-            qty_kg: r.qty ? parseFloat(r.qty) : null,
-          })
-          .select('id')
-          .single()
-        if (lineErr) throw lineErr
-        lineIdByRowKey.set(r.key, line.id)
-      }
+      const lineInserts = validRows.map((r) => ({
+        request_id: request.id,
+        type_id: r.typeId,
+        calibre_id: PALLET_KINDS.includes(r.kind) ? r.calibreId : null,
+        line_kind: r.kind,
+        qty_kg: r.qty ? parseFloat(r.qty) : null,
+        declared_tara_kg: PALLET_KINDS.includes(r.kind) ? parseFloat(r.taraKg) : null,
+      }))
+      const { data: lines, error: lineErr } = await supabase.from('chiqim_lines').insert(lineInserts).select('id')
+      if (lineErr) throw lineErr
 
-      const reservations = validRows
-        .filter((r) => PALLET_KINDS.includes(r.kind))
-        .flatMap((r) => {
-          const lineId = lineIdByRowKey.get(r.key)!
-          return [...r.selectedBarcodes].map((barcode2) => ({ line_id: lineId, barcode2 }))
-        })
-      if (reservations.length > 0) {
-        const { error: reserveErr } = await supabase.from('chiqim_line_pallets').insert(reservations)
-        if (reserveErr) {
-          // 23505 = the active-reservation unique index (0033) — another
-          // request reserved the same pallet in the moment between this
-          // form loading the picker and submit. Same race class and same
-          // friendly-message treatment as handleFinish's own
-          // dispatch_manifest 23505 handling (OmborChiqimTab.tsx).
-          throw new Error(
-            reserveErr.code === '23505'
-              ? 'Tanlangan palletlardan biri shu orada boshqa so\'rov uchun band qilindi — sahifani yangilab qayta urinib ko\'ring.'
-              : reserveErr.message,
-          )
-        }
-      }
-
-      // Raw dispatch pool — symmetric with the reservations insert above:
-      // each raw row's chosen sources are batch-inserted into the new
-      // junction table. No 23505 race handling needed here (unlike
-      // pallets): line_id is freshly minted this request, so a collision
-      // within one submission is impossible.
-      const rawPoolRows = validRows
-        .filter((r) => POOL_KINDS.includes(r.kind))
-        .flatMap((r) => {
-          const lineId = lineIdByRowKey.get(r.key)!
-          return [...r.rawSerialPool].map((serial) => ({ line_id: lineId, serial }))
-        })
+      // Raw dispatch pool — each raw row's chosen sources are batch-inserted
+      // into the junction table. Relies on insert-order === select-order,
+      // same as the original single-request batch insert this replaces
+      // (no reservation race to worry about any more — chiqim_line_pallets
+      // is gone, so there's nothing sequential-insert was protecting here).
+      const rawPoolRows = validRows.flatMap((r, i) => {
+        if (!POOL_KINDS.includes(r.kind)) return []
+        const lineId = lines![i].id
+        return [...r.rawSerialPool].map((serial) => ({ line_id: lineId, serial }))
+      })
       if (rawPoolRows.length > 0) {
         const { error: poolErr } = await supabase.from('chiqim_line_raw_serials').insert(rawPoolRows)
         if (poolErr) throw poolErr
@@ -357,6 +260,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
           calibreId: r.calibreId,
           rawSerialPool: [...r.rawSerialPool],
           qtyKg: r.qty ? parseFloat(r.qty) : null,
+          taraKg: PALLET_KINDS.includes(r.kind) && r.taraKg ? parseFloat(r.taraKg) : null,
         })),
       )
       setPlate('')
@@ -406,10 +310,10 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
             value={ownerId}
             onChange={(e) => {
               setOwnerId(e.target.value)
-              // A different client invalidates every row's own picker
-              // selection (it was scoped to the PREVIOUS client's stock) —
-              // both the pallet picker and the raw-serial pool.
-              setRows((r) => r.map((row) => ({ ...row, selectedBarcodes: new Set(), rawSerialPool: new Set() })))
+              // A different client invalidates every raw/old_raw row's own
+              // picked source-serial pool (it was scoped to the PREVIOUS
+              // client's stock).
+              setRows((r) => r.map((row) => ({ ...row, rawSerialPool: new Set() })))
             }}
             className="w-full rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
@@ -432,7 +336,6 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
 
         {rows.map((row) => {
           const hint = feasibilityHint(row)
-          const matches = matchingPallets(row)
           const rawMatches = matchingRawSerials(row)
           const oldKnBalance = oldKnPoolBalance(row)
           const pickerActive = PALLET_KINDS.includes(row.kind)
@@ -454,7 +357,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => updateRow(row.key, { kind: 'finished', rawSerialPool: new Set(), qty: '' })}
+                  onClick={() => updateRow(row.key, { kind: 'finished', rawSerialPool: new Set(), qty: '', taraKg: '' })}
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                     row.kind === 'finished'
                       ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
@@ -465,7 +368,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => updateRow(row.key, { kind: 'raw', calibreId: '', selectedBarcodes: new Set(), qty: '' })}
+                  onClick={() => updateRow(row.key, { kind: 'raw', calibreId: '', qty: '', taraKg: '' })}
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                     row.kind === 'raw'
                       ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
@@ -478,7 +381,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   type="button"
                   onClick={() =>
                     !OLD_STOCK_KINDS.includes(row.kind) &&
-                    updateRow(row.key, { kind: 'old_washed', selectedBarcodes: new Set(), rawSerialPool: new Set(), qty: '' })
+                    updateRow(row.key, { kind: 'old_washed', rawSerialPool: new Set(), qty: '', taraKg: '' })
                   }
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                     OLD_STOCK_KINDS.includes(row.kind)
@@ -504,9 +407,9 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                           updateRow(row.key, {
                             kind: subKind,
                             calibreId: subKind === 'old_washed' ? row.calibreId : '',
-                            selectedBarcodes: new Set(),
                             rawSerialPool: new Set(),
                             qty: '',
+                            taraKg: '',
                           })
                         }
                         className={`rounded px-1.5 py-0.5 text-xs font-medium ${
@@ -521,13 +424,11 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   </span>
                 )}
               </div>
-              <div className="mt-1.5 flex items-center gap-2">
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <select
                   required
                   value={row.typeId}
-                  onChange={(e) =>
-                    updateRow(row.key, { typeId: e.target.value, selectedBarcodes: new Set(), rawSerialPool: new Set(), qty: '' })
-                  }
+                  onChange={(e) => updateRow(row.key, { typeId: e.target.value, rawSerialPool: new Set(), qty: '', taraKg: '' })}
                   className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="" disabled>
@@ -543,7 +444,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   <select
                     required
                     value={row.calibreId}
-                    onChange={(e) => updateRow(row.key, { calibreId: e.target.value, selectedBarcodes: new Set() })}
+                    onChange={(e) => updateRow(row.key, { calibreId: e.target.value })}
                     className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   >
                     <option value="" disabled>
@@ -561,23 +462,27 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   min="0"
                   step="0.1"
                   required={PALLET_KINDS.includes(row.kind)}
-                  placeholder={PALLET_KINDS.includes(row.kind) ? 'Miqdori (kg)' : 'Taxminiy miqdor (ixtiyoriy)'}
+                  placeholder={PALLET_KINDS.includes(row.kind) ? 'Sof miqdor (kg)' : 'Taxminiy miqdor (ixtiyoriy)'}
                   value={row.qty}
-                  // §5.4 Option B: once real pallets exist for this
-                  // type+calibre, qty is derived ONLY from togglePallet's
-                  // selection sum — typing directly would let a number
-                  // through with no pallets backing it, breaking "every
-                  // line has named pallets" (requirement 5). Manual typing
-                  // stays live only for the pre-existing zero-pallets
-                  // fallback (matchingPallets(row).length === 0). Pool/KN
-                  // rows are never read-only and never required (2026-08-01,
-                  // requirement 3) — their balance has no relationship to
-                  // this figure; if entered at all, it's Menejer's own
-                  // rough estimate, not a target Ombor must hit.
-                  readOnly={PALLET_KINDS.includes(row.kind) && matchingPallets(row).length > 0}
-                  onChange={(e) => updateRow(row.key, { qty: e.target.value, selectedBarcodes: new Set() })}
-                  className="w-40"
+                  onChange={(e) => updateRow(row.key, { qty: e.target.value })}
+                  className="w-36"
                 />
+                {/* Declared tara (§5.4 FIFO dispatch, 2026-08-28) — additive
+                    to the net kg above, chiqim_lines.declared_tara_kg
+                    (migration 0087). finished/old_washed only, same as
+                    calibre. */}
+                {PALLET_KINDS.includes(row.kind) && (
+                  <TextInput
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    required
+                    placeholder="Tara (kg)"
+                    value={row.taraKg}
+                    onChange={(e) => updateRow(row.key, { taraKg: e.target.value })}
+                    className="w-32"
+                  />
+                )}
                 {rows.length > 1 && (
                   <IconButton label="Qatorni o'chirish" tone="danger" onClick={() => removeRow(row.key)}>
                     ✕
@@ -621,42 +526,8 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                             }`}
                           >
                             <span className="font-mono">{selected ? '✓ ' : ''}{s.serial}</span>
+                            <PartiyaBadge partiyaNo={s.partiyaNo} />
                             <span className="ml-1.5">{Math.round(s.available).toLocaleString()} kg mavjud</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {pickerActive && PALLET_KINDS.includes(row.kind) && (
-                <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
-                  <p className="text-xs text-slate-400">
-                    Palletlarni tanlang — ular ushbu so'rov uchun band qilinadi va Omborga qaysi palletlarni
-                    yig'ish kerakligi ko'rsatiladi.
-                  </p>
-                  {matches.length === 0 ? (
-                    <p className="mt-1 text-xs text-slate-400">Bu buyurtmachida ushbu tur/kalibrda mavjud pallet yo'q.</p>
-                  ) : (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {matches.map((p) => {
-                        const selected = !!p.barcode2 && row.selectedBarcodes.has(p.barcode2)
-                        return (
-                          <button
-                            key={p.rowKey}
-                            type="button"
-                            onClick={() => togglePallet(row, p)}
-                            className={`rounded-md border px-2 py-1 text-left text-xs ${
-                              selected
-                                ? 'border-blue-400 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
-                            }`}
-                          >
-                            <span className="font-mono">{selected ? '✓ ' : ''}{p.barcode2}</span>
-                            <span className="ml-1.5">{Math.round(p.qtyKg).toLocaleString()} kg</span>
-                            <span className="ml-1.5">{p.moisturePct === null ? '—' : `${p.moisturePct}%`}</span>
-                            <span className="ml-1.5 text-slate-500 dark:text-slate-400">{p.daysHeld} kun</span>
                           </button>
                         )
                       })}
@@ -720,6 +591,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
               </span>
               <span className="font-mono text-slate-900 dark:text-slate-100">
                 {line.qtyKg === null ? '—' : `${line.qtyKg.toLocaleString()} kg`}
+                {line.taraKg !== null && ` (+${line.taraKg.toLocaleString()} kg tara)`}
               </span>
             </div>
           ))}

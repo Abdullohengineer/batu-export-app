@@ -1,4 +1,5 @@
 import type { ChiqimReportRow } from '../../lib/reportQuery'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // Row-expand content — see KirimRowDetail.tsx's own note: this row's extra
 // fields only. The full serial passport (§3.2.5) opens from the button
@@ -18,7 +19,8 @@ export function ChiqimRowDetail({
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
       <div>
-        Ona seriya: <span className="font-mono">{row.serial}</span> · {typeName(row.typeId)} · {calibreLabel(row.calibreId)}
+        Ona seriya: <span className="font-mono">{row.serial}</span> <PartiyaBadge partiyaNo={row.partiyaNo} /> ·{' '}
+        {typeName(row.typeId)} · {calibreLabel(row.calibreId)}
       </div>
 
       {row.voidInfo ? (

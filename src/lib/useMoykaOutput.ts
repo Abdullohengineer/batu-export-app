@@ -2,10 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { jarayonda, ortiqcha } from './tayyorCompletion'
 import { sortByDateDesc, maxDate } from './sortByDate'
-import { isAwaitingTugallash } from './stageMembership'
+import { isInMoyka } from './stageMembership'
 import { currentLabStatus, type LabGateStatus } from './labVerdict'
-
-export { computeFinalLossPct } from './tayyorCompletion'
 
 export interface FinishedPallet {
   barcode2: string
@@ -17,6 +15,7 @@ export interface FinishedPallet {
 export interface OutputSerial {
   serial: string
   type_id: string
+  partiyaNo: number | null
   category_id: string
   owner_id: string
   labStatus: LabGateStatus // Laborator v2 (2026-07-28): hard gate on Barcode #2 assignment —
@@ -43,37 +42,13 @@ export interface OutputSerial {
   // barcode2 is a permanent PK, so the next barcode's sequence number must never collide with a prior one.
 }
 
-// §5.3 Window 2 (Tugallangan): a serial whose wash_cycles row has
-// status='final' — always via manual Tugallash now (DECISIONS.md
-// "Manual-only finishing"). lossPct is the LOCKED figure from
-// wash_cycles.final_loss_pct (source of truth once finalized, not
-// recomputed) — sent/received/excess stay derived like the active list, for
-// display and for the Ortiqcha badge.
-export interface CompletedSerial {
-  serial: string
-  type_id: string
-  owner_id: string
-  sent: number
-  received: number
-  lossPct: number // locked wash_cycles.final_loss_pct, floored at 0 (see tayyorCompletion.ts)
-  excess: number // Ortiqcha — max(0, received − sent); picks the badge treatment
-  pallets: FinishedPallet[]
-  lastReceivedDate: string | null // max finished_pallets.received_date — used as a fallback sort
-  // key (below) for cycles finalized before wash_cycles.finalized_at existed.
-  finalizedAt: string | null // the real completion-time signal (0032_wash_cycles_finalized_at.sql) —
-  // used to sort Window 2 newest-first (DECISIONS "History list ordering", "Universal sort rule").
-}
-
-// §5.3 data: serials sent to Moyka (Step 5) split into two windows — active
-// (awaiting Tugallash: sent > 0 and not yet manually finished, regardless
-// of received/sent quantities — see stageMembership.ts isAwaitingTugallash
-// and DECISIONS "Manual-only finishing") and completed (Tugallangan: a
-// final wash_cycles row exists, always via Tugallash — there is no
-// auto-finalize path). These two are independent, not mutually exclusive: a
-// serial can be active AND completed at once if more was sent after an
-// earlier finalization. All totals DERIVED (CLAUDE.md "derive, don't
-// store") except the locked final_loss_pct itself. Both lists sort
-// newest-first (DECISIONS "Universal sort rule").
+// §5.3 data: serials sent to Moyka (Step 5) with a positive live in-Moyka
+// balance (sent > received — see stageMembership.ts isInMoyka). No more
+// manual finish event (DECISIONS.md "Moyka loss becomes live; remove
+// Tugallash"): a serial drops off this list on its own once its balance
+// reaches 0, rather than needing an operator to close it out. All totals
+// DERIVED (CLAUDE.md "derive, don't store"). Sorted newest-first (DECISIONS
+// "Universal sort rule").
 //
 // Wash-cycle scoping removed (2026-07-28, Laborator v2 — see DECISIONS.md
 // "Lab moves inside Moyka, wash-cycle concept removed"): re-washing now
@@ -82,10 +57,9 @@ export interface CompletedSerial {
 // derivation (the old fetchActiveCycles/rewash.ts, both deleted).
 export function useMoykaOutput() {
   const [serials, setSerials] = useState<OutputSerial[]>([])
-  const [completed, setCompleted] = useState<CompletedSerial[]>([])
   const [loading, setLoading] = useState(true)
   // 🔒 refresh is called both from the mount effect below AND from mutation
-  // handlers elsewhere (handleSend/handleReceipt/handleTugallash) — a plain
+  // handlers elsewhere (handleSend/handleReceipt) — a plain
   // per-effect `cancelled` closure (this codebase's usual guard, e.g.
   // useYieldRows.ts) can't cover both call sites. A monotonic request id
   // does: only the most-recently-STARTED call is ever allowed to commit
@@ -100,17 +74,15 @@ export function useMoykaOutput() {
     const requestId = ++requestIdRef.current
     setLoading(true)
     try {
-      const [{ data: sends }, { data: pallets }, { data: cycles }] = await Promise.all([
+      const [{ data: sends }, { data: pallets }] = await Promise.all([
         supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
         supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, status'),
-        supabase.from('wash_cycles').select('serial, status, final_loss_pct, finalized_at'),
       ])
 
       const serialList = [...new Set((sends ?? []).map((s) => s.serial))]
       if (serialList.length === 0) {
         if (requestIdRef.current === requestId) {
           setSerials([])
-          setCompleted([])
         }
         return
       }
@@ -150,35 +122,16 @@ export function useMoykaOutput() {
         barcodeSeqBySerial.set(p.serial, bySerial)
       }
 
-      const finalCycleBySerial = new Map((cycles ?? []).filter((c) => c.status === 'final').map((c) => [c.serial, c]))
-      const lossPctBySerial = new Map<string, number>()
-      const finalizedAtBySerial = new Map<string, string | null>()
-      const finalizedSerials = new Set<string>()
-      for (const serial of serialList) {
-        const cycle = finalCycleBySerial.get(serial)
-        if (cycle) {
-          lossPctBySerial.set(serial, cycle.final_loss_pct ?? 0)
-          finalizedAtBySerial.set(serial, cycle.finalized_at)
-          finalizedSerials.add(serial)
-        }
-      }
-
       // §5.2 Moyka Window 2 = §5.3 Tayyor Window 1 (section mirroring) —
-      // isAwaitingTugallash is the shared, tested predicate: sent at all,
-      // not yet manually finished. No quantity comparison at all — an
-      // over-received serial (received > sent) stays visible and finishable
-      // until the operator clicks Tugallash (DECISIONS "Manual-only
-      // finishing").
-      const activeSerials = serialList.filter((s) => isAwaitingTugallash(sentBySerial.get(s) ?? 0, finalizedSerials.has(s)))
-      // §5.3 Window 2 (Tugallangan) membership — the serial's wash_cycles
-      // row is final. A serial can be in BOTH activeSerials (not yet
-      // finished) and completedSerials at once if more was sent after an
-      // earlier finalization.
-      const completedSerials = serialList.filter((s) => finalizedSerials.has(s))
+      // isInMoyka is the shared, tested predicate: a positive live balance
+      // (sent > received). A serial drops off on its own once packing
+      // catches up to sent — no manual close event any more (DECISIONS.md
+      // "Moyka loss becomes live; remove Tugallash").
+      const activeSerials = serialList.filter((s) => isInMoyka(sentBySerial.get(s) ?? 0, receivedBySerial.get(s) ?? 0))
 
       const { data: kLines } = await supabase
         .from('kirim_lines')
-        .select('serial, order_id, type_id')
+        .select('serial, order_id, type_id, partiya_no')
         .in('serial', serialList)
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
       const [{ data: orders }, { data: types }] = await Promise.all([
@@ -207,6 +160,7 @@ export function useMoykaOutput() {
         return {
           serial,
           type_id: line.type_id,
+          partiyaNo: line.partiya_no,
           owner_id: order.owner_id,
           isMinted: order.origin === 'internal_reprocess',
           sent,
@@ -225,6 +179,7 @@ export function useMoykaOutput() {
           return {
             serial: base.serial,
             type_id: base.type_id,
+            partiyaNo: base.partiyaNo,
             owner_id: base.owner_id,
             isMinted: base.isMinted,
             labStatus: labStatusBySerial.get(serial) ?? 'untested',
@@ -240,32 +195,12 @@ export function useMoykaOutput() {
         })
         .filter((s): s is OutputSerial => s !== null)
 
-      const completedRows: CompletedSerial[] = completedSerials
-        .map((serial): CompletedSerial | null => {
-          const base = baseRow(serial)
-          if (!base) return null
-          return {
-            serial: base.serial,
-            type_id: base.type_id,
-            owner_id: base.owner_id,
-            sent: base.sent,
-            received: base.received,
-            pallets: base.pallets,
-            lossPct: lossPctBySerial.get(serial) ?? 0,
-            excess: ortiqcha(base.sent, base.received),
-            lastReceivedDate: base.lastReceivedDate,
-            finalizedAt: finalizedAtBySerial.get(serial) ?? null,
-          }
-        })
-        .filter((c): c is CompletedSerial => c !== null)
-
       // Universal sort rule (DECISIONS "Universal sort rule", SPEC.md §5
       // intro): every stage/history list sorts newest-first. Sorted once
       // here, at the shared hook, so both consumers of `serials`
       // (§5.2 Window 2 and §5.3 Window 1 — section mirroring) inherit it.
       if (requestIdRef.current !== requestId) return
       setSerials(sortByDateDesc(combined, (s) => s.lastActivityDate))
-      setCompleted(sortByDateDesc(completedRows, (c) => c.finalizedAt ?? c.lastReceivedDate))
     } finally {
       if (requestIdRef.current === requestId) setLoading(false)
     }
@@ -275,5 +210,5 @@ export function useMoykaOutput() {
     refresh()
   }, [refresh])
 
-  return { serials, completed, loading, refresh }
+  return { serials, loading, refresh }
 }

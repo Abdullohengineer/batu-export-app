@@ -284,29 +284,23 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await page.waitForURL('**/login')
   await loginAs(page, 'OMBOR')
   {
+    // Two-tile picker (2026-08-28, see DECISIONS.md "Two-tile Moyka send
+    // picker") — send is now via the Yangi zaxira tile's chip-select flow,
+    // not a per-serial row form. Wait on the actual moyka_sends response,
+    // not a button-label change, for the same reason the superseded
+    // per-row version of this block already documented (React relabels the
+    // button synchronously, before the write reaches the network).
     await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
-    const yuborishUchun = page.getByRole('heading', { name: '1 · Yuborishga tayyor' }).locator('xpath=following-sibling::div[1]')
-    const row = yuborishUchun.locator('div.rounded-md', { hasText: subxonSerial })
-    await expect(row).toBeVisible({ timeout: 20000 })
-    await row.getByRole('button', { name: 'Moykaga yuborish' }).click()
-    const qtyInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
+    await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
+    const chip = page.getByRole('button', { name: new RegExp(`^${subxonSerial}\\b`) })
+    await expect(chip).toBeVisible({ timeout: 20000 })
+    await chip.click()
+    const qtyInput = page.locator('#new-stock-weighed')
     await qtyInput.fill('5000')
     await expect(qtyInput).toHaveValue('5000')
-    // The button relabels to "Yuborilmoqda…" the instant React sets
-    // submitting=true, synchronously and before the moyka_sends insert has
-    // reached the network -- toHaveCount(0) on the OLD label was satisfied
-    // immediately and proved nothing about the write. Confirmed via a
-    // captured trace: the very next step (Chiqish/logout) is a real browser
-    // navigation, and it aborted this exact POST -- net::ERR_ABORTED,
-    // recorded at the same monotonic instant as the navigation completing.
-    // useMoykaOutput was reading the database correctly the whole time; the
-    // row was genuinely never written. Same defect already found and fixed
-    // this same way in lab-relocation-loss-verification.spec.ts (DECISIONS.md
-    // "Lab moves inside Moyka, wash-cycle concept removed", 2026-07-28) --
-    // just never ported to this spec. Wait on the actual response instead.
     const [sendResponse] = await Promise.all([
       page.waitForResponse((r) => r.url().includes('/moyka_sends') && r.request().method() === 'POST'),
-      row.getByRole('button', { name: 'Moykaga yuborish' }).click(),
+      page.getByRole('button', { name: 'Moykaga yuborish' }).click(),
     ])
     expect(sendResponse.ok(), `moyka_sends insert must succeed, got HTTP ${sendResponse.status()}: ${await sendResponse.text()}`).toBe(true)
   }
@@ -354,36 +348,45 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
 
   const barcode = `PLT-${subxonSerial}-06-1`
   {
+    // Single-tile receive picker (2026-08-28, see DECISIONS.md "Section 3
+    // single-tile receive picker") — open the tile, select the serial's
+    // chip, use the same FinishedReceiptForm as before (unchanged).
     await page.getByRole('button', { name: 'Chiqish' }).click()
     await page.waitForURL('**/login')
     await loginAs(page, 'OMBOR')
     await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-    await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
-    const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: subxonSerial })
-    await expect(row).toBeVisible({ timeout: 20000 })
-    await row.getByRole('button', { name: /Qabul qilish|Yana qo'shish/ }).click()
-    await row.locator('select').selectOption({ label: 'Kalibr 6' })
-    const weightInput = row.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
+    await expect(page.getByRole('heading', { name: 'Moykadan qabul qilish' })).toBeVisible({ timeout: 20000 })
+    await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
+    const chip = page.getByRole('button', { name: new RegExp(`^${subxonSerial}\\b`) })
+    await expect(chip).toBeVisible({ timeout: 20000 })
+    await chip.click()
+    await page.locator('select').selectOption({ label: 'Kalibr 6' })
+    const weightInput = page.locator('div:has(> label:text-is("Og\'irlik")) input[type="number"]')
     await weightInput.fill('4600')
     await weightInput.press('Tab')
     await expect(weightInput).toHaveValue('4600')
-    await row.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
-    await expect(row.getByText(barcode).first()).toBeVisible({ timeout: 20000 })
+    await page.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
+    await expect(page.getByText(barcode).first()).toBeVisible({ timeout: 20000 })
   }
   {
+    // Loss is live now (DECISIONS.md "Moyka loss becomes live; remove
+    // Tugallash") — no close/confirm action to trigger it. The serial's
+    // live in-Moyka balance is still positive (400kg of its 5,000kg sent
+    // hasn't been packed yet), and yield_rows already reads the correct
+    // live figure for it: (5000 - 4600) / 5000 = 8.0% — against Subxon's
+    // own 5,000kg intake figure, never the truck's 5,700kg gate net
+    // (multi-line, §2.16.1).
     await page.getByRole('link', { name: 'Skladga KIRIM' }).click()
     await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
-    await expect(page.getByRole('heading', { name: 'Moykada — chiqishi kutilmoqda' })).toBeVisible({ timeout: 20000 })
-    const row = page.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: subxonSerial })
-    await expect(row).toBeVisible({ timeout: 20000 })
-    await row.getByRole('button', { name: 'Tugallash' }).click()
-    await row.getByRole('button', { name: 'Ha, tugallash' }).click()
-    const tugallangan = page.getByRole('heading', { name: 'Tugallangan' }).locator('xpath=following-sibling::div[1]')
-    const finishedRow = tugallangan.locator('div.rounded-md', { hasText: subxonSerial })
-    await expect(finishedRow).toBeVisible({ timeout: 20000 })
-    // (5000 - 4600) / 5000 = 8.0% — against Subxon's own 5,000kg intake
-    // figure, never the truck's 5,700kg gate net (multi-line, §2.16.1).
-    await expect(finishedRow).toContainText('8.0%')
+    await expect(page.getByRole('heading', { name: 'Moykadan qabul qilish' })).toBeVisible({ timeout: 20000 })
+    const yieldRow = await page.evaluate(async (serialArg) => {
+      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const { data, error } = await w.supabase.from('yield_rows').select('loss_kg, loss_pct').eq('serial', serialArg).single()
+      if (error) throw new Error(`yield_rows select: ${error.message}`)
+      return data
+    }, subxonSerial)
+    expect(yieldRow.loss_kg).toBe(400)
+    expect(yieldRow.loss_pct).toBe(8.0)
   }
 
   // --- Confirm availability directly (SPEC.md §8 "one derived truth, all consumers") ---
@@ -416,14 +419,12 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await chiqimSelects.nth(0).selectOption({ label: E2E_OWNER_NAME })
   await chiqimSelects.nth(1).selectOption({ label: 'Subxon' })
   await chiqimSelects.nth(2).selectOption({ label: 'Kalibr 6' })
-  // §5.4 Option B (2026-07-26/27): qty is derived from picker selection,
-  // not typed. Click the exact, already-known barcode (`barcode`, captured
-  // when this pallet was produced above) rather than a generic "any PLT-"
-  // match — this shared e2e database can carry OTHER, unrelated
-  // Subxon/Kalibr-6 stock for the same owner at any given moment (found
-  // live: a generic match clicked one of those instead, silently reaching
-  // the wrong target further down this test).
-  await page.getByRole('button', { name: new RegExp(barcode) }).click()
+  // §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
+  // dispatch: FIFO cascade, consumption table"): no more picker -- calibre
+  // + declared net kg + declared tara kg only. Which specific pallet(s)
+  // this draws from is decided by FIFO at Ombor's finalize click, not here.
+  await page.getByPlaceholder('Sof miqdor (kg)').fill('4600')
+  await page.getByPlaceholder('Tara (kg)').fill('0')
   await page.getByRole('button', { name: 'Saqlash' }).click()
   await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
 
@@ -452,7 +453,10 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(faol.locator('.rounded-md.border-red-300', { hasText: PLATE_OUT })).toBeVisible()
   }
 
-  // --- Ombor: scan + finish loading ---
+  // --- Ombor: enter loaded weight + finish loading — §5.4 FIFO dispatch:
+  // no scan step, FIFO attributes this against `barcode` (the only
+  // in-stock Subxon/Kalibr-6 pallet this owner has right now) at the
+  // finalize click. ---
   await page.getByRole('button', { name: 'Chiqish' }).click()
   await page.waitForURL('**/login')
   await loginAs(page, 'OMBOR')
@@ -462,9 +466,7 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: PLATE_OUT })
     await expect(omborRequest).toBeVisible({ timeout: 20000 })
     await omborRequest.getByRole('button', { name: 'Yuklashni boshlash' }).click()
-    const barcodeInput = page.getByPlaceholder("Barcode #2 ni kiriting yoki skanerlang")
-    await barcodeInput.fill(barcode)
-    await page.getByRole('button', { name: 'Skanerlash' }).click()
+    await page.getByPlaceholder("Yuklangan og'irlik (kg)").fill('4600')
     await expect(page.getByText('Yetarli emas')).not.toBeVisible()
     await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
     await page.getByRole('button', { name: 'Ha, yakunlash' }).click()

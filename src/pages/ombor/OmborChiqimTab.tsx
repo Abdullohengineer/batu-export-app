@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
@@ -10,17 +10,15 @@ import { useRawDispatchLinesByRequest } from '../../lib/useRawDispatchLinesByReq
 import { useOldKnCollectionsByRequest } from '../../lib/useOldKnCollectionsByRequest'
 import { useMoykaSerials } from '../../lib/useMoykaSerials'
 import { useStockOnHand } from '../../lib/useStockOnHand'
-import { resolveScan, lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimScan'
-import { currentLabStatus } from '../../lib/labVerdict'
-import { BarcodeCameraScanner, type ScanFeedback } from '../../components/BarcodeCameraScanner'
-import { Barcode2Display } from './Barcode2Display'
-import { PrintAllButton } from './PrintAllButton'
+import { useFinishedCalibreAvailability } from '../../lib/useAvailableFinishedStock'
+import { lineStatus, shortfallLines as computeShortfallLines } from '../../lib/chiqimLineStatus'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { Stat } from '../../components/ui/Stat'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { TextInput } from '../../components/ui/FormField'
 import type { Tone } from '../../components/ui/tokens'
@@ -30,8 +28,7 @@ import { formatDate, formatDateTime } from '../../lib/formatDate'
 // old-stock lines get a shared amber treatment wherever they render
 // (requirement: "All old-stock lines colour-coded"), layered onto the
 // existing finished/raw rendering rather than a parallel set of sections
-// for every kind — old_washed folds into the prep-list (same reservedPallets
-// mechanism as finished), old_raw folds into the raw-draw composer (same
+// for every kind — old_raw folds into the raw-draw composer (same
 // pool/draw mechanism as raw); only old_kn has no existing shape to fold
 // into and gets its own section below. Each site below checks its own
 // line_kind directly (no shared kind-set constant — every call site's
@@ -44,12 +41,6 @@ const oldStockBadge = (
     Eski zaxira
   </span>
 )
-
-interface ScannedPallet {
-  barcode2: string
-  lineId: string
-  weight_kg: number
-}
 
 // Raw dispatch pool rework (2026-08-01, see DECISIONS.md "Raw dispatch
 // serial pool") — a committed (added, not-yet-persisted-to-DB) draw
@@ -78,51 +69,45 @@ interface RawComposerDraft {
 
 const EMPTY_COMPOSER: RawComposerDraft = { serial: '', weightKg: '', boxMassKg: '', note: '' }
 
-// §5.4 Ombor CHIQIM: scan-to-load + finish. Two windows, same collapsed-by-
-// default / toggle-to-expand shape already established for S3W1/S3W2
-// (OmborTayyorTab) — collapsed shows request_date · plate · driver · owner
-// + a target-kg summary line; expand reveals the scan form (W1) or the
-// pallet list (W2), never both fetched or rendered eagerly.
+// §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
+// dispatch: FIFO cascade, consumption table" — reverses the 2026-07-26/27
+// "Option B" pallet-reservation + scan-to-load design): a finished/
+// old_washed line no longer names specific pallets in advance and Ombor no
+// longer scans anything to load one. Ombor enters ONE number per line — the
+// actual loaded kg — and attribute_chiqim_line_fifo (migrations 0087/0089)
+// does the rest: cascades that kg across finished_pallets rows for the
+// line's own type+calibre+isOldStock, oldest receipt first, hard-failing
+// (aborting only this click, nothing partially written) if the line's
+// number can't be fully covered by what's really available right now.
+// raw/old_raw/old_kn stay exactly as they were — out of this change's scope,
+// their own draw composers are unchanged below.
 //
-// UX pass prompt 1/2 (see docs/DECISIONS.md "UX pass: design system + Ombor
-// scan-load"): reference implementation for the shared `components/ui/`
-// system, plus camera scanning (`BarcodeCameraScanner`). Presentation and
-// one new input path only — every Supabase call, every `chiqimScan.ts`
-// decision, and every existing button/heading/placeholder string below is
-// unchanged from before this pass; only their layout, styling, and (for
-// the scan input) camera-vs-typed source changed. `processBarcode` is the
-// one factored-out piece: both the manual form and the camera call it, so
-// a camera read behaves byte-for-byte like typing the same code, including
-// a voided/claimed/wrong-stage barcode failing exactly the same way.
-//
-// 🔒 Totals are tracked PER LINE, not per whole request (§5.4: "target
-// LINES with progress bars"; "auto-adds ... to the matching type+calibre
-// LINE") — confirmed from SPEC.md's locked text, not assumed. Each
-// chiqim_lines row gets its own scanned-kg total and its own exact/
-// shortfall/overage status.
+// Two windows, same collapsed-by-default / toggle-to-expand shape already
+// established for S3W1/S3W2 (OmborTayyorTab): collapsed shows
+// request_date · plate · driver · owner + a target-kg summary line; expand
+// reveals the loaded-kg entry (W1) or the finalized detail (W2), never both
+// fetched or rendered eagerly.
 export function OmborChiqimTab() {
   const { profile } = useAuth()
   // §3.3: includeInactive=true -- resolves ids on in-flight/historical rows;
-  // this screen scans barcodes, it has no creation dropdown of its own.
+  // this screen has no creation dropdown of its own.
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
   const { open, finished, loading, refresh } = useOmborChiqimRequests()
+  // The SAME canonical availability Menejer's own feasibility hint reads
+  // (finished_calibre_availability, migrations 0087/0089) — a soft warning
+  // only; the real guard is attribute_chiqim_line_fifo's own hard-fail at
+  // finalize time, not this hint.
+  const { rows: availabilityRows } = useFinishedCalibreAvailability()
 
   const [expandedOpen, setExpandedOpen] = useState<string | null>(null)
   const [expandedFinished, setExpandedFinished] = useState<string | null>(null)
-  // Keyed by request id so collapsing a request mid-scan doesn't lose
-  // progress — only one row is expanded at a time, but the operator may
-  // still switch between requests while scanning.
-  const [scannedByRequest, setScannedByRequest] = useState<Record<string, ScannedPallet[]>>({})
-  const [barcodeInput, setBarcodeInput] = useState('')
-  const [scanError, setScanError] = useState<string | null>(null)
-  // On-camera echo of the same outcome scanError already tracks (single
-  // flat state, not per-request, same reasoning as scanError above — only
-  // one row is expanded/scannable at a time). Auto-clears after a beat so
-  // it doesn't sit stale over the camera once the operator moves on.
-  const [scanFeedback, setScanFeedback] = useState<ScanFeedback | null>(null)
-  const scanFeedbackTimeoutRef = useRef<number | null>(null)
+  // Keyed by request id, then chiqim_line_id -- the actual loaded kg Ombor
+  // enters for a finished/old_washed line, held client-side until
+  // "Yuklashni yakunlash" (same deferred-commit shape as the raw/old_kn
+  // draws below): nothing is attributed until the finish click.
+  const [loadedKgByRequest, setLoadedKgByRequest] = useState<Record<string, Record<string, string>>>({})
   const [confirming, setConfirming] = useState<string | null>(null)
   const [finishError, setFinishError] = useState<string | null>(null)
   const [finishing, setFinishing] = useState(false)
@@ -146,12 +131,11 @@ export function OmborChiqimTab() {
   const { serials: rawSerials } = useMoykaSerials()
   // Raw dispatch pool rework (2026-08-01) — every ADDED draw per line, held
   // client-side until "Yuklashni yakunlash" (same deferred-commit shape as
-  // scannedByRequest above, for the same reason: append-only
+  // loadedKgByRequest above, for the same reason: append-only
   // raw_dispatch_lines needs a pre-commit undo path, and removing an added
   // draw here IS that undo — see DECISIONS.md "Raw dispatch serial pool").
-  // Keyed by request id, then by chiqim_line_id, to an ARRAY (was a single
-  // draft per line before this rework — a line can now draw from several
-  // pooled serials, or the same serial more than once).
+  // Keyed by request id, then by chiqim_line_id, to an ARRAY (a line can
+  // draw from several pooled serials, or the same serial more than once).
   const [rawDrawsByRequest, setRawDrawsByRequest] = useState<Record<string, Record<string, RawDraw[]>>>({})
   // The one entry currently being composed per line, before it's added to
   // the array above — separate state so an in-progress, not-yet-valid
@@ -165,18 +149,6 @@ export function OmborChiqimTab() {
   // mass (a weight pool, not a per-item weigh-in).
   const [oldKnDrawsByRequest, setOldKnDrawsByRequest] = useState<Record<string, Record<string, { key: string; kg: string }[]>>>({})
   const [oldKnComposerByRequest, setOldKnComposerByRequest] = useState<Record<string, Record<string, string>>>({})
-
-  useEffect(() => {
-    return () => {
-      if (scanFeedbackTimeoutRef.current !== null) window.clearTimeout(scanFeedbackTimeoutRef.current)
-    }
-  }, [])
-
-  function showScanFeedback(fb: ScanFeedback) {
-    if (scanFeedbackTimeoutRef.current !== null) window.clearTimeout(scanFeedbackTimeoutRef.current)
-    setScanFeedback(fb)
-    scanFeedbackTimeoutRef.current = window.setTimeout(() => setScanFeedback(null), 2500)
-  }
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -212,11 +184,6 @@ export function OmborChiqimTab() {
     }
   }
 
-  function lineTotal(requestId: string, lineId: string): number {
-    return (scannedByRequest[requestId] ?? [])
-      .filter((s) => s.lineId === lineId)
-      .reduce((sum, s) => sum + s.weight_kg, 0)
-  }
   // A raw line's qty_kg is optional (2026-08-01 pool rework) — an
   // un-estimated raw line contributes 0 to "target," the least-wrong
   // choice now that qty_kg is fundamentally undefined for it, not a real
@@ -225,10 +192,22 @@ export function OmborChiqimTab() {
     return request.lines.reduce((sum, l) => sum + (l.qty_kg ?? 0), 0)
   }
 
-  function lineTotalsFor(requestId: string): Record<string, number> {
-    const totals: Record<string, number> = {}
-    for (const s of scannedByRequest[requestId] ?? []) totals[s.lineId] = (totals[s.lineId] ?? 0) + s.weight_kg
-    return totals
+  function loadedKgFor(requestId: string, lineId: string): string {
+    return loadedKgByRequest[requestId]?.[lineId] ?? ''
+  }
+  function setLoadedKg(requestId: string, lineId: string, kg: string) {
+    setLoadedKgByRequest((m) => ({ ...m, [requestId]: { ...m[requestId], [lineId]: kg } }))
+  }
+  // Total-by-calibre availability (finished_calibre_availability) for a
+  // finished/old_washed line's own type+calibre+isOldStock — the same soft-
+  // warning source Menejer's own form reads.
+  function availableKgFor(line: ChiqimLine): number {
+    if (!line.calibre_id) return 0
+    const wantOldStock = line.line_kind === 'old_washed'
+    const match = availabilityRows.find(
+      (a) => a.type_id === line.type_id && a.calibre_id === line.calibre_id && a.is_old_stock === wantOldStock,
+    )
+    return match ? match.available_kg : 0
   }
 
   // A weight/box-mass pair's net, 0 until both hold a valid number — never
@@ -328,16 +307,16 @@ export function OmborChiqimTab() {
     }))
   }
 
-  // The progress figure a line shows, whichever kind it is — scanned
-  // pallet sum for a finished/old_washed line, sum of added draws for a
-  // raw/old_raw line, sum of added draws for an old_kn line. Used
+  // The progress figure a line shows, whichever kind it is — Ombor's own
+  // entered loaded kg for a finished/old_washed line, sum of added draws for
+  // a raw/old_raw line, sum of added draws for an old_kn line. Used
   // everywhere a per-line "how much so far" number is needed (progress
   // bars, shortfall, the aggregate tone) so those never need their own
   // kind branch.
   function lineProgressKg(request: ChiqimRequest, line: ChiqimLine): number {
     if (line.line_kind === 'raw' || line.line_kind === 'old_raw') return rawDrawsNetKg(request.id, line.id)
     if (line.line_kind === 'old_kn') return oldKnDrawsNetKg(request.id, line.id)
-    return lineTotal(request.id, line.id)
+    return parseFloat(loadedKgFor(request.id, line.id)) || 0
   }
 
   function combinedTotalsByLine(request: ChiqimRequest): Record<string, number> {
@@ -346,129 +325,29 @@ export function OmborChiqimTab() {
     return totals
   }
 
-  // The one shared scan-resolution path — manual submit and the camera
-  // both call this with a raw barcode string, unchanged from the original
-  // handleScan's own lookups/resolveScan call/state update. Returns
-  // whether the scan was accepted, so the manual form knows whether to
-  // clear its input (only on success — same as before this pass, an
-  // operator seeing a rejected code stays able to read/correct it).
-  async function processBarcode(request: ChiqimRequest, barcode2: string): Promise<boolean> {
-    setScanError(null)
-    if (!barcode2) return false
-
-    // Print legibility fix (DECISIONS.md "Barcode print legibility"):
-    // printed labels now encode barcode2 with the constant "PLT-" prefix
-    // dropped, for bar density — every finished_pallets.barcode2 row
-    // still has the full prefix (FinishedReceiptForm.tsx's sole mint
-    // point), so a scan/manual-entry value missing it is normalized back
-    // before any lookup. Backward-compatible: an already-printed full-
-    // value label, or manual entry with the prefix typed in, still
-    // matches as-is.
-    if (!barcode2.startsWith('PLT-')) barcode2 = `PLT-${barcode2}`
-
-    const { data: pallet } = await supabase
-      .from('finished_pallets')
-      .select('barcode2, type_id, calibre_id, weight_kg, status, serial')
-      .eq('barcode2', barcode2)
-      .maybeSingle()
-
-    // Real enforcement point for the overcommit gap (DECISIONS "Step 7
-    // prompt 1"): relies on dispatch_manifest.barcode2's existing UNIQUE
-    // constraint rather than a reservation system. This check is a fast,
-    // friendly early warning — the constraint itself (checked again at
-    // finish time) is the actual guarantee against a race with another
-    // request claiming the same pallet in between.
-    const { data: claimed } = pallet
-      ? await supabase.from('dispatch_manifest').select('barcode2').eq('barcode2', barcode2).maybeSingle()
-      : { data: null }
-
-    // §5.5.3/§8 hard gate: same currentLabStatus helper
-    // Menejer's feasibility checker uses — untested/re-wash-flagged stock
-    // must be refused here too, not just hidden from the request form.
-    const labStatus = pallet ? (await currentLabStatus([pallet.serial])).get(pallet.serial) : undefined
-
-    // §5.4 Option B (2026-07-26/27): which line (if any) this barcode is
-    // reserved to on THIS request — derived from data useOmborChiqimRequests
-    // already loaded, no extra query. Reservation is authoritative when it
-    // exists; type_id/calibre_id are still passed through for resolveScan's
-    // own fallback (a line with zero reservations — stock ordered ahead of
-    // production, or a not-yet-finished re-wash cycle — still needs to
-    // resolve by type/calibre once matching stock actually shows up).
-    const reservedLineIdByBarcode: Record<string, string> = {}
-    for (const line of request.lines) {
-      for (const p of line.reservedPallets) reservedLineIdByBarcode[p.barcode2] = line.id
-    }
-
-    const result = resolveScan({
-      barcode2,
-      alreadyScannedBarcodes: (scannedByRequest[request.id] ?? []).map((s) => s.barcode2),
-      pallet: pallet ? { type_id: pallet.type_id, calibre_id: pallet.calibre_id, status: pallet.status } : null,
-      labPassed: labStatus === 'passed',
-      alreadyClaimed: !!claimed,
-      reservedLineIdByBarcode,
-      lines: request.lines,
-      scannedTotalsByLineId: lineTotalsFor(request.id),
-    })
-
-    if (!result.ok) {
-      const messages: Record<typeof result.reason, string> = {
-        duplicate: 'Bu pallet allaqachon shu ro\'yxatga skanerlangan.',
-        not_found: 'Bunday barcode topilmadi.',
-        not_in_stock: 'Bu pallet omborda emas (allaqachon jo\'natilgan yoki bekor qilingan).',
-        not_lab_passed: 'Bu pallet hali laboratoriya tekshiruvidan o\'tmagan yoki qayta yuvishga yuborilgan.',
-        claimed: 'Bu pallet allaqachon boshqa yuklashda ishlatilgan.',
-        not_reserved: 'Bu pallet bu so\'rovga tegishli emas.',
-      }
-      setScanError(messages[result.reason])
-      showScanFeedback({ tone: 'problem', message: messages[result.reason] })
-      return false
-    }
-
-    setScannedByRequest((m) => ({
-      ...m,
-      [request.id]: [...(m[request.id] ?? []), { barcode2: pallet!.barcode2, lineId: result.lineId, weight_kg: pallet!.weight_kg }],
-    }))
-    showScanFeedback({ tone: 'ok', message: `✓ Qo'shildi — ${pallet!.weight_kg.toLocaleString()} kg` })
-    return true
-  }
-
-  async function handleScan(request: ChiqimRequest, e: FormEvent) {
-    e.preventDefault()
-    const barcode2 = barcodeInput.trim()
-    if (!barcode2) return
-    const ok = await processBarcode(request, barcode2)
-    if (ok) setBarcodeInput('')
-  }
-
-  function removeScan(requestId: string, barcode2: string) {
-    setScannedByRequest((m) => ({
-      ...m,
-      [requestId]: (m[requestId] ?? []).filter((s) => s.barcode2 !== barcode2),
-    }))
-  }
-
-  // Undo a scan that already made it into dispatch_manifest (post-finish,
-  // pre-gate-stage-2). A real DELETE, not a void — these are Ombor's own
-  // in-progress scans, not finalized records (see this session's task).
-  // The RLS policy (ombor_deletes, 0021) is the actual enforcement: once
-  // Qorovul's stage 2 completes, PostgREST doesn't raise 42501 for a
-  // DELETE's USING clause the way it would for an INSERT's WITH CHECK —
-  // a row outside the policy's visible set is just silently excluded from
-  // the delete, returning success with zero rows affected. `.select()`
-  // after the delete is what surfaces that: an empty array means "matched
-  // nothing" (either already gone, or RLS-filtered), which for a manifest
-  // row we can see in the UI can only mean the latter.
-  async function handleUndoScan(manifestId: string) {
+  // Undo a chiqim_pallet_consumption row (post-finish, pre-gate-stage-2).
+  // A real DELETE, not a void — these are Ombor's own in-progress FIFO
+  // attributions, not finalized records, same reasoning as the old
+  // dispatch_manifest undo it replaces. The RLS policy (ombor_deletes,
+  // migration 0087) is the actual enforcement: once Qorovul's stage 2
+  // completes, PostgREST doesn't raise 42501 for a DELETE's USING clause
+  // the way it would for an INSERT's WITH CHECK — a row outside the
+  // policy's visible set is just silently excluded from the delete,
+  // returning success with zero rows affected. `.select()` after the
+  // delete is what surfaces that: an empty array means "matched nothing"
+  // (either already gone, or RLS-filtered), which for a row we can see in
+  // the UI can only mean the latter.
+  async function handleUndoScan(consumptionId: string) {
     setUndoError(null)
-    setUndoingId(manifestId)
+    setUndoingId(consumptionId)
     try {
-      const { data, error } = await supabase.from('dispatch_manifest').delete().eq('id', manifestId).select('id')
+      const { data, error } = await supabase.from('chiqim_pallet_consumption').delete().eq('id', consumptionId).select('id')
       if (error) {
         setUndoError(error.message)
         return
       }
       if (!data || data.length === 0) {
-        setUndoError('Bu so\'rov allaqachon qorovul tomonidan yakunlangan — skanerlashni bekor qilib bo\'lmaydi.')
+        setUndoError('Bu so\'rov allaqachon qorovul tomonidan yakunlangan — yuklashni bekor qilib bo\'lmaydi.')
         return
       }
       await refreshManifest()
@@ -480,23 +359,27 @@ export function OmborChiqimTab() {
   // §5.4: `Yuklashni yakunlash` is always enabled and never blocks on a
   // shortfall (SPEC §5.4, §3.1's same "never blocks" philosophy) — this is
   // the acceptance click itself (placement-vs-acceptance, pattern 2).
+  //
+  // §5.4 FIFO dispatch (2026-08-28): each finished/old_washed line's loaded
+  // kg is attributed FIRST, before any other write this click makes.
+  // attribute_chiqim_line_fifo hard-fails (raising, not silently under-
+  // filling) if the line's number can't be fully covered by what's
+  // available right now — doing this before the raw/old_kn commits below
+  // means a hard-fail leaves nothing else written this attempt, so a retry
+  // is clean rather than partial.
   async function handleFinish(request: ChiqimRequest) {
     setFinishing(true)
     setFinishError(null)
     try {
-      const scanned = scannedByRequest[request.id] ?? []
-      if (scanned.length > 0) {
-        const { error: manifestErr } = await supabase.from('dispatch_manifest').insert(
-          scanned.map((s) => ({ request_id: request.id, barcode2: s.barcode2 })),
-        )
-        if (manifestErr) {
-          setFinishError(
-            manifestErr.code === '23505'
-              ? 'Skanerlangan palletlardan biri shu orada boshqa so\'rov uchun band qilindi — ro\'yxatni tekshirib qayta urinib ko\'ring.'
-              : manifestErr.message,
-          )
-          return
-        }
+      for (const line of request.lines.filter((l) => l.line_kind === 'finished' || l.line_kind === 'old_washed')) {
+        const loadedKg = parseFloat(loadedKgFor(request.id, line.id))
+        if (!(loadedKg > 0)) continue
+        const { error: fifoErr } = await supabase.rpc('attribute_chiqim_line_fifo', {
+          p_line_id: line.id,
+          p_loaded_kg: loadedKg,
+          p_actor: profile?.id,
+        })
+        if (fifoErr) throw new Error(fifoErr.message)
       }
 
       // Raw dispatch pool rework (2026-08-01, widened to old_raw in Stage 2
@@ -504,11 +387,11 @@ export function OmborChiqimTab() {
       // not at entry (see rawDrawsByRequest's own comment): only lines with
       // real, ADDED draws contribute rows. A line the operator left with
       // zero draws is simply not dispatched this trip, same as an un-
-      // scanned finished line. Inserted SEQUENTIALLY, not batched — mirrors
-      // ChiqimForm.tsx's own established discipline against trusting
-      // batch-insert RETURNING order (see that file's line-insert loop):
-      // each draw's own returned id is what correctly ties an out-of-pool
-      // note to the right raw_dispatch_lines row below.
+      // entered finished line above. Inserted SEQUENTIALLY, not batched —
+      // mirrors ChiqimForm.tsx's own established discipline against
+      // trusting batch-insert RETURNING order: each draw's own returned id
+      // is what correctly ties an out-of-pool note to the right
+      // raw_dispatch_lines row below.
       for (const line of request.lines.filter((l) => l.line_kind === 'raw' || l.line_kind === 'old_raw')) {
         for (const draw of rawDrawsFor(request.id, line.id)) {
           const weight = parseFloat(draw.weightKg)
@@ -562,7 +445,7 @@ export function OmborChiqimTab() {
         .eq('id', request.id)
       if (reqErr) throw reqErr
 
-      setScannedByRequest((m) => {
+      setLoadedKgByRequest((m) => {
         const next = { ...m }
         delete next[request.id]
         return next
@@ -608,9 +491,10 @@ export function OmborChiqimTab() {
           {open.map((request) => {
             const isExpanded = expandedOpen === request.id
             const target = requestTarget(request)
-            // Raw dispatch: the running total now includes both exits —
-            // scanned finished pallets AND raw draft nets (combinedTotalsByLine
-            // covers both; summed here for the aggregate Stat).
+            // Raw dispatch: the running total now includes every exit —
+            // finished/old_washed's own loaded-kg entry AND raw draft nets
+            // (combinedTotalsByLine covers both; summed here for the
+            // aggregate Stat).
             const totalsByLine = combinedTotalsByLine(request)
             const scanned = Object.values(totalsByLine).reduce((sum, v) => sum + v, 0)
             const shortfalls = computeShortfallLines(request.lines, totalsByLine)
@@ -659,13 +543,12 @@ export function OmborChiqimTab() {
                     .join('   ')}
                 </div>
 
-                {/* Gate-weighing status (flagged item #2 of this task's inspect-
-                    and-report): informational only, never gates "Yuklashni
-                    boshlash" below — matches this app's consistent never-block
-                    philosophy (Kam chiqdi, Tugallash warnings, this same
-                    screen's own shortfall note). Both states shown explicitly
-                    so a not-yet-weighed request reads as a real state, not a
-                    rendering gap. */}
+                {/* Gate-weighing status: informational only, never gates
+                    "Yuklashni boshlash" below — matches this app's
+                    consistent never-block philosophy (Kam chiqdi, Tugallash
+                    warnings, this same screen's own shortfall note). Both
+                    states shown explicitly so a not-yet-weighed request
+                    reads as a real state, not a rendering gap. */}
                 <div className="mt-2">
                   {request.gateStage1CompletedAt ? (
                     <StatusNote tone="ok">
@@ -708,9 +591,9 @@ export function OmborChiqimTab() {
                       </Button>
                     </div>
 
-                    {/* Nishon lines with live progress bars, replacing the
-                        prior plain-number Cards — same lineStatus()/lineTotal()
-                        data, just visualised per the mockup. */}
+                    {/* Nishon lines with live progress bars — same
+                        lineStatus()/lineProgressKg() data as the running
+                        total below, just visualised per line. */}
                     <div>
                       <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                         Nishon — tur va kalibr bo'yicha
@@ -764,110 +647,74 @@ export function OmborChiqimTab() {
                       </div>
                     </div>
 
-                    {/* §5.4 Option B (2026-07-26) — the prepare-list. The
-                        core of the request per the task's own framing, not
-                        a hidden detail: shown immediately on expand, right
-                        after the target progress and before the scan zone,
-                        not behind a second toggle. Already-scanned pallets
-                        get a checkmark/strikethrough so it reads as a live
-                        "what's left to collect" list, not a static one. */}
-                    <div>
-                      <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Yig'ish kerak — palletlar
+                    {/* §5.4 FIFO dispatch (2026-08-28) — a finished/
+                        old_washed line has no pallets to gather any more:
+                        Ombor enters the actual loaded kg directly, and FIFO
+                        attributes it across finished_pallets at the finish
+                        click (see this component's own header comment).
+                        Declared net+tara (Menejer's own figures) are shown
+                        as context, never overwritten by this entry. */}
+                    {request.lines.some((l) => l.line_kind === 'finished' || l.line_kind === 'old_washed') && (
+                      <div>
+                        <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Yuklangan og'irlikni kiriting
+                        </div>
+                        <div className="space-y-2">
+                          {request.lines
+                            .filter((line) => line.line_kind === 'finished' || line.line_kind === 'old_washed')
+                            .map((line) => {
+                              const isOld = line.line_kind === 'old_washed'
+                              const loaded = loadedKgFor(request.id, line.id)
+                              const loadedNum = parseFloat(loaded) || 0
+                              const available = availableKgFor(line)
+                              const overAvailable = loadedNum > available
+                              return (
+                                <Card key={line.id} padding="compact" tone={isOld ? 'pending' : 'neutral'}>
+                                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                                    <span className="flex items-center gap-1.5">
+                                      {typeName(line.type_id)} · {lineLabel(line)}
+                                      {isOld && oldStockBadge}
+                                    </span>
+                                    <span>
+                                      sof {line.qty_kg === null ? '—' : `${line.qty_kg.toLocaleString()} kg`}
+                                      {line.declared_tara_kg !== null && ` + tara ${line.declared_tara_kg.toLocaleString()} kg`}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-xs text-slate-400">
+                                    Omborda mavjud: {Math.round(available).toLocaleString()} kg
+                                  </p>
+                                  <div className="mt-1.5">
+                                    <TextInput
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      placeholder="Yuklangan og'irlik (kg)"
+                                      value={loaded}
+                                      onChange={(e) => setLoadedKg(request.id, line.id, e.target.value)}
+                                      className="w-full"
+                                    />
+                                  </div>
+                                  {overAvailable && (
+                                    <div className="mt-1.5">
+                                      <StatusNote tone="pending">
+                                        Diqqat: omborda faqat {Math.round(available).toLocaleString()} kg mavjud — siz{' '}
+                                        {loadedNum.toLocaleString()} kg kiritmoqdasiz. Yakunlashda yetarli bo'lmasa xatolik chiqadi.
+                                      </StatusNote>
+                                    </div>
+                                  )}
+                                </Card>
+                              )
+                            })}
+                        </div>
                       </div>
-                      <div className="space-y-3">
-                        {request.lines
-                          // Opening stock, Stage 2 — old_washed folds into
-                          // this same prep-list (it's the same
-                          // reservedPallets/chiqim_line_pallets mechanism as
-                          // finished), badged + print-enabled per row below.
-                          .filter((line) => line.line_kind === 'finished' || line.line_kind === 'old_washed')
-                          .map((line) => {
-                            const isOld = line.line_kind === 'old_washed'
-                            // Never labelled at seed time (Stage 1 design) —
-                            // Barcode2LabelData built from this line/request's
-                            // own context, no extra fetch needed.
-                            const oldWashedLabels = isOld
-                              ? line.reservedPallets.map((p) => ({
-                                  barcode2: p.barcode2,
-                                  serial: p.serial,
-                                  type: typeName(line.type_id),
-                                  calibre: calibreLabel(line.calibre_id ?? ''),
-                                  weightKg: p.weight_kg,
-                                  owner: ownerName(request.owner_id),
-                                }))
-                              : []
-                            const body = (
-                              <>
-                                <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                                  {typeName(line.type_id)} · {lineLabel(line)}
-                                  {isOld && oldStockBadge}
-                                </div>
-                                {line.reservedPallets.length === 0 ? (
-                                  <p className="text-xs text-slate-400">Bu qator uchun pallet belgilanmagan.</p>
-                                ) : (
-                                  <>
-                                    <ul className="space-y-0.5">
-                                      {line.reservedPallets.map((p) => {
-                                        const isScanned = (scannedByRequest[request.id] ?? []).some(
-                                          (s) => s.barcode2 === p.barcode2,
-                                        )
-                                        return (
-                                          <li
-                                            key={p.barcode2}
-                                            className={`flex items-center justify-between gap-2 text-xs ${
-                                              isScanned
-                                                ? 'text-slate-400 line-through dark:text-slate-600'
-                                                : 'text-slate-700 dark:text-slate-300'
-                                            }`}
-                                          >
-                                            <span className="min-w-0 flex-1 truncate font-mono">
-                                              {isScanned ? '✓ ' : ''}
-                                              {p.barcode2}
-                                            </span>
-                                            <span className="shrink-0">{p.serial}</span>
-                                            <span className="shrink-0 font-medium">{p.weight_kg.toLocaleString()} kg</span>
-                                          </li>
-                                        )
-                                      })}
-                                    </ul>
-                                    {/* Print-per-row + print-all (requirement:
-                                        "a print button per row plus a 'print
-                                        all' for the line") — old_washed only,
-                                        never labelled at seed time; a regular
-                                        finished pallet was already printed
-                                        once at receipt and needs no reprint
-                                        path here. */}
-                                    {isOld && (
-                                      <div className="mt-1.5 space-y-1">
-                                        <PrintAllButton pallets={oldWashedLabels} />
-                                        {line.reservedPallets.map((p, i) => (
-                                          <Barcode2Display key={p.barcode2} data={oldWashedLabels[i]} />
-                                        ))}
-                                      </div>
-                                    )}
-                                  </>
-                                )}
-                              </>
-                            )
-                            return isOld ? (
-                              <Card key={line.id} padding="compact" tone="pending">
-                                {body}
-                              </Card>
-                            ) : (
-                              <div key={line.id}>{body}</div>
-                            )
-                          })}
-                      </div>
-                    </div>
+                    )}
 
                     {/* Raw dispatch pool rework (2026-08-01, see DECISIONS.md
                         "Raw dispatch serial pool") — a structurally different
-                        branch from the scan zone below, not a forced-generic
-                        line renderer: per-serial weight + box-mass draws, no
-                        scan zone, no dispatch_manifest row. Only rendered
-                        when this request actually has a raw line. Ombor picks
-                        ONE serial per draw — from the pool Menejer named, or
+                        branch, not a forced-generic line renderer: per-serial
+                        weight + box-mass draws. Only rendered when this
+                        request actually has a raw line. Ombor picks ONE
+                        serial per draw — from the pool Menejer named, or
                         types any other real serial (out-of-pool, requirement
                         7, warned + requires a note) — enters weight+box mass,
                         and adds it; a line can hold several draws (requirement
@@ -877,7 +724,7 @@ export function OmborChiqimTab() {
                     {request.lines.some((l) => l.line_kind === 'raw' || l.line_kind === 'old_raw') && (
                       <div>
                         <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Xom yuklash — manba seriyadan tanlab, vazn kiritish (skanerlanmaydi)
+                          Xom yuklash — manba seriyadan tanlab, vazn kiritish
                         </div>
                         <div className="space-y-2">
                           {request.lines
@@ -909,7 +756,8 @@ export function OmborChiqimTab() {
                                       <p className="text-xs text-slate-400">Manba seriya belgilanmagan.</p>
                                     ) : (
                                       line.rawSerialPool.map((serial) => {
-                                        const available = rawSerials.find((s) => s.serial === serial)?.available ?? null
+                                        const poolSerial = rawSerials.find((s) => s.serial === serial) ?? null
+                                        const available = poolSerial?.available ?? null
                                         const selected = composer.serial === serial
                                         return (
                                           <button
@@ -923,6 +771,7 @@ export function OmborChiqimTab() {
                                             }`}
                                           >
                                             <span className="font-mono">{selected ? '✓ ' : ''}{serial}</span>
+                                            <PartiyaBadge partiyaNo={poolSerial?.partiyaNo ?? null} />
                                             <span className="ml-1.5">{available === null ? '—' : `${Math.round(available).toLocaleString()} kg mavjud`}</span>
                                           </button>
                                         )
@@ -996,6 +845,7 @@ export function OmborChiqimTab() {
                                         <li key={d.key} className="flex items-center justify-between gap-2 text-xs">
                                           <span className="min-w-0 flex-1 truncate">
                                             <span className="font-mono text-slate-700 dark:text-slate-300">{d.serial}</span>
+                                            <PartiyaBadge partiyaNo={rawSerials.find((s) => s.serial === d.serial)?.partiyaNo ?? null} />
                                             {d.outOfPool && (
                                               <span className="ml-1 font-medium text-amber-600 dark:text-amber-400">⚠ pool tashqarisida</span>
                                             )}
@@ -1030,7 +880,7 @@ export function OmborChiqimTab() {
                     {request.lines.some((l) => l.line_kind === 'old_kn') && (
                       <div>
                         <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Eski KN yig'ish — o'lchangan og'irlikni kiriting (skanerlanmaydi)
+                          Eski KN yig'ish — o'lchangan og'irlikni kiriting
                         </div>
                         <div className="space-y-2">
                           {request.lines
@@ -1107,76 +957,11 @@ export function OmborChiqimTab() {
                       </div>
                     )}
 
-                    {/* Scan zone — the repeated action (10-20x per truck).
-                        Camera first (the primary, minimal-tap path), manual
-                        entry kept directly beneath as a fallback — both
-                        call the same processBarcode. */}
-                    <div className="space-y-2">
-                      <BarcodeCameraScanner onDecode={(code) => processBarcode(request, code)} feedback={scanFeedback} />
-                      <form onSubmit={(e) => handleScan(request, e)} className="flex items-center gap-2">
-                        <TextInput
-                          placeholder="Barcode #2 ni kiriting yoki skanerlang"
-                          value={barcodeInput}
-                          onChange={(e) => setBarcodeInput(e.target.value)}
-                          className="flex-1"
-                        />
-                        <Button type="submit" variant="secondary" size="md">
-                          Skanerlash
-                        </Button>
-                      </form>
-                      {scanError && <StatusNote tone="problem">{scanError}</StatusNote>}
-                    </div>
-
-                    {/* Flat scanned-pallet list (mockup: "Skanerlangan
-                        palletlar (N)") — chronological, not regrouped by
-                        line; each row still resolves back to its line for the
-                        type/calibre caption. */}
-                    <div>
-                      <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Skanerlangan palletlar ({(scannedByRequest[request.id] ?? []).length})
-                      </div>
-                      {(scannedByRequest[request.id] ?? []).length === 0 ? (
-                        <p className="text-sm text-slate-400">Hali skanerlangan yo'q.</p>
-                      ) : (
-                        <ul className="space-y-1">
-                          {(scannedByRequest[request.id] ?? []).map((sc) => {
-                            const line = request.lines.find((l) => l.id === sc.lineId)
-                            return (
-                              <li
-                                key={sc.barcode2}
-                                className="flex items-center justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0 dark:border-slate-800"
-                              >
-                                <span className="min-w-0 flex-1 truncate">
-                                  <span className="font-mono text-xs text-slate-600 dark:text-slate-400">{sc.barcode2}</span>
-                                  {line && (
-                                    <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
-                                      · {typeName(line.type_id)} · {lineLabel(line)}
-                                    </span>
-                                  )}
-                                </span>
-                                <span className="shrink-0 font-medium text-slate-900 dark:text-slate-100">
-                                  {sc.weight_kg.toLocaleString()} kg
-                                </span>
-                                <IconButton
-                                  label="Skanerlashni bekor qilish"
-                                  tone="danger"
-                                  onClick={() => removeScan(request.id, sc.barcode2)}
-                                >
-                                  ✕
-                                </IconButton>
-                              </li>
-                            )
-                          })}
-                        </ul>
-                      )}
-                    </div>
-
                     {/* Total footer + finish — kept together at the bottom,
-                        thumb-reachable without scrolling past the pallet
-                        list, never blocked by a shortfall (§5.4/§3.1). The
-                        shortfall note is now live during scanning (not just
-                        at confirm), same missingKg computation as before —
-                        no "no whole pallet" claim (flagged item #3, not built). */}
+                        thumb-reachable without scrolling, never blocked by a
+                        shortfall (§5.4/§3.1). The shortfall note is live
+                        during entry (not just at confirm), same missingKg
+                        computation as before. */}
                     <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
                       <Stat
                         value={`${scanned.toLocaleString()} / ${target.toLocaleString()} kg`}
@@ -1194,10 +979,7 @@ export function OmborChiqimTab() {
 
                       {confirming === request.id ? (
                         <div className="space-y-2">
-                          <p className="text-sm text-slate-700 dark:text-slate-300">
-                            {(scannedByRequest[request.id] ?? []).length} ta pallet, jami {scanned.toLocaleString()} kg
-                            yuklanadi.
-                          </p>
+                          <p className="text-sm text-slate-700 dark:text-slate-300">Jami {scanned.toLocaleString()} kg yuklanadi.</p>
                           {finishError && <StatusNote tone="problem">{finishError}</StatusNote>}
                           <div className="flex gap-2">
                             <Button variant="primary" size="lg" onClick={() => handleFinish(request)} disabled={finishing}>
@@ -1270,21 +1052,22 @@ export function OmborChiqimTab() {
                     </div>
                   ))}
 
-                  {/* Scanned pallets, flat (not regrouped by line) — see
-                      useDispatchManifestLines: dispatch_manifest doesn't
-                      persist which line a pallet was assigned to. Undo here
-                      is a real DELETE, enforced server-side by the
-                      ombor_deletes RLS policy (0021) up to gate stage 2. */}
+                  {/* FIFO-attributed pallet portions, flat (not regrouped by
+                      line) — see useDispatchManifestLines: chiqim_pallet_
+                      consumption doesn't group by line at the read layer
+                      any differently than this. Undo here is a real DELETE,
+                      enforced server-side by the ombor_deletes RLS policy
+                      (migration 0087) up to gate stage 2. */}
                   <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
                     <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                      <span>Skanerlangan palletlar</span>
+                      <span>Yuklangan palletlar</span>
                       <span>
                         {manifestLines.reduce((sum, l) => sum + l.weight_kg, 0).toLocaleString()} kg
                       </span>
                     </div>
                     {manifestLoading && <p className="mt-1 text-xs text-slate-400">Yuklanmoqda…</p>}
                     {!manifestLoading && manifestLines.length === 0 && (
-                      <p className="mt-1 text-xs text-slate-400">Skanerlangan pallet yo'q.</p>
+                      <p className="mt-1 text-xs text-slate-400">Yuklangan pallet yo'q.</p>
                     )}
                     {manifestLines.length > 0 && (
                       <ul className="mt-1 space-y-0.5">
@@ -1294,7 +1077,7 @@ export function OmborChiqimTab() {
                               {m.barcode2} · {typeName(m.type_id)} · {calibreLabel(m.calibre_id)} · {m.weight_kg.toLocaleString()} kg
                             </span>
                             <IconButton
-                              label="Skanerlashni bekor qilish"
+                              label="Bekor qilish"
                               tone="danger"
                               disabled={undoingId === m.id}
                               onClick={() => handleUndoScan(m.id)}
@@ -1309,9 +1092,9 @@ export function OmborChiqimTab() {
                   </div>
 
                   {/* Raw dispatch's own W2 record — no undo here (unlike
-                      scanned pallets): raw_dispatch_lines is append-only,
-                      committed only at the finish click that put this
-                      request in Window 2 to begin with (see
+                      the pallet portions above): raw_dispatch_lines is
+                      append-only, committed only at the finish click that
+                      put this request in Window 2 to begin with (see
                       rawDrawsByRequest's own comment). Each row is one
                       committed draw against one serial — unaffected by the
                       pool rework, since raw_dispatch_lines.serial was

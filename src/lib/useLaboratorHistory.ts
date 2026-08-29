@@ -17,6 +17,7 @@ export interface LaboratorHistoryRow {
   scope: 'kirim' | 'chiqim'
   serial: string
   type_id: string
+  partiyaNo: number | null
   owner_id: string
   sample_date: string
   moisture_pct: number
@@ -95,9 +96,18 @@ export function useLaboratorHistory(filters: LaboratorHistoryFilters) {
         const { data: lines } = allSerials.length
           ? await supabase
               .from('kirim_lines')
-              .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg')
+              .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, partiya_no')
               .in('serial', allSerials)
-          : { data: [] as { serial: string; order_id: string; type_id: string; target_moisture_pct: number | null; target_so2_mg_kg: number | null }[] }
+          : {
+              data: [] as {
+                serial: string
+                order_id: string
+                type_id: string
+                target_moisture_pct: number | null
+                target_so2_mg_kg: number | null
+                partiya_no: number | null
+              }[],
+            }
         const lineBySerial = new Map((lines ?? []).map((l) => [l.serial, l]))
 
         const orderIds = [...new Set((lines ?? []).map((l) => l.order_id))]
@@ -127,6 +137,7 @@ export function useLaboratorHistory(filters: LaboratorHistoryFilters) {
               scope: r.scope as 'kirim' | 'chiqim',
               serial,
               type_id: line.type_id,
+              partiyaNo: line.partiya_no,
               owner_id: order.owner_id,
               sample_date: r.sample_date,
               moisture_pct: r.moisture_pct,

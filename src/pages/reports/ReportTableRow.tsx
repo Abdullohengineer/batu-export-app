@@ -8,6 +8,7 @@ import { MoykaSendRowDetail } from './MoykaSendRowDetail'
 import { MoykaOutputRowDetail } from './MoykaOutputRowDetail'
 import { formatDate } from '../../lib/formatDate'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { FuraBadge } from '../../components/ui/FuraBadge'
 
 const STATUS_LABEL: Record<string, string> = {
   omborda: 'Omborda',
@@ -51,6 +52,7 @@ export function ReportTableRow({
   calibreLabel,
   onOpenPassport,
   onOpenOldKnRequest,
+  truckType,
 }: {
   row: ReportRow
   visibleColumns: ReportColumnDef[]
@@ -61,6 +63,8 @@ export function ReportTableRow({
   calibreLabel: (id: string) => string
   onOpenPassport: (serial: string) => void
   onOpenOldKnRequest: (requestId: string) => void
+  // CHIQIM truck type resolver (2026-08-30) — see useChiqimTruckTypes.ts.
+  truckType: (requestId: string) => string
 }) {
   const qty = row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg
   // Blank, not zero, wherever a figure doesn't exist for this row kind —
@@ -161,7 +165,23 @@ export function ReportTableRow({
           </span>
         )
       case 'plate':
-        return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">{row.plate || '—'}</span>
+        // Fura badge sits with the truck, not the quantity: a fura's row
+        // carries no gate net anywhere on this table (there is none), so the
+        // marker belongs where the truck is identified.
+        //
+        // Restricted to the three CHIQIM row kinds whose `plate` IS the
+        // dispatch truck. moyka_output also carries a requestId, but it is
+        // that pallet's LATEST dispatch, not this row's own event (the row
+        // renders plate: null for exactly that reason) — badging it would
+        // attach a truck fact to a production row.
+        return (
+          <span className="inline-flex items-center gap-1 whitespace-nowrap text-slate-700 dark:text-slate-300">
+            {row.plate || '—'}
+            {(row.kind === 'chiqim' || row.kind === 'chiqim_raw' || row.kind === 'chiqim_old_kn') && row.requestId ? (
+              <FuraBadge truckType={truckType(row.requestId)} />
+            ) : null}
+          </span>
+        )
       case 'driver':
         return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">{row.driver || '—'}</span>
       case 'moisture':

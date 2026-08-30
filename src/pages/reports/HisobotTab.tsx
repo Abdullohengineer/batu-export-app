@@ -8,6 +8,7 @@ import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useReportQuery, ExportTooLargeError } from '../../lib/useReportQuery'
+import { useChiqimTruckTypes } from '../../lib/useChiqimTruckTypes'
 import { downloadReportExcel } from '../../lib/reportExport'
 import { dateBasisLabel, defaultReportFilters, type PalletStatusFilter } from '../../lib/reportQuery'
 import { REPORT_COLUMNS, defaultVisibleColumnKeys } from '../../lib/reportColumns'
@@ -74,6 +75,10 @@ export function HisobotTab() {
   // page). §requirement 1: filters are pushed into the query itself
   // (report_query_page/report_totals) — no client-side narrowing left here.
   const { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading } = useReportQuery(filters)
+  // CHIQIM truck type badge (2026-08-30) — a label resolver threaded like
+  // ownerName/typeName/calibreLabel, not a row source. See
+  // useChiqimTruckTypes.ts for why it is not threaded through report_rows_v2.
+  const { truckType } = useChiqimTruckTypes()
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -220,6 +225,7 @@ export function HisobotTab() {
             ownerName={ownerName}
             typeName={typeName}
             calibreLabel={calibreLabel}
+            truckType={truckType}
             onOpenPassport={setPassportSerial}
             onOpenOldKnRequest={setOldKnRequestId}
           />

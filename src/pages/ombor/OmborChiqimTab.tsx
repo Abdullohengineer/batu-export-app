@@ -17,6 +17,7 @@ import { Button } from '../../components/ui/Button'
 import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { FuraBadge } from '../../components/ui/FuraBadge'
 import { Stat } from '../../components/ui/Stat'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { StatusPill } from '../../components/ui/StatusPill'
@@ -527,8 +528,9 @@ export function OmborChiqimTab() {
               <Card key={request.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-slate-900 dark:text-slate-100">
+                    <div className="flex items-center gap-2 truncate font-semibold text-slate-900 dark:text-slate-100">
                       {ownerName(request.owner_id)}
+                      <FuraBadge truckType={request.truck_type} />
                     </div>
                     <div className="truncate text-sm text-slate-500 dark:text-slate-400">
                       So'rov · {formatDate(request.request_date)} · {request.plate} · {request.driver}
@@ -550,7 +552,16 @@ export function OmborChiqimTab() {
                     states shown explicitly so a not-yet-weighed request
                     reads as a real state, not a rendering gap. */}
                 <div className="mt-2">
-                  {request.gateStage1CompletedAt ? (
+                  {/* Fura (2026-08-30): the gate never weighs this truck, so
+                      "Qorovul hali bo'sh vaznni olmagan" would be a
+                      permanently-red status for a step that will never
+                      happen. Replaced outright, not appended to. */}
+                  {request.truck_type === 'fura' ? (
+                    <StatusNote tone="info">
+                      Fura — darvozada o'lchanmaydi. Yuklashni yakunlaganingizdan so'ng so'rov avtomatik yopiladi va
+                      bekor qilib bo'lmaydi.
+                    </StatusNote>
+                  ) : request.gateStage1CompletedAt ? (
                     <StatusNote tone="ok">
                       ✓ Qorovul bo'sh vaznni oldi ({(request.gatePustoyKg ?? 0).toLocaleString()} kg) — yuklasa bo'ladi
                     </StatusNote>
@@ -980,6 +991,16 @@ export function OmborChiqimTab() {
                       {confirming === request.id ? (
                         <div className="space-y-2">
                           <p className="text-sm text-slate-700 dark:text-slate-300">Jami {scanned.toLocaleString()} kg yuklanadi.</p>
+                          {/* For a regular truck this click is reversible
+                              until Qorovul's second weighing; for a fura it
+                              is the last reversible moment there is. Said
+                              plainly at the confirm step, where the decision
+                              is actually made. */}
+                          {request.truck_type === 'fura' && (
+                            <StatusNote tone="pending">
+                              Fura: yakunlangach so'rov yopiladi — yuklashni bekor qilib bo'lmaydi.
+                            </StatusNote>
+                          )}
                           {finishError && <StatusNote tone="problem">{finishError}</StatusNote>}
                           <div className="flex gap-2">
                             <Button variant="primary" size="lg" onClick={() => handleFinish(request)} disabled={finishing}>

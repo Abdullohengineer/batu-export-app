@@ -7,6 +7,7 @@ import { defaultDateRange } from '../../lib/dateRange'
 import { CLIENT_REPORT_LABELS, type ReportLocale } from '../../lib/clientReportLabels'
 import { downloadClientReportExcel } from '../../lib/clientReportExport'
 import { SerialPassportModal } from './SerialPassportModal'
+import { FuraBadge } from '../../components/ui/FuraBadge'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { formatDate } from '../../lib/formatDate'
 import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
@@ -413,9 +414,18 @@ export function ClientReportTab() {
                     <div key={d.requestId} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-700 dark:text-slate-300">
                         <span className="font-medium">{d.plate}</span>
+                        <FuraBadge truckType={d.truckType} />
                         <span>{d.driver}</span>
                         <span>{formatDate(d.requestDate)}</span>
                         <span className="text-slate-400">{formatDate(d.departedAt)}</span>
+                        {/* A fura has no gate net, so its loaded total is
+                            stated explicitly rather than left to be summed
+                            off the pallet list below. */}
+                        {d.truckType === 'fura' && (
+                          <span className="tabular-nums text-slate-500 dark:text-slate-400">
+                            {d.loadedKg.toLocaleString()} kg
+                          </span>
+                        )}
                       </div>
                       <ul className="mt-2 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
                         {d.pallets.map((p) => (

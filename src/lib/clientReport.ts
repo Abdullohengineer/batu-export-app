@@ -146,6 +146,14 @@ export interface ClientReportDispatch {
   plate: string
   driver: string
   departedAt: string | null
+  // CHIQIM truck type (2026-08-30, see DECISIONS.md "CHIQIM truck type:
+  // Fura"). `departedAt` above is unchanged in meaning but no longer always
+  // a gate timestamp — for a fura it is Ombor's finish click, since that
+  // truck is never weighed at the gate. loadedKg is the trip's own loaded
+  // total, shown beside the Fura marker so the reader can see what the
+  // figure is instead of a gate net.
+  truckType: string
+  loadedKg: number
   pallets: ClientReportDispatchPallet[]
 }
 

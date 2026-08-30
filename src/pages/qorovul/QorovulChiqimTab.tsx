@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { FuraBadge } from '../../components/ui/FuraBadge'
 import { formatDate } from '../../lib/formatDate'
 
 async function uploadGatePhoto(file: File) {
@@ -124,9 +125,20 @@ export function QorovulChiqimTab() {
 
   if (loading) return null
 
-  const notStarted = trips.filter((t) => t.request.status === 'kutilmoqda' && !t.weighing)
+  // Fura (2026-08-30, see DECISIONS.md "CHIQIM truck type: Fura"): a fura
+  // is too big for the gate scale and is never weighed, so it must never
+  // reach Window 1. It is deliberately EXCLUDED rather than shown as an
+  // un-actionable courtesy row — a card in a work queue that the guard can
+  // see but can never clear would sit there forever, which is worse than
+  // not listing it. It still appears, read-only, in Window 2 the moment
+  // Ombor finishes loading: that window's own membership test is
+  // `status !== 'kutilmoqda'`, and the completion trigger (migration 0104)
+  // flips a fura's status at exactly that point, so the courtesy record
+  // costs no extra condition here.
+  const isGateWeighed = (t: ChiqimTrip) => t.request.truck_type !== 'fura'
+  const notStarted = trips.filter((t) => isGateWeighed(t) && t.request.status === 'kutilmoqda' && !t.weighing)
   const inProgress = trips.filter(
-    (t) => t.request.status === 'kutilmoqda' && t.weighing && !t.weighing.completed_at,
+    (t) => isGateWeighed(t) && t.request.status === 'kutilmoqda' && t.weighing && !t.weighing.completed_at,
   )
   const completed = trips.filter((t) => t.request.status !== 'kutilmoqda')
   const activeWindow = [...notStarted, ...inProgress]
@@ -216,6 +228,7 @@ export function QorovulChiqimTab() {
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-center gap-2">
                     <SerialChip>So'rov</SerialChip>
+                    <FuraBadge truckType={trip.request.truck_type} />
                     <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                       {ownerName(trip.request.owner_id)} · {typeSummary(trip)}
                     </span>
@@ -226,11 +239,23 @@ export function QorovulChiqimTab() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div className="text-right">
+                    {/* A fura has no gate net and never will (migration
+                        0104's own header: CHIQIM gate net was never a value
+                        source anyway). Showing Ombor's loaded total here,
+                        explicitly labelled "o'lchovsiz", is the honest
+                        record — a bare "—" would read as a weighing someone
+                        forgot to do. */}
                     <div className="text-base font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                      {trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg
+                      {isGateWeighed(trip)
+                        ? `${trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg`
+                        : `${trip.loadedKg?.toLocaleString() ?? '—'} kg`}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {trip.weighing?.completed_at ? formatTripTime(trip.weighing.completed_at) : ''}
+                      {isGateWeighed(trip)
+                        ? trip.weighing?.completed_at
+                          ? formatTripTime(trip.weighing.completed_at)
+                          : ''
+                        : "o'lchovsiz · yuklangan"}
                     </div>
                   </div>
                   <span className="text-lg text-emerald-600 dark:text-emerald-400">✓</span>

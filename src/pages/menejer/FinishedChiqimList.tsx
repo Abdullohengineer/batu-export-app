@@ -16,6 +16,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { SerialChip } from '../../components/ui/SerialChip'
+import { FuraBadge } from '../../components/ui/FuraBadge'
 import { type Tone } from '../../components/ui/tokens'
 import { formatDate, formatDateTime } from '../../lib/formatDate'
 
@@ -195,8 +196,16 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
               >
                 <SerialChip>So'rov</SerialChip>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-base text-slate-900 dark:text-slate-100">
-                    {ownerName(request.owner_id)} · {request.plate}
+                  <span className="flex items-center gap-2 text-base text-slate-900 dark:text-slate-100">
+                    <span className="truncate">
+                      {ownerName(request.owner_id)} · {request.plate}
+                    </span>
+                    {/* Fura (2026-08-30): this list is where Menejer reads a
+                        request as "Olib ketildi". For a fura that status came
+                        from Ombor's finish click, not from a gate weighing
+                        that will never exist — the badge is what makes the
+                        two distinguishable here. */}
+                    <FuraBadge truckType={request.truck_type} />
                   </span>
                   <span className="block text-sm text-slate-500 dark:text-slate-400">
                     {formatDate(request.request_date)} · {request.driver} · {request.lines.length} qator

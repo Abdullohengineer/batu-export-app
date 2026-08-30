@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { HistoryView } from '../../components/HistoryView'
 import { ReportFilterBar, FilterField } from '../../components/report/ReportFilterBar'
@@ -43,13 +44,21 @@ const STATUS_OPTIONS: { value: Exclude<PalletStatusFilter, ''>; label: string }[
 // desktop rework."
 export function HisobotTab() {
   const initial = defaultDateRange()
-  const [filters, setFilters] = useState(defaultReportFilters(initial.from, initial.to))
+  // Filter persistence (Prompt 3, 2026-08-30 — see DECISIONS.md "Filter
+  // persistence across tab switches"): this screen is a sibling <Route>
+  // under both Menejer's and Rahbar's layouts, so switching to another tab
+  // and back unmounts/remounts it — plain useState was wiped every time.
+  // usePersistedState keeps the value in a module-scope store keyed by
+  // 'hisobot-filters', which survives that unmount. Session-only by design
+  // (no Web Storage) — a full page reload still resets to the default
+  // range, per the explicit scope decision for this task.
+  const [filters, setFilters] = usePersistedState('hisobot-filters', () => defaultReportFilters(initial.from, initial.to))
   // Column picker (2026-08-15) — display-only, independent of `filters`:
   // hiding a column must never remove it as a filter (Buyurtmachi/plate
-  // stay filterable via ReportFilterBar even when hidden here). Local
-  // component state, not persisted — resets to the spec'd defaults on
-  // reload, same as every other piece of UI-only state on this screen.
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<Set<string>>(defaultVisibleColumnKeys())
+  // stay filterable via ReportFilterBar even when hidden here). Persisted
+  // the same way as `filters` above (Prompt 3) — still resets to the
+  // spec'd defaults on a full page reload.
+  const [visibleColumnKeys, setVisibleColumnKeys] = usePersistedState<Set<string>>('hisobot-visible-columns', () => defaultVisibleColumnKeys())
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)

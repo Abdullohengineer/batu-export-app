@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { HistoryView } from '../../components/HistoryView'
 import { defaultDateRange } from '../../lib/dateRange'
 import { useOwners } from '../../lib/useOwners'
@@ -13,13 +14,20 @@ import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 // expand reuses the Step 3 full-story view (IntakeDetailView) unchanged.
 export function OmborHisobotlar() {
   const initial = defaultDateRange()
-  const [filters, setFilters] = useState<IntakeHistoryFilters>({
+  // Filter persistence (Prompt 3, 2026-08-30 — see DECISIONS.md "Filter
+  // persistence across tab switches"): this screen is a sibling <Route>
+  // under OmborHome's layout, so switching to another Ombor tab and back
+  // unmounts/remounts it — plain useState was wiped every time.
+  // usePersistedState keeps the value in a module-scope store, which
+  // survives that unmount. Session-only by design (no Web Storage) — a
+  // full page reload still resets to the default range.
+  const [filters, setFilters] = usePersistedState<IntakeHistoryFilters>('ombor-hisobotlar-filters', () => ({
     from: initial.from,
     to: initial.to,
     typeId: '',
     ownerId: '',
     seriya: '',
-  })
+  }))
   const [expanded, setExpanded] = useState<string | null>(null)
 
   // §3.3: includeInactive=true -- resolves names on historical rows, and the

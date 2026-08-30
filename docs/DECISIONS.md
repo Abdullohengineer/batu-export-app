@@ -6772,3 +6772,89 @@ Qorovul's Window 1 for its Kirdi capture.
 
 **No PR opened** (per standing instruction — Abdulloh reviews and opens it). Branch:
 `claude/total-loss-finalized-serials-5jeugz`.
+
+## 2026-08-30 — Filter persistence across tab switches
+
+**Symptom (task's own report):** filters reset when the user switches tabs and comes back,
+forcing re-entry every time.
+
+**Investigation report (per task's own required questions), before any fix:**
+
+1. **Mechanism: component unmount, not a hook or misplaced-state bug.** Every affected screen
+   is a sibling `<Route>` element nested under a role layout that renders `<Outlet/>`
+   (`RahbarLayout`, `MenejerHome`, `OmborHome` — `App.tsx`). Tab navigation is a `<NavLink>`
+   path change; React Router unmounts the previous route's component tree and mounts the new
+   one. Filter state in every case lived in a plain `useState` *inside the screen component
+   itself*, so it died with the unmount. Confirmed by direct reading:
+   - `HisobotTab.tsx` (mounted at both `/menejer/hisobot` and `/rahbar/hisobotlar`): `filters`,
+     `visibleColumnKeys` (column picker) were local `useState`.
+   - `OmborHisobotlar.tsx` (`/ombor/hisobotlar`): `filters` (date range, tur, buyurtmachi,
+     seriya) was local `useState` — the only Ombor screen with filter state; the other four
+     Ombor tabs are operational queues, no filters by design (confirmed via grep).
+   - `StockOnHandTab.tsx` (`/rahbar/qoldiq`, `/menejer/qoldiq`): `filters` local `useState`.
+   - `ClientReportTab.tsx` (`/rahbar/mijoz-hisoboti`): `ownerId`, `from`, `to`, `locale` local
+     `useState`.
+   - `RahbarHome.tsx` (`/rahbar` index): `scope`, `preset`, `customFrom`, `customTo`,
+     `selectedTypeIds` local `useState` — lost too, since the index route unmounts on
+     navigating away and remounts on return.
+2. **One shared mechanism covers all of them.** The pattern is identical in all five files — a
+   screen owns `useState(defaultFilters)`, nothing role- or screen-specific about the failure.
+   Built one hook, `usePersistedState(key, initialValue)` (`src/lib/usePersistedState.ts`) — a
+   drop-in `useState` replacement backed by a module-scope `Map` instead of React's per-instance
+   fiber state, so the value outlives the route unmount/remount that currently wipes it. No
+   Context/provider wiring through the layouts needed, since the store lives outside the React
+   tree entirely. Swapped in 1:1 for each screen's filter `useState` calls — no other
+   restructuring.
+3. **Reload persistence — put to the user, not decided here** (permissions explicitly said "no
+   localStorage/sessionStorage without telling me first," and the task said "don't decide it —
+   report the difference in cost"). Reported: in-memory (module-scope) costs nothing new and
+   can't touch Web Storage, but resets on a full page reload; session/localStorage would survive
+   reload but is a new storage surface needing defensive parsing for stale/old-shape data, and
+   raises a question of whose filters persist for `HisobotTab`/`ClientReportTab` shared across
+   two role layouts. **User chose tab-switches-only (in-memory), not reload-persistent** — asked
+   via `AskUserQuestion`, recommended option selected.
+
+**Fix applied.** `src/lib/usePersistedState.ts`: new hook, module-scope `Map<string, unknown>`
+keyed by a string the caller passes, `useState`'s functional-update form supported. Wired into:
+- `HisobotTab.tsx` — `filters` (key `hisobot-filters`), `visibleColumnKeys` (key
+  `hisobot-visible-columns`). Deliberately shared across the Menejer and Rahbar mounts (keyed by
+  a fixed string, not by route) — both point at the same underlying screen and script, so
+  switching between them keeping the same filters was judged the more useful behavior; flagging
+  this choice rather than treating it as obviously correct.
+- `OmborHisobotlar.tsx` — `filters` (key `ombor-hisobotlar-filters`).
+- `StockOnHandTab.tsx` — `filters` (key `stock-on-hand-filters`).
+- `ClientReportTab.tsx` — `ownerId`/`from`/`to`/`locale` (keys `client-report-owner-id`,
+  `client-report-from`, `client-report-to`, `client-report-locale`).
+- `RahbarHome.tsx` — `scope`/`preset`/`customFrom`/`customTo`/`selectedTypeIds` (keys
+  `rahbar-home-scope`, `rahbar-home-preset`, `rahbar-home-custom-from`, `rahbar-home-custom-to`,
+  `rahbar-home-selected-type-ids`); removed the now-unused `useState` import from this file.
+
+**Out of scope, deliberately not persisted** (per CLAUDE.md scope discipline — the task's own
+symptom and testing section are about *filters*, not general UI state): `expandedKey`/`expanded`
+row-expand state, `passportSerial`/`oldKnRequestId`/`detailOpen`/`rawDetailOpen`/
+`oldKnDetailOpen` modal-open state, `exporting`/`exportError` transient export state, and
+pagination (`page`, inside `useReportQuery.ts`, which unconditionally resets to page 1 on every
+mount via its own `filterKey`-keyed effect — untouched, since re-persisting page position wasn't
+asked for and reopening a previously-open modal on an unrelated tab switch would be a surprising,
+unrequested behavior change, not a filter-persistence fix).
+
+**Verified:** `npx tsc --noEmit`, `npm run build`, `npx oxlint` all clean (only the pre-existing
+unrelated `AuthProvider.tsx` fast-refresh warning). `node --test`: 67/67, unchanged — this is a
+state-storage wiring change, no new pure-function logic to cover.
+
+**Testing (task's own "apply filters on each affected screen, switch tabs, return, confirm
+intact — including date ranges, multi-selects and the column picker"):** not run in a live
+browser session this task — same standing sandbox limitation as every prior prompt (no real
+login session obtainable from this remote environment). The mechanism itself is directly
+verifiable by inspection (a module-scope `Map` outlives any single component instance for the
+life of the page, by construction — it isn't tied to React's tree at all), and `tsc`/`build`
+confirm every type-level consequence of the swap; what those checks cannot confirm is the live
+UX. Whoever picks this up next should: on Hisobot (either role), set a custom date range, pick
+an owner/type/calibre, multi-select a status, and hide a few columns via the picker; switch to
+another tab and back; confirm all of it is exactly as left. Repeat on Ombor's Hisobotlar
+(date range + tur + buyurtmachi + seriya) and Rahbar's Qoldiq/Mijoz hisoboti/Bosh sahifa.
+Confirm a hard page reload resets everything to defaults (the deliberately-chosen behavior, not
+a bug).
+
+**No PR opened** (per standing instruction — Abdulloh reviews and opens it). Branch:
+`claude/global-export-profile-setup-t1hl6t`.

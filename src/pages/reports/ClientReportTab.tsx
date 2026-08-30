@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -43,10 +44,17 @@ export function ClientReportTab() {
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
 
-  const [ownerId, setOwnerId] = useState<string>('')
-  const [from, setFrom] = useState(initial.from)
-  const [to, setTo] = useState(initial.to)
-  const [locale, setLocale] = useState<ReportLocale>('uz')
+  // Filter persistence (Prompt 3, 2026-08-30 — see DECISIONS.md "Filter
+  // persistence across tab switches"): this screen is a sibling <Route>
+  // under both Menejer's and Rahbar's layouts, so switching to another tab
+  // and back unmounts/remounts it — plain useState was wiped every time.
+  // usePersistedState keeps the value in a module-scope store, which
+  // survives that unmount. Session-only by design (no Web Storage) — a
+  // full page reload still resets to the defaults.
+  const [ownerId, setOwnerId] = usePersistedState<string>('client-report-owner-id', '')
+  const [from, setFrom] = usePersistedState('client-report-from', initial.from)
+  const [to, setTo] = usePersistedState('client-report-to', initial.to)
+  const [locale, setLocale] = usePersistedState<ReportLocale>('client-report-locale', 'uz')
   const [detailOpen, setDetailOpen] = useState(false)
   const [rawDetailOpen, setRawDetailOpen] = useState(false)
   const [oldKnDetailOpen, setOldKnDetailOpen] = useState(false)

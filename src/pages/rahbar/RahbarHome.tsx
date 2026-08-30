@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarStockSnapshot, useRahbarDashboardLedger } from '../../lib/useRahbarDashboardV2'
@@ -319,11 +320,18 @@ function TrendChart({ chart }: { chart: { bucketStart: string; kirdiKg: number; 
 // ---- page ---------------------------------------------------------------
 
 export function RahbarHome() {
-  const [scope, setScope] = useState<ZaxiraScope>('yangi')
-  const [preset, setPreset] = useState<PeriodPreset>('boshidan')
-  const [customFrom, setCustomFrom] = useState(BOSHIDAN)
-  const [customTo, setCustomTo] = useState(todayIso())
-  const [selectedTypeIds, setSelectedTypeIds] = useState<string[] | null>(null) // null = hammasi
+  // Filter persistence (Prompt 3, 2026-08-30 — see DECISIONS.md "Filter
+  // persistence across tab switches"): this screen is the index <Route>
+  // under RahbarLayout, so navigating to another Rahbar tab and back
+  // unmounts/remounts it — plain useState was wiped every time.
+  // usePersistedState keeps the value in a module-scope store, which
+  // survives that unmount. Session-only by design (no Web Storage) — a
+  // full page reload still resets to the defaults.
+  const [scope, setScope] = usePersistedState<ZaxiraScope>('rahbar-home-scope', 'yangi')
+  const [preset, setPreset] = usePersistedState<PeriodPreset>('rahbar-home-preset', 'boshidan')
+  const [customFrom, setCustomFrom] = usePersistedState('rahbar-home-custom-from', BOSHIDAN)
+  const [customTo, setCustomTo] = usePersistedState('rahbar-home-custom-to', todayIso)
+  const [selectedTypeIds, setSelectedTypeIds] = usePersistedState<string[] | null>('rahbar-home-selected-type-ids', null) // null = hammasi
 
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)

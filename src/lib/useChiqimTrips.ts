@@ -47,6 +47,12 @@ export interface ChiqimTrip {
   // no gate net); for a regular truck it is what the gate net reconciles
   // against. Null only if the view row is missing, which shouldn't happen.
   loadedKg: number | null
+  // Fura gate photos (2026-08-30, see DECISIONS.md "Fura CHIQIM gate
+  // photos") — the LATEST capture per kind, off the same view, so this tab
+  // and the passport can never disagree about which photo is current.
+  // Always null for a regular truck: that one is weighed instead.
+  kirdiPhoto: string | null
+  chiqdiPhoto: string | null
 }
 
 // Qorovul's CHIQIM tab (SPEC §4) — mirrors useKirimTrips.ts exactly, joining
@@ -71,16 +77,18 @@ export function useChiqimTrips() {
           .from('gate_weighings')
           .select('id, request_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')
           .eq('dir', 'chiqim'),
-        supabase.from('chiqim_request_totals').select('request_id, loaded_kg'),
+        supabase.from('chiqim_request_totals').select('request_id, loaded_kg, kirdi_photo, chiqdi_photo'),
       ])
 
-      const loadedByRequest = new Map((totals ?? []).map((t) => [t.request_id, t.loaded_kg]))
+      const totalsByRequest = new Map((totals ?? []).map((t) => [t.request_id, t]))
 
       const combined: ChiqimTrip[] = (requests ?? []).map((request) => ({
         request,
         lines: (lines ?? []).filter((l) => l.request_id === request.id),
         weighing: (weighings ?? []).find((w) => w.request_id === request.id) ?? null,
-        loadedKg: loadedByRequest.get(request.id) ?? null,
+        loadedKg: totalsByRequest.get(request.id)?.loaded_kg ?? null,
+        kirdiPhoto: totalsByRequest.get(request.id)?.kirdi_photo ?? null,
+        chiqdiPhoto: totalsByRequest.get(request.id)?.chiqdi_photo ?? null,
       }))
 
       setTrips(combined)

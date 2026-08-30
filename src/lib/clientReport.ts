@@ -154,6 +154,14 @@ export interface ClientReportDispatch {
   // figure is instead of a gate net.
   truckType: string
   loadedKg: number
+  // Fura gate photos (2026-08-30) — Qorovul's car/nakladnoy captures for a
+  // truck the gate never weighs. Null for a regular dispatch.
+  //
+  // NOTE this is the INTERNAL Mijoz hisoboti (§3.2.7, Menejer/Rahbar). The
+  // Global Export client PORTAL (§3.6, src/pages/client/) deliberately
+  // carries no photo links at all — nakladnoy links were dropped from it
+  // the day it shipped — and is untouched by this.
+  photos: { kirdi: string | null; chiqdi: string | null } | null
   pallets: ClientReportDispatchPallet[]
 }
 

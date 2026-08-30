@@ -181,8 +181,19 @@ export interface PassportDispatch {
   truckType: string
   loadedKg: number
   departedAt: string | null
+  // Fura gate photos (2026-08-30, see DECISIONS.md "Fura CHIQIM gate
+  // photos"): the guard's own record of a truck the gate never weighs —
+  // car photo at entry, nakladnoy at exit. Null for a regular dispatch,
+  // which has the four `gate` photos instead; either side of that is
+  // populated, never both.
+  photos: PassportFuraPhotos | null
   gate: PassportGate
   pallets: PassportDispatchPallet[]
+}
+
+export interface PassportFuraPhotos {
+  kirdi: string | null
+  chiqdi: string | null
 }
 
 // Raw dispatch (2026-07-31) — a distinct entry from PassportDispatch (which

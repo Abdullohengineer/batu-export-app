@@ -766,6 +766,25 @@ function PassportBody({
                           label: "Jo'natildi",
                           value: d.departedAt ? formatDateTime(d.departedAt) : 'kutilmoqda',
                         },
+                        // Qorovul's own record for a truck he never weighs.
+                        // Rendered only when a photo actually exists —
+                        // "kutilmoqda" text would be wrong here, since the
+                        // guard's capture is parallel to Ombor's flow and a
+                        // dispatch can legitimately be complete before it.
+                        ...(d.photos?.kirdi
+                          ? [{
+                              label: 'Moshina rasmi (kirdi)',
+                              value: <GatePhoto path={d.photos.kirdi} label="Moshina rasmi (kirdi)"
+                                       bucket="chiqim-fura-photos" thumbnail onOpen={onOpenPhoto} />,
+                            }]
+                          : []),
+                        ...(d.photos?.chiqdi
+                          ? [{
+                              label: 'Nakladnoy rasmi (chiqdi)',
+                              value: <GatePhoto path={d.photos.chiqdi} label="Nakladnoy rasmi (chiqdi)"
+                                       bucket="chiqim-fura-photos" thumbnail onOpen={onOpenPhoto} />,
+                            }]
+                          : []),
                       ]
                     : buildGateRows(d.gate, "Bo'sh (1-bosqich)", 'Yuk bilan (2-bosqich)', onOpenPhoto)),
                 ]}

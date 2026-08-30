@@ -8,6 +8,7 @@ import { CLIENT_REPORT_LABELS, type ReportLocale } from '../../lib/clientReportL
 import { downloadClientReportExcel } from '../../lib/clientReportExport'
 import { SerialPassportModal } from './SerialPassportModal'
 import { FuraBadge } from '../../components/ui/FuraBadge'
+import { GatePhoto } from '../../components/GatePhoto'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { formatDate } from '../../lib/formatDate'
 import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
@@ -427,6 +428,18 @@ export function ClientReportTab() {
                           </span>
                         )}
                       </div>
+                      {/* Qorovul's gate record for a fura: car photo in,
+                          nakladnoy out. Regular dispatches render nothing
+                          here — their gate evidence lives on the weighing
+                          and is shown in the serial passport. */}
+                      {d.truckType === 'fura' && (d.photos?.kirdi || d.photos?.chiqdi) && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <GatePhoto path={d.photos?.kirdi ?? null} label="Moshina rasmi (kirdi)"
+                                     bucket="chiqim-fura-photos" thumbnail />
+                          <GatePhoto path={d.photos?.chiqdi ?? null} label="Nakladnoy rasmi (chiqdi)"
+                                     bucket="chiqim-fura-photos" thumbnail />
+                        </div>
+                      )}
                       <ul className="mt-2 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
                         {d.pallets.map((p) => (
                           <li key={p.barcode2} className="font-mono">

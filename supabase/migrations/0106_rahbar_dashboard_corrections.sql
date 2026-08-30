@@ -42,20 +42,43 @@
 --     every kilogram removed here is still counted via its replacement row.
 --
 --   storage_loss     0 rows        0 kg
---     🚩 EXCLUDED ANYWAY, AND THIS IS THE ONE THAT IS ARGUABLY WRONG.
---     There are no such rows today, so this has zero effect on any current
---     figure and cannot be validated against data. But the semantics matter
---     for the first time it fires: product written off in storage DID come
---     out of Moyka and was real production. Excluding it from
---     processed_output therefore changes a HISTORICAL PRODUCTION figure,
---     not just a stock figure -- past output will appear to shrink when a
---     write-off happens later. It is excluded here only to keep Ledger B
---     and Ledger C counting an identical pallet set (the whole point of the
---     fix); the alternative -- exclude it from stock but keep it in
---     production -- is defensible and arguably more correct, but it would
---     make the two ledgers disagree again by exactly the written-off
---     amount. Flagged for a decision, not settled by this migration.
---     Revisit before the first storage_loss row exists.
+--     🚩 EXCLUDED HERE, AND THIS IS ALMOST CERTAINLY THE WRONG LONG-TERM
+--     ANSWER. Decided knowingly (2026-08-30), on the basis that there are
+--     zero such rows today, both ledgers agree, and the reasoning is
+--     recorded. Revisit BEFORE the first storage_loss row exists, not
+--     after -- once one exists, changing this silently restates history.
+--
+--     Why it is probably wrong: this project has already decided, twice and
+--     explicitly, that storage loss is kept SEPARATE from processing loss
+--     so that it never corrupts yield. DECISIONS.md (old-stock close-out,
+--     2026-08-0x) states the intent -- "book the shortfall as storage loss,
+--     isolated from processing loss so yield figures stay clean" -- and its
+--     verification section proves the implementation: yield_rows,
+--     rahbar_monthly_trends and rahbar_client_ranking were "queried before
+--     and after, byte-identical in every field."
+--
+--     yield_rows achieves that by KEEPING storage_loss pallets in its
+--     output (post-0102 it filters bekor_qilindi only -- confirmed against
+--     the live definition). The pallet stays counted as production; the
+--     write-off is reported on its own line instead. That is the principle
+--     the eventual answer should follow: count it in production in BOTH
+--     ledgers, surface the write-off separately.
+--
+--     Concrete, testable consequence of the choice made here: product
+--     written off in storage DID come out of Moyka. Excluding it changes a
+--     HISTORICAL PRODUCTION figure, not a stock figure -- past output will
+--     appear to shrink when a write-off happens later. The moment the first
+--     storage_loss row exists, Ledger B will diverge from yield_rows by
+--     exactly the written-off amount, and this migration's own
+--     yield_rows cross-check (below) will start failing. Treat that failure
+--     as the reminder to revisit, not as a new bug.
+--
+--     The trade this buys: Ledger B and Ledger C count one identical pallet
+--     set today, which is the entire point of the fix. Keeping storage_loss
+--     in production instead would re-open a ledger disagreement of exactly
+--     the written-off amount -- acceptable, arguably correct, but it should
+--     be done deliberately alongside a separate write-off line, not folded
+--     in here.
 --
 --   mint-consumed    2 rows    1,040 kg   both status='consumed'
 --     PLT-020826-034-04-1 (720 kg) and -04-2 (320 kg), serial 020826-034,
@@ -516,10 +539,15 @@ by_type as (
   group by type_id
 ),
 by_calibre as (
-  select s.calibre_id, c.is_numberless, coalesce(sum(s.qty_kg), 0) as kg
+  -- type_id carried through deliberately: the Turlar (product type) filter on
+  -- this screen already narrows the per-calibre bars, and dropping the type
+  -- dimension would have silently disabled that filter for them. Same
+  -- (type, calibre) shape as the byCalibreType rows it replaces, so the
+  -- frontend's existing regroup-and-filter helper works unchanged.
+  select s.type_id, s.calibre_id, c.is_numberless, coalesce(sum(s.qty_kg), 0) as kg
   from scoped s join calibres c on c.id = s.calibre_id
   where s.barcode2 is not null
-  group by s.calibre_id, c.is_numberless
+  group by s.type_id, s.calibre_id, c.is_numberless
 )
 select jsonb_build_object(
   'rawKg', (select kg from raw_total),
@@ -537,7 +565,7 @@ select jsonb_build_object(
   ),
   'byCalibre', (
     select coalesce(jsonb_agg(jsonb_build_object(
-      'calibreId', calibre_id, 'isNumberless', is_numberless, 'kg', kg) order by kg desc), '[]'::jsonb)
+      'typeId', type_id, 'calibreId', calibre_id, 'isNumberless', is_numberless, 'kg', kg) order by kg desc), '[]'::jsonb)
     from by_calibre
   ),
   'distinctTypeCount', (select count(*) from by_type)

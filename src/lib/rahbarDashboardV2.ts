@@ -21,6 +21,18 @@ export interface StockByType {
   kg: number
 }
 
+// Current stock per (type, calibre) -- 2026-08-30, see DECISIONS.md "Rahbar
+// dashboard corrections". Straight off stock_on_hand_rows (the same view
+// Ombor qoldig'i reads), so the per-calibre bars show a LIVE BALANCE rather
+// than the period flow they used to. typeId is carried so the Turlar filter
+// still narrows them, exactly as it did for the byCalibreType rows.
+export interface StockByCalibre {
+  typeId: string
+  calibreId: string
+  isNumberless: boolean
+  kg: number
+}
+
 export interface RahbarStockSnapshot {
   rawKg: number
   finishedCalibredKg: number
@@ -33,8 +45,13 @@ export interface RahbarStockSnapshot {
   // here -- not the period-scoped moykadaSnapshot the ledger RPC returns.
   moykadaKg: number
   oldKnNote: string
+  /** rawKg + moykadaKg + finishedCalibredKg + konditirskiyKg + oldKnKg. NOTE the
+   *  dashboard's own headline deliberately EXCLUDES oldKnKg -- see RahbarHome. */
   totalKg: number
+  /** Still returned, deliberately unused since the Zaxira tarkibi donut was
+   *  removed (2026-08-30). Left in the payload rather than churning the RPC. */
   byType: StockByType[]
+  byCalibre: StockByCalibre[]
   distinctTypeCount: number
 }
 

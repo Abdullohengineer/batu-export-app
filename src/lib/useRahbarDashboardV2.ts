@@ -36,6 +36,9 @@ export function useRahbarStockSnapshot(scope: ZaxiraScope) {
           oldKnNote: String(raw.oldKnNote ?? ''),
           totalKg: n(raw.totalKg as number),
           byType: ((raw.byType as { typeId: string; kg: number | string }[]) ?? []).map((t) => ({ typeId: t.typeId, kg: n(t.kg) })),
+          byCalibre: (
+            (raw.byCalibre as { typeId: string; calibreId: string; isNumberless: boolean; kg: number | string }[]) ?? []
+          ).map((c) => ({ typeId: c.typeId, calibreId: c.calibreId, isNumberless: Boolean(c.isNumberless), kg: n(c.kg) })),
           distinctTypeCount: n(raw.distinctTypeCount as number),
         })
       } finally {

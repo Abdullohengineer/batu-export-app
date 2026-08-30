@@ -36,6 +36,7 @@ export function ReportResultsTable({
   ownerName,
   typeName,
   calibreLabel,
+  truckType,
   onOpenPassport,
   onOpenOldKnRequest,
 }: {
@@ -46,6 +47,7 @@ export function ReportResultsTable({
   ownerName: (id: string) => string
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
+  truckType: (requestId: string) => string
   onOpenPassport: (serial: string) => void
   onOpenOldKnRequest: (requestId: string) => void
 }) {
@@ -76,6 +78,7 @@ export function ReportResultsTable({
                 ownerName={ownerName}
                 typeName={typeName}
                 calibreLabel={calibreLabel}
+                truckType={truckType}
                 onOpenPassport={onOpenPassport}
                 onOpenOldKnRequest={onOpenOldKnRequest}
               />
@@ -94,6 +97,7 @@ export function ReportResultsTable({
             ownerName={ownerName}
             typeName={typeName}
             calibreLabel={calibreLabel}
+            truckType={truckType}
             onOpenPassport={onOpenPassport}
             onOpenOldKnRequest={onOpenOldKnRequest}
           />

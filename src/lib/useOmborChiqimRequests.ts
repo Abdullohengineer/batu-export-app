@@ -27,6 +27,14 @@ export interface ChiqimRequest {
   plate: string
   driver: string
   owner_id: string
+  // 'regular' | 'fura' (2026-08-30, see DECISIONS.md "CHIQIM truck type:
+  // Fura"). Read here for one specific reason, not for decoration: a fura
+  // is never weighed at the gate, so THIS screen's finish click is the
+  // trip's completing event — it flips the request to 'olib_ketildi' and,
+  // through the unchanged `ombor_deletes` RLS policy, closes the undo
+  // window in the same instant. Ombor has to be able to see that before
+  // clicking, not discover it afterwards.
+  truck_type: string
   ombor_finished_at: string | null
   lines: ChiqimLine[]
   // Nav/visual-redesign pass (mockup "BATU-Storage-S4-Skladdan-CHIQIM-v2.pdf"
@@ -70,7 +78,7 @@ export function useOmborChiqimRequests() {
           // filter here, not client-side, since Ombor has no business
           // reason to ever see one.
           .select(
-            'id, request_date, plate, driver, owner_id, ombor_finished_at, ' +
+            'id, request_date, plate, driver, owner_id, truck_type, ombor_finished_at, ' +
               'chiqim_lines(id, type_id, calibre_id, line_kind, qty_kg, ' +
               'chiqim_line_raw_serials(serial))',
           )
@@ -96,6 +104,7 @@ export function useOmborChiqimRequests() {
         plate: string
         driver: string
         owner_id: string
+        truck_type: string
         ombor_finished_at: string | null
         chiqim_lines: RawLine[] | null
       }
@@ -109,6 +118,7 @@ export function useOmborChiqimRequests() {
           plate: r.plate,
           driver: r.driver,
           owner_id: r.owner_id,
+          truck_type: r.truck_type,
           ombor_finished_at: r.ombor_finished_at,
           lines: (r.chiqim_lines ?? []).map((l) => ({
             id: l.id,

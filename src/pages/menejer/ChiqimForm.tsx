@@ -110,6 +110,9 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   const [plate, setPlate] = useState('')
   const [driver, setDriver] = useState('')
   const [ownerId, setOwnerId] = useState('')
+  // 'regular' | 'fura' — mirrors chiqim_requests.truck_type's own default
+  // and CHECK constraint (migration 0104). Never sent as anything else.
+  const [truckType, setTruckType] = useState<'regular' | 'fura'>('regular')
   const [rows, setRows] = useState<LineRow[]>([newRow()])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -226,6 +229,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
           plate,
           driver,
           owner_id: ownerId,
+          truck_type: truckType,
           created_by: profile?.id,
         })
         .select('id')
@@ -268,6 +272,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
         })),
       )
       setPlate('')
+      setTruckType('regular')
       setDriver('')
       setOwnerId('')
       setRows([newRow()])
@@ -331,6 +336,46 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
             ))}
           </select>
         </FormField>
+      </div>
+
+      {/* Transport turi (2026-08-30, see DECISIONS.md "CHIQIM truck type:
+          Fura"). Sits ABOVE the lines section deliberately: it is a fact
+          about the truck, like Moshina/Haydovchi above it, not about any
+          line — a fura's lines are entered and loaded exactly as a regular
+          truck's are, and the FIFO attribution at Ombor's finish click is
+          identical. What changes is only that the gate never weighs it.
+          Immutable once saved (DB trigger, migration 0104) — this form has
+          no edit mode at all, and FinishedChiqimList's own Tahrirlash
+          touches only date/plate/driver, so there is no UI path to change
+          it either. */}
+      <div className="space-y-1">
+        <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">Transport turi</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              ['regular', 'Odatiy'],
+              ['fura', 'Fura'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTruckType(value)}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${
+                truckType === value
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {truckType === 'fura' && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Fura darvozada o'lchanmaydi — hisobiy og'irlik Ombor yuklagan kg yig'indisi bo'ladi.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

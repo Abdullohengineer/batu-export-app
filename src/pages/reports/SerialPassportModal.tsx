@@ -754,7 +754,20 @@ function PassportBody({
                       d.omborFinishedAt ? ` · ${formatDateTime(d.omborFinishedAt)}` : ''
                     }`,
                   },
-                  ...buildGateRows(d.gate, "Bo'sh (1-bosqich)", 'Yuk bilan (2-bosqich)', onOpenPhoto),
+                  // Fura (2026-08-30): the gate rows below would be four
+                  // "kutilmoqda" placeholders for a truck that will never be
+                  // weighed, so they are replaced outright by the trip's own
+                  // loaded total. Ordinary trucks are untouched.
+                  ...(d.truckType === 'fura'
+                    ? [
+                        { label: 'Transport turi', value: "Fura — darvozada o'lchanmaydi" },
+                        { label: 'Yuklangan (hisobiy)', value: `${d.loadedKg.toLocaleString()} kg` },
+                        {
+                          label: "Jo'natildi",
+                          value: d.departedAt ? formatDateTime(d.departedAt) : 'kutilmoqda',
+                        },
+                      ]
+                    : buildGateRows(d.gate, "Bo'sh (1-bosqich)", 'Yuk bilan (2-bosqich)', onOpenPhoto)),
                 ]}
               />
               <div className="mt-2 overflow-x-auto">

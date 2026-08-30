@@ -9,6 +9,7 @@ import { formatDate } from '../../lib/formatDate'
 import { Card } from '../../components/ui/Card'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { FuraBadge } from '../../components/ui/FuraBadge'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { type Tone } from '../../components/ui/tokens'
 
@@ -32,6 +33,7 @@ export function ReportRowCard({
   ownerName,
   typeName,
   calibreLabel,
+  truckType,
   onOpenPassport,
   onOpenOldKnRequest,
 }: {
@@ -41,6 +43,11 @@ export function ReportRowCard({
   ownerName: (id: string) => string
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
+  // CHIQIM truck type resolver (2026-08-30) — same resolver ReportTableRow
+  // takes, threaded here too so the narrow-viewport rendering can never
+  // drift from the table one (this file's own header warns about exactly
+  // that hazard).
+  truckType: (requestId: string) => string
   onOpenPassport: (serial: string) => void
   onOpenOldKnRequest: (requestId: string) => void
 }) {
@@ -89,6 +96,9 @@ export function ReportRowCard({
           {row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}
         </SerialChip>
         <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />
+        {(row.kind === 'chiqim' || row.kind === 'chiqim_raw' || row.kind === 'chiqim_old_kn') && row.requestId ? (
+          <FuraBadge truckType={truckType(row.requestId)} />
+        ) : null}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-slate-900 dark:text-slate-100">
             {ownerName(row.ownerId)} · {typeName(row.typeId)}

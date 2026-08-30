@@ -44,6 +44,12 @@ export interface FinishedChiqimRequest {
   driver: string
   owner_id: string
   status: string
+  // 'regular' | 'fura' (2026-08-30, see DECISIONS.md "CHIQIM truck type:
+  // Fura"). Load-bearing on this surface: `status` reads 'olib_ketildi' for
+  // both truck types, but only a regular truck's came from a gate weighing
+  // — a fura's came from Ombor's finish click, and there is no gate record
+  // behind it to open.
+  truck_type: string
   created_by: string | null
   created_at: string
   ombor_finished_at: string | null
@@ -126,7 +132,7 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
         supabase
           .from('chiqim_requests')
           .select(
-            'id, request_date, plate, driver, owner_id, status, created_by, created_at, ' +
+            'id, request_date, plate, driver, owner_id, status, truck_type, created_by, created_at, ' +
               'ombor_finished_at, ombor_finished_by, voided_at',
           ),
         supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT),
@@ -192,7 +198,7 @@ export function useChiqimRequestById(requestId: string | null) {
           supabase
             .from('chiqim_requests')
             .select(
-              'id, request_date, plate, driver, owner_id, status, created_by, created_at, ' +
+              'id, request_date, plate, driver, owner_id, status, truck_type, created_by, created_at, ' +
                 'ombor_finished_at, ombor_finished_by, voided_at',
             )
             .eq('id', requestId)

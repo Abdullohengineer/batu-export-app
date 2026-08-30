@@ -163,6 +163,13 @@ export interface PassportDispatchPallet {
   loadedAt: string
 }
 
+// CHIQIM truck type (2026-08-30, see DECISIONS.md "CHIQIM truck type:
+// Fura"). A fura is never weighed at the gate, so `gate` is null throughout
+// for one — permanently and by design, not pending. `loadedKg` (Ombor's own
+// loaded total for the whole trip, from chiqim_request_loaded_kg) is what
+// the passport shows in its place, and `departedAt` is the canonical
+// departure moment under either truck type (gate stage 2, or Ombor's finish
+// click for a fura) — never re-derived screen-side.
 export interface PassportDispatch {
   requestId: string
   requestDate: string
@@ -171,6 +178,9 @@ export interface PassportDispatch {
   status: string
   omborFinishedAt: string | null
   omborFinishedByName: string | null
+  truckType: string
+  loadedKg: number
+  departedAt: string | null
   gate: PassportGate
   pallets: PassportDispatchPallet[]
 }

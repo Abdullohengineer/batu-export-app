@@ -181,17 +181,46 @@ export function stripBarcode2Prefix(barcode2: string): string {
   return barcode2.startsWith('PLT-') ? barcode2.slice(4) : barcode2
 }
 
-// calibre is "Kalibr N" or "Konditirskiy" (Sozlamalar-managed master data,
-// calibres.label — see useCalibres.ts) — abbreviate for the printed
-// label/preview only; the full label is unchanged everywhere else in the
-// app (reports, dropdowns, etc). Shared with Barcode2Display.tsx's own
-// on-screen summary row for the same reason stripBarcode2Prefix is: one
-// definition, so every place calibre appears on a label-adjacent surface
-// agrees. Keep in sync with P1PrinterPlugin.java's abbreviateCalibre.
-export function abbreviateCalibre(label: string): string {
-  if (label === 'Konditirskiy') return 'KN'
-  const match = label.match(/^Kalibr (\d+)$/)
-  return match ? `K${match[1]}` : label
+// Abbreviate the calibre for the printed sticker / preview only; the full
+// label is unchanged everywhere else in the app (reports, dropdowns, etc).
+// Shared with Barcode2Display.tsx's own on-screen summary row for the same
+// reason stripBarcode2Prefix is: one definition, so every label-adjacent
+// surface agrees. Keep in sync with P1PrinterPlugin.java's abbreviateCalibre.
+//
+// 🔒 KEYED ON `calibres.code`, READ OUT OF THE BARCODE ITSELF — never on the
+// display label (2026-08-30). This used to be `if (label === 'Konditirskiy')`,
+// which meant a purely cosmetic relabel in Sozlamalar silently changed what
+// got printed on physical pallet stickers: rename the calibre and every new
+// sticker reads "Konditerka" instead of "KN", with nothing in the app
+// indicating it. Found while renaming Konditirskiy → Konditerka; the rename
+// itself is display-only, but it would have reached the printer through here.
+//
+// barcode2 is `PLT-<serial>-<code>-<seq>` (FinishedReceiptForm.nextBarcode2,
+// the sole mint point) and the serial itself contains a dash, so the code is
+// the SECOND-TO-LAST dash-separated segment — not a fixed index. Using the
+// sticker's own id as the key is the strongest available coupling: it is the
+// value physically printed on the label, it is immutable once minted, and it
+// cannot drift from what the sticker says.
+//
+// The label is still accepted as a fallback for anything whose code is not a
+// number or KN (today: `RKN` / "Rezka KN"), so current printed output is
+// unchanged for every one of the ten live calibres.
+export function calibreCodeFromBarcode2(barcode2: string): string | null {
+  const parts = barcode2.split('-')
+  return parts.length >= 3 ? parts[parts.length - 2] : null
+}
+
+export function abbreviateCalibre(barcode2: string, label: string): string {
+  const code = calibreCodeFromBarcode2(barcode2)
+  if (code === 'KN') return 'KN'
+  const numeric = code?.match(/^0*(\d+)$/)
+  if (numeric) return `K${numeric[1]}`
+  // Unrecognised or malformed code: fall back to the old label matching so a
+  // non-standard calibre still prints something sensible rather than a raw
+  // code fragment.
+  if (label === 'Konditirskiy' || label === 'Konditerka') return 'KN'
+  const byLabel = label.match(/^Kalibr (\d+)$/)
+  return byLabel ? `K${byLabel[1]}` : label
 }
 
 // Displayed text is always the full barcode2, unchanged — only the encoded
@@ -200,7 +229,7 @@ export function abbreviateCalibre(label: string): string {
 // stays inside the encoded QR value above for lookups, unchanged.
 export function renderBarcode2Label(data: Barcode2LabelData): Promise<Blob> {
   return renderLabel(stripBarcode2Prefix(data.barcode2), data.barcode2, [
-    `${data.type} · ${abbreviateCalibre(data.calibre)} · ${data.weightKg.toLocaleString()} kg`,
+    `${data.type} · ${abbreviateCalibre(data.barcode2, data.calibre)} · ${data.weightKg.toLocaleString()} kg`,
     data.owner,
   ])
 }

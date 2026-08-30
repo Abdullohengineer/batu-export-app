@@ -384,7 +384,7 @@ public class P1PrinterPlugin extends Plugin {
         // — see DECISIONS.md.
         String infoLine = isBlank(calibreLabel)
             ? typeName + " · " + weightStr
-            : typeName + " · " + abbreviateCalibre(calibreLabel) + " · " + weightStr;
+            : typeName + " · " + abbreviateCalibre(barcode, calibreLabel) + " · " + weightStr;
         String clientLine = ellipsize(clientName, CLIENT_NAME_MAX_CHARS);
 
         // 40x30mm, no rotation — the stock is already landscape at these
@@ -493,8 +493,28 @@ public class P1PrinterPlugin extends Plugin {
     // master data, calibres.label) -- abbreviate for print only, the full
     // label is unchanged everywhere else in the app. Keep in sync with
     // barcodeLabel.ts's abbreviateCalibre.
-    private String abbreviateCalibre(String label) {
-        if ("Konditirskiy".equals(label)) return "KN";
+    // 🔒 Keyed on calibres.code, read out of the barcode itself -- never on the
+    // display label (2026-08-30). This used to be
+    // `if ("Konditirskiy".equals(label))`, which meant a purely cosmetic
+    // relabel in Sozlamalar silently changed what got printed on physical
+    // pallet stickers. barcode2 is `PLT-<serial>-<code>-<seq>` and the serial
+    // itself contains a dash, so the code is the SECOND-TO-LAST segment.
+    // Mirrors barcodeLabel.ts's abbreviateCalibre exactly, fallback included.
+    private String calibreCodeFromBarcode2(String barcode2) {
+        if (barcode2 == null) return null;
+        String[] parts = barcode2.split("-");
+        return parts.length >= 3 ? parts[parts.length - 2] : null;
+    }
+
+    private String abbreviateCalibre(String barcode2, String label) {
+        String code = calibreCodeFromBarcode2(barcode2);
+        if ("KN".equals(code)) return "KN";
+        if (code != null && code.matches("^0*\\d+$")) {
+            return "K" + code.replaceFirst("^0+", "");
+        }
+        // Unrecognised or malformed code: fall back to the old label matching
+        // so a non-standard calibre (RKN / "Rezka KN") still prints sensibly.
+        if ("Konditirskiy".equals(label) || "Konditerka".equals(label)) return "KN";
         if (label != null && label.matches("^Kalibr \\d+$")) {
             return "K" + label.substring("Kalibr ".length());
         }

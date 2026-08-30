@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -44,8 +45,8 @@ export function ClientReportTab() {
   const { calibres } = useCalibres(true)
 
   const [ownerId, setOwnerId] = useState<string>('')
-  const [from, setFrom] = useState(initial.from)
-  const [to, setTo] = useState(initial.to)
+  const [from, setFrom] = usePersistentState('clientReport.from', initial.from)
+  const [to, setTo] = usePersistentState('clientReport.to', initial.to)
   const [locale, setLocale] = useState<ReportLocale>('uz')
   const [detailOpen, setDetailOpen] = useState(false)
   const [rawDetailOpen, setRawDetailOpen] = useState(false)

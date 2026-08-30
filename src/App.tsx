@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { FilterStateProvider } from './lib/FilterState'
 import { AuthProvider, useAuth } from './lib/AuthProvider'
 import { RoleRoute } from './routes/RoleRoute'
 import { LoginPage } from './pages/LoginPage'
@@ -38,7 +39,12 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        {/* Above <AppRoutes /> deliberately: tab switches unmount the route
+            component, so filter state has to live somewhere that outlives it.
+            See lib/FilterState.tsx. */}
+        <FilterStateProvider>
+          <AppRoutes />
+        </FilterStateProvider>
       </AuthProvider>
     </BrowserRouter>
   )

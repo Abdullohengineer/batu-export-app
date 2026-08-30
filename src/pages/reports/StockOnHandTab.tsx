@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -34,7 +35,7 @@ const STATUS_OPTIONS = STOCK_BUCKET_ORDER.map((b) => ({ value: b, label: STOCK_B
 // unbounded multi-month history §3.2.1-3.2.4's server-side engine exists
 // to handle.
 export function StockOnHandTab() {
-  const [filters, setFilters] = useState(defaultStockOnHandFilters())
+  const [filters, setFilters] = usePersistentState('stockOnHand.filters', () => defaultStockOnHandFilters())
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
 
   // §3.3: includeInactive=true -- resolves ids on in-stock/historical rows.

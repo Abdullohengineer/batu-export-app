@@ -11,7 +11,7 @@ import type { OldKnReportRow } from '../../lib/reportQuery'
 export function OldKnRowDetail({ row, onOpenOldKnRequest }: { row: OldKnReportRow; onOpenOldKnRequest: (requestId: string) => void }) {
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
-      <div>Eski Konditirskiy yig'ib olindi: {row.weightKg.toLocaleString()} kg</div>
+      <div>Eski Konditerka yig'ib olindi: {row.weightKg.toLocaleString()} kg</div>
       <button
         type="button"
         onClick={(e) => {

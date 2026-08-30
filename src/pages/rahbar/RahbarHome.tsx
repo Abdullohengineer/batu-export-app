@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarStockSnapshot, useRahbarDashboardLedger } from '../../lib/useRahbarDashboardV2'
@@ -106,11 +107,11 @@ function Bar({ label, value, max, color, pctOfLabel }: { label: string; value: n
 }
 
 export function RahbarHome() {
-  const [scope, setScope] = useState<ZaxiraScope>('yangi')
-  const [preset, setPreset] = useState<PeriodPreset>('boshidan')
-  const [customFrom, setCustomFrom] = useState(BOSHIDAN)
-  const [customTo, setCustomTo] = useState(todayIso())
-  const [selectedTypeIds, setSelectedTypeIds] = useState<string[] | null>(null) // null = hammasi
+  const [scope, setScope] = usePersistentState<ZaxiraScope>('rahbar.scope', 'yangi')
+  const [preset, setPreset] = usePersistentState<PeriodPreset>('rahbar.preset', 'boshidan')
+  const [customFrom, setCustomFrom] = usePersistentState('rahbar.customFrom', BOSHIDAN)
+  const [customTo, setCustomTo] = usePersistentState('rahbar.customTo', () => todayIso())
+  const [selectedTypeIds, setSelectedTypeIds] = usePersistentState<string[] | null>('rahbar.types', null) // null = hammasi
 
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
@@ -234,7 +235,7 @@ export function RahbarHome() {
             tone="calibre"
           />
           <Tile
-            label="Konditirskiy"
+            label="Konditerka"
             value={snapshot.konditirskiyKg}
             unit="kg"
             caption={ledgerLoading ? 'Hozirgi qoldiq' : `Hozirgi qoldiq · bu davrda ${fmt(dispatchedKnPeriod)} kg olib ketilgan`}

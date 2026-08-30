@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { HistoryView } from '../../components/HistoryView'
 import { defaultDateRange } from '../../lib/dateRange'
 import { useOwners } from '../../lib/useOwners'
@@ -17,7 +18,7 @@ function kg(v: number | null) {
 // Qorovul's Hisobotlar (task step 3): read-only gate_weighings history.
 export function QorovulHisobotlar() {
   const initial = defaultDateRange()
-  const [filters, setFilters] = useState<GateHistoryFilters>({
+  const [filters, setFilters] = usePersistentState<GateHistoryFilters>('qorovulHisobotlar.filters', {
     from: initial.from,
     to: initial.to,
     plate: '',

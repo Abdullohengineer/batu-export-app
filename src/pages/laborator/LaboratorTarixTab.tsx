@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { HistoryView } from '../../components/HistoryView'
 import { GatePhoto } from '../../components/GatePhoto'
 import { defaultDateRange } from '../../lib/dateRange'
@@ -20,7 +21,7 @@ const VERDICT_LABEL: Record<string, string> = { o_tdi: "O'tdi", qayta_yuvish: 'Q
 // enrichment filters.
 export function LaboratorTarixTab() {
   const initial = defaultDateRange()
-  const [filters, setFilters] = useState<LaboratorHistoryFilters>({
+  const [filters, setFilters] = usePersistentState<LaboratorHistoryFilters>('laboratorTarix.filters', {
     from: initial.from,
     to: initial.to,
     scope: '',

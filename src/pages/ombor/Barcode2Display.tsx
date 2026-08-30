@@ -158,7 +158,7 @@ function Barcode2Label({ data, autoprint }: { data: Barcode2LabelData; autoprint
       <canvas ref={barcodeRef} className="mx-auto max-w-full" />
       <div className="font-mono text-lg font-bold tracking-wide text-slate-900">{data.barcode2}</div>
       <div className="mt-1 text-xs text-slate-600">
-        {data.type} · {abbreviateCalibre(data.calibre)} · {data.weightKg.toLocaleString()} kg · {data.owner}
+        {data.type} · {abbreviateCalibre(data.barcode2, data.calibre)} · {data.weightKg.toLocaleString()} kg · {data.owner}
       </div>
 
       {nativeAvailable && (

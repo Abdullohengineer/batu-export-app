@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { HistoryView } from '../../components/HistoryView'
 import { ReportFilterBar, FilterField } from '../../components/report/ReportFilterBar'
@@ -43,13 +44,13 @@ const STATUS_OPTIONS: { value: Exclude<PalletStatusFilter, ''>; label: string }[
 // desktop rework."
 export function HisobotTab() {
   const initial = defaultDateRange()
-  const [filters, setFilters] = useState(defaultReportFilters(initial.from, initial.to))
+  const [filters, setFilters] = usePersistentState('hisobot.filters', () => defaultReportFilters(initial.from, initial.to))
   // Column picker (2026-08-15) — display-only, independent of `filters`:
   // hiding a column must never remove it as a filter (Buyurtmachi/plate
   // stay filterable via ReportFilterBar even when hidden here). Local
   // component state, not persisted — resets to the spec'd defaults on
   // reload, same as every other piece of UI-only state on this screen.
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<Set<string>>(defaultVisibleColumnKeys())
+  const [visibleColumnKeys, setVisibleColumnKeys] = usePersistentState<Set<string>>('hisobot.columns', () => defaultVisibleColumnKeys())
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)

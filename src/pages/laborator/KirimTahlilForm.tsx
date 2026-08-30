@@ -192,7 +192,7 @@ export function KirimTahlilForm({
         <p className="text-sm font-medium text-blue-700 dark:text-blue-400">Natija qayerga tegishli</p>
         <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
           Bu natija <strong>{line.serial}</strong> seriyasiga yoziladi — moykadan chiqadigan barcha kalibrlar (K4, K6,
-          K8, Konditirskiy) shu seriyaning namligi va serasini meros qilib oladi. Har bir kalibrni alohida tahlil
+          K8, Konditerka) shu seriyaning namligi va serasini meros qilib oladi. Har bir kalibrni alohida tahlil
           qilish shart emas.
         </p>
       </div>

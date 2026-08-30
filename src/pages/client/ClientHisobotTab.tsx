@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { useAuth } from '../../lib/AuthProvider'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { useProductTypes } from '../../lib/useProductTypes'
@@ -109,7 +110,7 @@ export function ClientHisobotTab() {
   const { profile } = useAuth()
   const { productTypes } = useProductTypes(true)
   const defaultRange = defaultDateRange(30)
-  const [filters, setFilters] = useState<ClientReportFilters>(
+  const [filters, setFilters] = usePersistentState<ClientReportFilters>('clientHisobot.filters',
     defaultClientReportFilters(defaultRange.from, isoToday())
   )
   const [rows, setRows] = useState<ClientReportRow[]>([])

@@ -229,7 +229,7 @@ export function ChiqimTahlilForm({
         <p className="text-sm font-medium text-blue-700 dark:text-blue-400">Natija qayerga tegishli</p>
         <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
           Bu natija <strong>{item.serial}</strong> seriyaning butun moyka chiqishiga tegishli — namligi va serasini
-          shu seriyadan chiqadigan barcha palletlar (K4, K6, K8, Konditirskiy) meros qilib oladi.{' '}
+          shu seriyadan chiqadigan barcha palletlar (K4, K6, K8, Konditerka) meros qilib oladi.{' '}
           <strong>O'tdi</strong> natijasisiz bu seriya uchun Barcode #2 chiqarib bo'lmaydi.
         </p>
       </div>

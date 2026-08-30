@@ -6953,3 +6953,144 @@ Deliberately left unexplained rather than given a plausible story:
   formula variant tested. 33,820 is *exactly* what `moyka.calibreKg` becomes **after** the fix
   above. How that value appeared on a screen before the fix is unknown; the coincidence is
   recorded as a fact, not resolved.
+## 2026-08-30 — Rahbar's dashboard no longer carries a ledger reconciliation
+
+Confirmed by Abdulloh: the "Kirim va chiqim" removal stands as built — the whole section,
+including the three-ledger reconciliation table (Ledger A raw, the Moykada line, Ledger B with
+its Yo'qotish row, Ledger C dispatched/closing) and the residual diagnostic note. Nothing to
+restore.
+
+**Consequence to be aware of, recorded deliberately: there is no longer any surface where the
+three ledgers are shown side by side, so a future disagreement between them will not surface
+on the dashboard.** The residual diagnostics (`raw.residualKg`, `moykadaSnapshot.residualKg`)
+are still computed by `rahbar_dashboard_ledger` and still returned in its payload — they are
+simply no longer rendered anywhere. `moykadaSnapshot.residualKg` is currently **−15 kg**
+(see the 0106 entry), which nothing on screen will now report.
+
+Those movements remain visible only through **Hisobot** — `report_kirim_rows`,
+`report_chiqim_rows`, `report_moyka_send_rows`, `report_moyka_output_rows` and the
+`stock_on_hand_rows` / Yield views behind it. Anyone checking whether the ledgers still
+reconcile has to query the RPC directly or reconstruct it from Hisobot; the dashboard will
+show a plausible-looking set of tiles either way.
+
+That is an accepted trade — the table was dense, rarely read, and its Ledger B half was
+materially wrong for eighteen days before anyone noticed, which is itself evidence it was not
+serving as a check. Recorded so the loss of that check is a known state rather than a
+discovery.
+
+**Branch note (resolved):** the removal shipped on
+`claude/total-loss-finalized-serials-5jeugz` (commits `2918922`, `4a5f985`) and merged to main
+as PR #123, so the dashboard and migration `0106` are now in step. This entry was written on
+the follow-on branch while that PR was still open and has been rebased into place above.
+
+---
+
+## 2026-08-30 — Konditirskiy → Konditerka (display only), and the printed-label defect it exposed
+
+**Inventory before touching anything** — 404 occurrences, split by kind:
+
+| Kind | Count | Action |
+|---|---:|---|
+| Identifiers: `konditirskiyKg` (53), `konditirskiy_kg` (192), `konditirskiy_total` (42), `live_konditirskiy_kg` (27), `finished_konditirskiy_total` (21), `processed_konditirskiy_total` (21) | ~356 | **Left alone** — DB↔frontend contracts |
+| Display strings (frontend) | 9 | Renamed |
+| `calibres.label` where `code='KN'` | 1 row | Renamed |
+| Code comments | 8 | Left — not display text |
+| SPEC.md / DECISIONS.md | 89 | Left — historical record |
+
+Renamed: `clientReportLabels.ts` (uz `Konditerka`, ru `Кондитерка`), `CalibresSection.tsx`,
+`OldKnRowDetail.tsx`, `RahbarHome.tsx` (×3), and the two Laborator forms' prose listing the
+calibre set. `calibres.code` is untouched.
+
+### The defect the rename exposed, and why the fix is not a string patch
+
+`abbreviateCalibre` decided the **printed sticker abbreviation** by matching the display label:
+
+```ts
+if (label === 'Konditirskiy') return 'KN'
+```
+
+So a purely cosmetic relabel in Sozlamalar would silently have changed what gets printed on
+physical pallet stickers — every new KN label would read "Konditerka" instead of "KN", with
+nothing in the app indicating it. Patching the string to accept both values would have left
+the same trap armed for the next relabel.
+
+**Fixed at the root: both matchers now key on `calibres.code`, read out of the barcode
+itself.** `barcode2` is `PLT-<serial>-<code>-<seq>` (`FinishedReceiptForm.nextBarcode2`, the
+sole mint point) and the serial contains a dash, so the code is the **second-to-last**
+dash-separated segment — not a fixed index. That is the strongest coupling available: the key
+is the value physically printed on the sticker, immutable once minted, and it cannot drift
+from what the sticker says. The label survives only as a fallback for codes that are neither
+numeric nor `KN` (today `RKN` / "Rezka KN"), so printed output is unchanged for all ten live
+calibres.
+
+**Java matcher changed too** (`P1PrinterPlugin.java`), APK exclusion lifted for this one
+function since a build is pending anyway.
+
+🚩 **The TS and Java abbreviators are hand-synced with nothing enforcing it, and this is the
+second time that pairing has required simultaneous edits** — the first was the CODE_128 → QR
+switch, where `stripBarcode2Prefix`/`drawAndCommit` had to move together. Both copies carry a
+"keep in sync" comment and that is the entire mechanism. A third divergence is a matter of
+time; the durable fix would be to pass the already-abbreviated string across the bridge so
+Java never re-derives it, which was out of scope here.
+
+### Verification
+
+`src/lib/barcodeLabel.test.ts` (new, 5 cases) pins the behaviour that touches physical
+inventory: `PLT-050826-001-KN-3` abbreviates to `KN` when the label is `Konditirskiy`,
+`Konditerka`, `Кондитерка` or empty; numeric codes give K1/K4/K8; `RKN` still falls back to
+"Rezka KN"; a malformed barcode still resolves via the label.
+
+Against live data after the rename: **166 of 166 pallets' barcode segment still matches their
+calibre's `code`, 22 still carry the literal `-KN-`, and zero barcode2 values contain any
+label text.** No sticker value moved.
+
+---
+
+## 2026-08-30 — Filter persistence across tab switches
+
+**Cause, and it is a single one.** Every role's tabs are react-router `<Route>` elements
+navigated by `NavLink` (`RoleTabs.tsx` / `App.tsx`), so switching tabs **unmounts** the route
+component. Filter state lived in plain `useState` inside those components, so it was destroyed
+on the way out and re-initialised from defaults on return. Not a refetching hook, not stale
+state — pure unmount. One cause meant one mechanism, not nine.
+
+**Nine screens affected, not the three reported:** `HisobotTab` (filters + column picker),
+`RahbarHome` (scope, preset, custom from/to, type multi-select), `OmborHisobotlar`,
+`YieldTab`, `StockOnHandTab`, `ClientReportTab`, `LaboratorTarixTab`, `QorovulHisobotlar`,
+`ClientHisobotTab`. All nine converted.
+
+**Mechanism: a context provider above the routes** (`src/lib/FilterState.tsx`), holding a
+ref'd `Map` that outlives any route unmount, with `usePersistentState(key, initial)` as a
+drop-in `useState` replacement — same signature, same lazy-initialiser support, so each screen
+changed by one line per piece of state. `useRef` not `useState` for the map, so writing a
+filter does not re-render the provider and every route beneath it. Values are held by
+reference, no serialization, so Hisobot's column-picker `Set` round-trips as itself. Falls
+back to plain component state when no provider is mounted.
+
+🔒 **No `localStorage` or `sessionStorage`** — chosen explicitly, per instruction. State dies
+on page reload, which is the intended scope: reload persistence is a larger separate ask
+nobody has made, and storage carries a real hazard, a date range saved days ago silently
+re-applying while the user reads stale results with no indication why.
+
+**Verified in a real browser**, not by reasoning: a temporary harness (deleted immediately
+after, per CLAUDE.md) mounted the provider in Chromium, applied a date range, a column `Set`
+and a multi-select, unmounted the screen entirely, and remounted it —
+
+```
+2. filters applied  {"text":"2026-08-01→2026-08-31","cols":"a,driver,plate","multi":"subxon,isfara"}
+3. switched away    Screen unmounted: true | Screen gone: true
+4. switched back    {"text":"2026-08-01→2026-08-31","cols":"a,driver,plate","multi":"subxon,isfara"}
+5. after reload     {"text":"default","cols":"a","multi":"NULL"}   (by design)
+```
+
+Zero page errors. The reload row is the designed behaviour, not a defect.
+
+⚠️ **Not verified in the real app.** This clone has no `.env` at all (only `.env.example`), so
+the app cannot bootstrap against Supabase — the login screen throws `Missing VITE_SUPABASE_URL`
+before React renders. Together with the still-missing `.env.test`, that means the nine screens
+were not driven end to end by a human or by Playwright; the mechanism was verified in
+isolation instead, and each screen's conversion is a one-line substitution checked by the
+compiler. Flagged rather than glossed.
+
+`FilterState.tsx` raises the same `react(only-export-components)` fast-refresh lint warning
+`AuthProvider.tsx` already does — a dev-only warning, same accepted pattern.

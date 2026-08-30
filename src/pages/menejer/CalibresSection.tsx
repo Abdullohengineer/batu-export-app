@@ -183,7 +183,7 @@ export function CalibresSection() {
         </div>
         <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <input type="checkbox" checked={newIsNumberless} onChange={(e) => setNewIsNumberless(e.target.checked)} />
-          Raqamsiz (Konditirskiy kabi)
+          Raqamsiz (Konditerka kabi)
         </label>
         <Button type="submit" variant="primary" size="md" disabled={busy}>
           Qo'shish

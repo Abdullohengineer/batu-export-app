@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -32,8 +33,8 @@ export function YieldTab() {
 
   const [ownerId, setOwnerId] = useState<string>('')
   const [typeId, setTypeId] = useState<string>('')
-  const [from, setFrom] = useState(initial.from)
-  const [to, setTo] = useState(initial.to)
+  const [from, setFrom] = usePersistentState('yield.from', initial.from)
+  const [to, setTo] = usePersistentState('yield.to', initial.to)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)

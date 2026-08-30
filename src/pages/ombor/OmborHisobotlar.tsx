@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistentState } from '../../lib/FilterState'
 import { HistoryView } from '../../components/HistoryView'
 import { defaultDateRange } from '../../lib/dateRange'
 import { useOwners } from '../../lib/useOwners'
@@ -13,7 +14,7 @@ import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 // expand reuses the Step 3 full-story view (IntakeDetailView) unchanged.
 export function OmborHisobotlar() {
   const initial = defaultDateRange()
-  const [filters, setFilters] = useState<IntakeHistoryFilters>({
+  const [filters, setFilters] = usePersistentState<IntakeHistoryFilters>('omborHisobotlar.filters', {
     from: initial.from,
     to: initial.to,
     typeId: '',

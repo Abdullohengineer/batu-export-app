@@ -44,10 +44,14 @@ export function ClientReportTab() {
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
 
-  const [ownerId, setOwnerId] = useState<string>('')
+  // Client + period + language are the whole filter bar here, so all four
+  // persist across a tab switch (§3.2.7 has no other browsable state). ownerId
+  // is owner-scoped and the store is cleared on sign-out (FilterState.tsx), so
+  // it cannot leak one user's client selection into the next session.
+  const [ownerId, setOwnerId] = usePersistentState('clientReport.ownerId', '')
   const [from, setFrom] = usePersistentState('clientReport.from', initial.from)
   const [to, setTo] = usePersistentState('clientReport.to', initial.to)
-  const [locale, setLocale] = useState<ReportLocale>('uz')
+  const [locale, setLocale] = usePersistentState<ReportLocale>('clientReport.locale', 'uz')
   const [detailOpen, setDetailOpen] = useState(false)
   const [rawDetailOpen, setRawDetailOpen] = useState(false)
   const [oldKnDetailOpen, setOldKnDetailOpen] = useState(false)

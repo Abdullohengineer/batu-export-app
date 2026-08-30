@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { supabase } from './supabase'
 
 // Filter persistence across tab switches (2026-08-30, see DECISIONS.md
 // "Filter persistence").
@@ -19,6 +20,16 @@ import { createContext, useCallback, useContext, useRef, useState, type Dispatch
 //
 // Values are held by reference in a ref'd Map — no serialization — so a Set
 // (Hisobot's column picker) or a Date round-trips as itself.
+//
+// 🔒 CLEARED ON SIGN-OUT. This provider is mounted inside <AuthProvider>, but
+// AuthProvider never unmounts on logout — it is the thing that holds the
+// session, and only flips its own state — so without an explicit clear the
+// map would survive a logout/login on the same page load and hand the next
+// user the previous user's filters. Harmless for a date range; not harmless
+// for an owner-scoped filter like Mijoz hisoboti's client select. Keyed on
+// the SIGNED_OUT event rather than on useAuth()'s profile, because `profile`
+// is deliberately null during every loading window (see AuthProvider) and
+// watching it would wipe filters on ordinary refetches.
 type Store = Map<string, unknown>
 
 const FilterStateContext = createContext<Store | null>(null)
@@ -28,6 +39,14 @@ export function FilterStateProvider({ children }: { children: ReactNode }) {
   // with it every route below it). Each consumer keeps its own useState mirror
   // and re-renders itself; the map is only the hand-off across unmounts.
   const store = useRef<Store>(new Map())
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') store.current.clear()
+    })
+    return () => data.subscription.unsubscribe()
+  }, [])
+
   return <FilterStateContext.Provider value={store.current}>{children}</FilterStateContext.Provider>
 }
 

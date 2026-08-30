@@ -6583,5 +6583,44 @@ count and then re-checks that no `from`/`join gate_weighings` reference survives
 passport's own display CTE. Nothing in those 2,000 lines was retyped by hand, so nothing in
 them can have drifted.
 
+**Applied to the live project** (asked first, per CLAUDE.md), then verified end to end
+there with `TEST-`-prefixed fixtures inside a transaction that was **rolled back** — so
+nothing was left behind at all, which is stricter than the void-on-cleanup rule this
+project's testing section requires. Confirmed afterwards: zero `TEST-` rows remain in
+`chiqim_requests`/`kirim_orders`/`finished_pallets`/`owners`, all 7 pre-existing CHIQIM
+requests carry `truck_type = 'regular'` by default, and `yield_rows` still totals 34,292 kg
+consumed / 32,860 kg output / 1,432 kg loss — byte-identical to before the migration, which
+is the check that the ten read-path rewrites changed no real number.
+
+On live, after the exact `ombor_finished_at` UPDATE that `OmborChiqimTab.tsx` issues, with
+one fura and one regular request in the same transaction:
+
+| | fura | regular |
+|---|---|---|
+| `status` | `olib_ketildi` | `kutilmoqda` |
+| `chiqim_departed_at` set | yes | no |
+| `chiqim_request_loaded_kg` | 400 kg | 200 kg |
+| in Qorovul's Faol window | no | yes |
+| Ombor undo still open | **no** | yes |
+
+`kirim_line_state.olib_ketilgan` = 400 kg (the fura only). The passport's dispatch payload
+carries `truckType: fura`, `loadedKg: 400`, a real `departedAt` and a null `gate.netKg`,
+while the regular truck's `departedAt` is still null because its gate has not weighed it.
+The client report's dispatch list contains the fura and not the regular — the single
+clearest proof of what this change fixes: before it, a fura's goods could be dispatched and
+never appear on the client's own statement.
+
+### One pre-existing drift found while verifying, flagged not fixed
+
+Comparing every touched object on live against the sandbox (where the committed migration
+files were replayed) showed 13 of 15 hashing identically and two differing:
+`get_client_report` and `get_serial_passport`. Both differences are **SQL comments only** —
+the repo's `0101` text carries a 4-line comment inside `client_pallet_departures` that the
+live function does not, and `0102`'s passport comment reads "see this section's header"
+in the file versus "see this migration's header" live. Re-hashing both with comment lines
+stripped matches exactly (446 and 396 code lines, identical md5). So the repo migration text
+and the live database had **already** drifted slightly, in comments, before this task; the
+code has always been the same. Not caused by this change and not silently corrected here.
+
 **No PR opened** (per standing instruction — Abdulloh reviews and opens it). Branch:
 `claude/total-loss-finalized-serials-5jeugz`.

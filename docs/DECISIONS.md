@@ -6772,3 +6772,184 @@ Qorovul's Window 1 for its Kirdi capture.
 
 **No PR opened** (per standing instruction — Abdulloh reviews and opens it). Branch:
 `claude/total-loss-finalized-serials-5jeugz`.
+
+---
+
+## 2026-08-30 — Rahbar dashboard corrections: Ledger B double-count, Basis B, live-stock bars
+
+### The double-count, and when it actually started
+
+`processed_output` joined `finished_pallets` with **no filter of any kind**, from the day
+it was written — `0068`, commit `0491e46`, **2026-08-12**. Unchanged from that commit until
+today. This is an 18-day-old defect in the original dashboard; it is **not** a consequence of
+recent work, and not of the 28 August dispatch.
+
+Reconstructed against real rows, using the cohort rule live at each date (`0068`'s
+`status='final'` gate) and respecting `voided_at`, so a pallet only double-counts once it has
+really been voided:
+
+| p_to | Ledger B reported | Should have been | Overstated |
+|---|---:|---:|---:|
+| 2026-08-18 | 3,340 | 3,340 | 0 |
+| 2026-08-19 | 3,340 | 3,340 | 0 |
+| **2026-08-20** | **15,820** | **7,910** | **7,910** |
+| 2026-08-25 | 16,840 | 8,930 | 7,910 |
+| 2026-08-27 | 27,020 | 19,110 | 7,910 |
+| **2026-08-28** | **49,940** | **25,480** | **24,460** |
+
+First appeared **2026-08-20** — the earliest `voided_at` in the table — at which point output
+was reported at **exactly twice reality**. It stepped to 24,460 kg on 08-28 with a second void
+batch of 16,550 kg. A first attempt at this reconstruction applied *today's* statuses to past
+dates and wrongly showed an overstatement on the 18th; corrected before reporting.
+
+### Each exclusion, justified individually against real rows
+
+| Exclusion | Rows | kg | Why absent from "what came out of Moyka" |
+|---|---:|---:|---|
+| `bekor_qilindi` | 41 | 24,460 | Void-and-remint: re-registered at the **same weight** under a new barcode, both rows present. The live row *is* the same physical product. Nothing is dropped — every kg removed is still counted via its replacement. All 41 sit on closed serials. This is the entire overstatement. |
+| `storage_loss` | **0** | **0** | See below — excluded, and probably wrong long-term. |
+| mint-consumed | 2 | 1,040 | `PLT-020826-034-04-1` (720 kg) / `-04-2` (320 kg), serial `020826-034`, origin `opening_stock`, minted into `240826-001`. Did not leave the building — re-minted and counted there. Both opening-stock, so the default `yangi` scope already excludes them by origin. |
+
+No exclusion drops material that physically existed and left the building.
+
+🚩 **`storage_loss` is excluded here and that is almost certainly the wrong long-term
+answer.** Decided knowingly: zero such rows exist, both ledgers agree, reasoning recorded.
+**Revisit before the first row exists, not after** — once one exists, changing this silently
+restates history.
+
+Why it is probably wrong: this project has already decided, explicitly, that storage loss is
+kept separate from processing loss *so it never corrupts yield* — see the old-stock close-out
+entry ("isolated from processing loss so yield figures stay clean"), whose verification
+proved it: `yield_rows`, `rahbar_monthly_trends` and `rahbar_client_ranking` were "queried
+before and after, byte-identical in every field". `yield_rows` achieves that by **keeping**
+`storage_loss` pallets in its output (post-`0102` it filters `bekor_qilindi` only). The
+pallet stays counted as production and the write-off is reported on its own line. That is the
+principle the eventual answer should follow — count it in production in **both** ledgers,
+surface the write-off separately.
+
+Concrete, testable consequence of the choice made here: **the moment the first `storage_loss`
+row exists, Ledger B will diverge from `yield_rows` by exactly the written-off amount, and
+this migration's own `yield_rows` cross-check will start failing.** Treat that failure as the
+reminder to revisit, not as a new bug.
+
+### Basis B for Tayyor kalibrli
+
+`processed_lines` gated on `wash_cycles.closed_at` falling inside the period (the brief said
+`status='final'`; `0101` replaced that with `closed_at` on 2026-08-29 — same intent, different
+column). That dropped every serial still open at period end: for August, 1 serial, **7,345 kg
+of input and 7,330 kg of output invisible** — precisely the slack
+`moykadaSnapshot.residualKg` had been reporting.
+
+### Before / after on live, all scopes (2026-08-01 → 08-31)
+
+| Figure | Before | After |
+|---|---:|---:|
+| `moyka.calibreKg` | 48,860 | **33,820** |
+| `moyka.konditirskiyKg` | 8,460 | **6,370** |
+| output total | 57,320 | **40,190** |
+| `moyka.processedKg` | 34,292 | **41,637** |
+| `moyka.lossKg` | **−23,028** | **1,447** |
+| `moyka.lossPct` | −67.2 % | **3.5 %** |
+| `moykadaSnapshot.residualKg` | 7,330 | **−15** |
+
+`eski` is 0 → 0 throughout (no output in period). Per calibre: K1 970→1,630 · K2 6,260→4,930 ·
+K4 35,600→23,570 · K6 4,740→2,980 · K8 1,290→710 · KN 8,460→6,370.
+
+**Identities, measured after the change:** Ledger B output − Ledger C `producedKg` = **0**
+(was 17,130 apart); `processedKg − calibreKg − konditirskiyKg − lossKg` = **0**. Both hold in
+every scope.
+
+⚠️ **The residual did not reach 0 as I predicted — it is −15 kg**, and the frontend renders it
+whenever nonzero. It is now a small structural artifact rather than a whole missing serial:
+`processed_lines` counts a serial's *whole* `sent_capped` while only the period's output is
+subtracted, so the 15 kg still inside Moyka for that one serial shows as slack. Reported
+rather than papered over; not fixed in this pass.
+
+### Cross-checks against independent sources (not the other half of the same function)
+
+- **`report_moyka_output_rows`** — Hisobot's own MOYKADAN view, no shared code with these
+  RPCs: August = **40,190 kg**, exactly the corrected Ledger B output.
+- **`yield_rows`** — loss 1,432 on 34,292→32,860 (closed serials only). Corrected Ledger B is
+  41,637→40,190 = 1,447. Reconciles exactly: **1,432 + 15 = 1,447**.
+- **`stock_on_hand_rows`** — the new `byCalibre` payload totals 17,580 (yangi) / 51,170 (eski)
+  / 68,750 (hammasi), matching the view directly and the surviving tiles.
+
+### Dashboard changes
+
+Removed: the Eski KN (havza) tile, the whole **Zaxira tarkibi** card (Silo + donut), and the
+whole **Kirim va chiqim** card. "Jami zaxira" → **"Jami yuvilgan va yuvilmagan mahsulot"**.
+The per-calibre bars now show a **live balance** from `stock_on_hand_rows` instead of the
+period's output — for August they showed K4 at 23,570 kg while only 960 kg was on hand.
+`byCalibre` carries `type_id` so the Turlar filter still narrows them; dropping the type
+dimension would have silently disabled that filter. `byType` left in the payload unused, per
+instruction. Dead components removed (`Silo`, `Donut`, `TrendChart`, the four `Ledger*` rows,
+`typeColor`, `LegendRow`, `TYPE_PALETTE`).
+
+🚩 **Scope note worth a second look: removing the "Kirim va chiqim" card also removed the
+three-ledger reconciliation table** (Ledger A raw, Moykada, Ledger B with its Yo'qotish row,
+Ledger C dispatched/closing) — the ledgers lived inside that card, not beside it. That was the
+literal instruction, and it is what was built, but it means the corrected loss figure no
+longer has a table of its own. It is preserved as a sentence under the stock bars ("Tanlangan
+davrda yuvishdan chiqqan … yo'qotish …"). If only the trend chart was meant to go, the ledger
+table can be restored on its own.
+
+### Old KN is no longer visible anywhere on Rahbar's dashboard — a recorded choice
+
+With its tile removed **and** the pool excluded from the relabelled headline, **81,915 kg of
+real client stock has no representation on this screen at all**. It is reachable only through
+Ombor qoldig'i and Hisobot. Excluding it from the total was the right call given the tile is
+gone — leaving it inside a number with nothing on screen accounting for it would be worse —
+but the combination is a deliberate decision by Abdulloh, not a side effect, and it reverses
+the reasoning that gave old KN its own tile a few weeks ago (v1.2x, so the pool would be
+*visible* precisely because it sits outside Ledger C). Recorded here so the reversal is
+findable if the pool is ever miscounted.
+
+**No PR opened.** Branch: `claude/total-loss-finalized-serials-5jeugz`.
+
+---
+
+## 2026-08-30 — Mixed time basis in as-of output figures (defect, NOT fixed)
+
+Logged separately from the fix above because it is a different defect with wider reach, it is
+**client-facing**, and it will resurface. Nothing here was changed.
+
+**The mechanism.** Every "output as of date D" subquery includes pallets by
+`received_date <= D` but excludes them by `voided_at <= D`. Two different clocks on the same
+row. A pallet received on the 18th and voided on the 20th therefore counts on the 19th and not
+on the 21st, so *cumulative* output as-of moves **backwards**: measured on live,
+**15,820 kg (19 Aug) → 7,910 kg (20 Aug)**. Re-running an August report today gives a
+different answer than running it on 19 August.
+
+To be precise about what is and isn't wrong: a stock *level* rising and falling over time is
+correct — material enters Moyka and is packed out, and every move in the live Moykada series
+(30,738 → 24,278 → 32,225 → 16,242 → 23,330) maps to a real send or receipt. What is wrong is
+that a **historical figure mutates**. Two lesser issues sit alongside it: a serial's whole
+residual drops to 0 on its `closed_at` date (a bookkeeping event with no physical
+counterpart), and the per-line `greatest(0, …)` floor masks the double-count — on 19 Aug it
+concealed 7,448 kg of negative per-line balances.
+
+**Reach.**
+
+- `rahbar_dashboard_ledger` lines 28–29 (`output_before_from_kg` / `output_as_of_to_kg`) —
+  unfiltered, feed the raw ledger's opening/closing and `moykadaSnapshot`.
+- **`get_client_report` line 20 — the identical unfiltered subquery, feeding `raw.moykadaKg`,
+  and it is client-facing.** Measured for Global Export: understated by **462 kg** at
+  p_to 2026-08-22, **482 kg** at 08-25, **865 kg** at 08-28. Zero today *only* because every
+  affected serial has since closed — the error returns the moment a serial with voided pallets
+  is open at a period end.
+- Already correct, for contrast: `pallet_base`, `client_pallet_base`,
+  `rahbar_stock_snapshot`'s `moyka_lines`, and `kirim_line_state`.
+
+`get_client_report` was explicitly out of bounds for the pass that found this, which is why it
+is recorded rather than repaired.
+
+### Two figures still unexplained
+
+Deliberately left unexplained rather than given a plausible story:
+
+- **90,979** — reported as the donut's centre. Today that donut sums 68,369.4 kg (`yangi`);
+  the nearest current figure is the old "Jami zaxira" tile at 91,699.4. Does not reproduce.
+- **33,820** — reported as Moykada. Moykada is 23,330 today and stays 23,330 under every
+  formula variant tested. 33,820 is *exactly* what `moyka.calibreKg` becomes **after** the fix
+  above. How that value appeared on a screen before the fix is unknown; the coincidence is
+  recorded as a fact, not resolved.

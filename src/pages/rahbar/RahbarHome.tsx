@@ -69,13 +69,6 @@ const C = {
   loss: '#334155', // slate-700 -- lost in washing, not departed: black, not red
   lossBg: '#e2e8f0',
 }
-const TYPE_PALETTE = ['#2f6d86', '#5aa0a8', '#7c86b8', '#c98a4b', '#9b6b9e', '#5f8f6f', '#b4886c']
-
-function typeColor(i: number): string {
-  return TYPE_PALETTE[i % TYPE_PALETTE.length]
-}
-
-// ---- small presentational helpers ------------------------------------
 
 function Tile({ label, value, unit, caption, tone }: { label: string; value: number; unit?: string; caption: string; tone: 'raw' | 'moyka' | 'calibre' | 'kn' | 'oldKn' | 'neutral' }) {
   const bg = tone === 'raw' ? C.rawBg : tone === 'moyka' ? C.moykaBg : tone === 'calibre' ? C.calibreBg : tone === 'kn' ? C.knBg : tone === 'oldKn' ? C.oldKnBg : '#f4efe6'
@@ -96,50 +89,6 @@ function Tile({ label, value, unit, caption, tone }: { label: string; value: num
   )
 }
 
-function LedgerRow({ label, value, sign, tone }: { label: string; value: string; sign?: '+' | '−' | '·'; tone?: 'departed' | 'loss' }) {
-  const color = tone === 'departed' ? 'text-red-600 dark:text-red-400' : tone === 'loss' ? 'text-slate-700 dark:text-slate-300' : 'text-slate-700 dark:text-slate-300'
-  return (
-    <div className={`flex items-center justify-between border-b border-slate-100 py-2.5 text-sm dark:border-slate-800 ${color}`}>
-      <span>
-        {sign && <span className="mr-1.5 inline-block w-3 font-bold">{sign}</span>}
-        {label}
-      </span>
-      <span className="font-semibold tabular-nums">{value}</span>
-    </div>
-  )
-}
-
-function LedgerTotal({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between border-t-2 border-slate-900 pt-3 text-base font-bold text-slate-900 dark:border-slate-100 dark:text-slate-100">
-      <span>{label}</span>
-      <span className="text-lg tabular-nums">{value}</span>
-    </div>
-  )
-}
-
-// A checksum row (kalibrli + Konditirskiy + yo'qotish = Yuvib tugallangan) --
-// deliberately lighter than LedgerTotal, which is reserved for the ledger's
-// actual bottom-line balance (Xom qoldiq / Tayyor qoldiq). Two full-weight
-// totals stacked in the same block would both read as "the" total.
-function LedgerSubtotal({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="mt-0.5 flex items-center justify-between border-t border-slate-300 pt-2.5 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:text-slate-100">
-      <span>{label}</span>
-      <span className="tabular-nums">{value}</span>
-    </div>
-  )
-}
-
-function ResidualWarning({ label, residualKg }: { label: string; residualKg: number }) {
-  if (residualKg === 0) return null
-  return (
-    <div className="my-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-400">
-      ⚠ {label}: {fmt(residualKg)} kg — diagnostik farq, hisob-kitob formulasi o'zgarmagan (qoldiqdan ko'p yuborilgan/jo'natilgan holatda paydo bo'ladi)
-    </div>
-  )
-}
-
 function Bar({ label, value, max, color, pctOfLabel }: { label: string; value: number; max: number; color: string; pctOfLabel?: string }) {
   const widthPct = max > 0 ? Math.max((value / max) * 100, value > 0 ? 1.5 : 0) : 0
   return (
@@ -155,168 +104,6 @@ function Bar({ label, value, max, color, pctOfLabel }: { label: string; value: n
     </div>
   )
 }
-
-function Silo({ rawKg, moykaKg, calibreKg, knKg, oldKnKg }: { rawKg: number; moykaKg: number; calibreKg: number; knKg: number; oldKnKg: number }) {
-  const reconcilable = rawKg + moykaKg + calibreKg + knKg
-  const total = reconcilable + oldKnKg
-  if (total <= 0) return <p className="text-sm text-slate-400">Ma'lumot yo'q.</p>
-  const seg = (v: number) => (v / total) * 100
-  return (
-    <div>
-      <div className="mb-4 flex h-14 gap-1 overflow-hidden rounded-xl">
-        {rawKg > 0 && (
-          <div className="flex items-center justify-center text-xs font-semibold text-white" style={{ width: `${seg(rawKg)}%`, background: C.raw }}>
-            {seg(rawKg) > 8 ? fmt(rawKg) : ''}
-          </div>
-        )}
-        {moykaKg > 0 && (
-          <div className="flex items-center justify-center text-xs font-semibold text-white" style={{ width: `${seg(moykaKg)}%`, background: C.moyka }}>
-            {seg(moykaKg) > 8 ? fmt(moykaKg) : ''}
-          </div>
-        )}
-        {calibreKg > 0 && (
-          <div className="flex items-center justify-center text-xs font-semibold text-white" style={{ width: `${seg(calibreKg)}%`, background: C.calibre }}>
-            {seg(calibreKg) > 8 ? fmt(calibreKg) : ''}
-          </div>
-        )}
-        {knKg > 0 && (
-          <div className="flex items-center justify-center text-xs font-semibold text-white" style={{ width: `${seg(knKg)}%`, background: C.kn }}>
-            {seg(knKg) > 8 ? fmt(knKg) : ''}
-          </div>
-        )}
-        {oldKnKg > 0 && (
-          <div
-            className="ml-1 flex items-center justify-center rounded-md border-2 border-dashed text-xs font-semibold"
-            style={{ width: `${seg(oldKnKg)}%`, background: C.oldKnBg, borderColor: C.oldKn, color: C.oldKn }}
-          >
-            {seg(oldKnKg) > 8 ? fmt(oldKnKg) : ''}
-          </div>
-        )}
-      </div>
-      <div className="space-y-2 text-sm">
-        <LegendRow color={C.raw} name="Xom — yuvilmagan" kg={rawKg} pct={seg(rawKg)} />
-        <LegendRow color={C.moyka} name="Moykada — yuvilmoqda" kg={moykaKg} pct={seg(moykaKg)} />
-        <LegendRow color={C.calibre} name="Tayyor — kalibrli" kg={calibreKg} pct={seg(calibreKg)} />
-        <LegendRow color={C.kn} name="Konditirskiy" kg={knKg} pct={seg(knKg)} />
-        <LegendRow color={C.oldKn} name="Eski KN (havza) — pool stock, alohida" kg={oldKnKg} pct={seg(oldKnKg)} dashed />
-      </div>
-      <p className="mt-3 text-xs text-slate-400">
-        Zavoddan chiqqan mahsulot — vozvrat va olib ketilgan tayyor — bu raqamlardan chegirilgan. Eski KN havzasi Ledger C bilan solishtirilmaydi (finished_pallets asosida emas).
-      </p>
-    </div>
-  )
-}
-
-function LegendRow({ color, name, kg, pct, dashed }: { color: string; name: string; kg: number; pct: number; dashed?: boolean }) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <span className="h-2.5 w-2.5 flex-none rounded-sm" style={{ background: dashed ? 'transparent' : color, border: dashed ? `2px dashed ${color}` : undefined }} />
-      <span className="flex-1 text-slate-500 dark:text-slate-400">{name}</span>
-      <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{fmt(kg)} kg</span>
-      <span className="w-10 text-right text-xs text-slate-400">{Math.round(pct)}%</span>
-    </div>
-  )
-}
-
-function Donut({ byType, typeName }: { byType: { typeId: string; kg: number }[]; typeName: (id: string) => string }) {
-  const total = byType.reduce((s, t) => s + t.kg, 0)
-  if (total <= 0) return <p className="text-sm text-slate-400">Ma'lumot yo'q.</p>
-  const r = 72
-  const circumference = 2 * Math.PI * r
-  let offset = 0
-  const arcs = byType.map((t, i) => {
-    const frac = t.kg / total
-    const dash = frac * circumference
-    const arc = (
-      <circle
-        key={t.typeId}
-        cx="120"
-        cy="100"
-        r={r}
-        fill="none"
-        stroke={typeColor(i)}
-        strokeWidth="26"
-        strokeDasharray={`${dash} ${circumference - dash}`}
-        strokeDashoffset={-offset}
-        transform="rotate(-90 120 100)"
-      />
-    )
-    offset += dash
-    return arc
-  })
-  return (
-    <div>
-      <svg viewBox="0 0 240 200" width="100%" style={{ maxWidth: 250, display: 'block', margin: '0 auto 4px' }}>
-        <circle cx="120" cy="100" r={r} fill="none" stroke="#f2efea" strokeWidth="26" />
-        {arcs}
-        <text x="120" y="96" textAnchor="middle" fontFamily="inherit" fontSize="24" fontWeight="800" fill="#1f1c18">
-          {fmt(total)}
-        </text>
-        <text x="120" y="116" textAnchor="middle" fontFamily="inherit" fontSize="11.5" fill="#a39a8d">
-          kg · {byType.length} tur
-        </text>
-      </svg>
-      <div className="space-y-2 text-sm">
-        {byType.map((t, i) => (
-          <LegendRow key={t.typeId} color={typeColor(i)} name={typeName(t.typeId)} kg={t.kg} pct={(t.kg / total) * 100} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function TrendChart({ chart }: { chart: { bucketStart: string; kirdiKg: number; chiqganKg: number; vozvratKg: number }[] }) {
-  if (chart.length === 0) return <p className="text-sm text-slate-400">Ma'lumot yo'q.</p>
-  const W = 470
-  const H = 250
-  const padL = 46
-  const padB = 30
-  const padT = 14
-  const innerW = W - padL - 16
-  const innerH = H - padB - padT
-  const max = Math.max(1, ...chart.map((c) => Math.max(c.kirdiKg, c.chiqganKg, c.vozvratKg)))
-  const x = (i: number) => padL + (chart.length === 1 ? innerW / 2 : (i / (chart.length - 1)) * innerW)
-  const y = (v: number) => padT + innerH - (v / max) * innerH
-  const line = (key: 'kirdiKg' | 'chiqganKg' | 'vozvratKg') => chart.map((c, i) => `${x(i)},${y(c[key])}`).join(' ')
-  const areaPath = `M${chart.map((c, i) => `${x(i)},${y(c.kirdiKg)}`).join(' L')} L${x(chart.length - 1)},${y(0)} L${x(0)},${y(0)} Z`
-  const labelEvery = Math.max(1, Math.ceil(chart.length / 6))
-  return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%">
-        <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="#e9e4dd" />
-        <line x1={padL} y1={H - padB} x2={W - 12} y2={H - padB} stroke="#e9e4dd" />
-        <g fontSize="10.5" fill="#a39a8d">
-          <text x={padL - 8} y={padT + 4} textAnchor="end">
-            {fmt(max)}
-          </text>
-          <text x={padL - 8} y={H - padB + 4} textAnchor="end">
-            0
-          </text>
-        </g>
-        <path d={areaPath} fill={C.raw} opacity="0.12" />
-        <polyline points={line('kirdiKg')} fill="none" stroke={C.raw} strokeWidth="2.6" strokeLinejoin="round" />
-        <polyline points={line('chiqganKg')} fill="none" stroke={C.calibre} strokeWidth="2.6" strokeLinejoin="round" />
-        <polyline points={line('vozvratKg')} fill="none" stroke={C.departed} strokeWidth="2.6" strokeDasharray="5 4" strokeLinejoin="round" />
-        <g fontSize="10" fill="#a39a8d" textAnchor="middle">
-          {chart.map((c, i) =>
-            i % labelEvery === 0 || i === chart.length - 1 ? (
-              <text key={c.bucketStart} x={x(i)} y={H - 8}>
-                {c.bucketStart.slice(8, 10)}.{c.bucketStart.slice(5, 7)}
-              </text>
-            ) : null,
-          )}
-        </g>
-      </svg>
-      <div className="mt-1 space-y-2 text-sm">
-        <LegendRow color={C.raw} name="Zavodga kirgan" kg={chart.reduce((s, c) => s + c.kirdiKg, 0)} pct={0} />
-        <LegendRow color={C.calibre} name="Moykaga yuborilgan" kg={chart.reduce((s, c) => s + c.chiqganKg, 0)} pct={0} />
-        <LegendRow color={C.departed} name="Vozvrat" kg={chart.reduce((s, c) => s + c.vozvratKg, 0)} pct={0} />
-      </div>
-    </div>
-  )
-}
-
-// ---- page ---------------------------------------------------------------
 
 export function RahbarHome() {
   const [scope, setScope] = useState<ZaxiraScope>('yangi')
@@ -338,9 +125,6 @@ export function RahbarHome() {
   const { snapshot, loading: snapLoading, error: snapError } = useRahbarStockSnapshot(scope)
   const { ledger, loading: ledgerLoading, error: ledgerError } = useRahbarDashboardLedger(from, to, scope)
 
-  function typeName(id: string): string {
-    return productTypes.find((t) => t.id === id)?.name ?? id
-  }
   function calibreLabel(id: string): string {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
@@ -363,14 +147,26 @@ export function RahbarHome() {
   const dispatchedKalibrliPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => !isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
   const dispatchedKnPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
 
-  const processedByCalibre = ledger ? regroupByCalibre(ledger.byCalibreType.processed).filter((r) => !isKn(r.calibreId)) : []
-  const processedKn = ledger ? regroupByCalibre(ledger.byCalibreType.processed).filter((r) => isKn(r.calibreId)) : []
   const dispatchedByCalibre = ledger ? regroupByCalibre(ledger.byCalibreType.dispatched).filter((r) => !isKn(r.calibreId)) : []
   const dispatchedKnRows = ledger ? regroupByCalibre(ledger.byCalibreType.dispatched).filter((r) => isKn(r.calibreId)) : []
-  const processedMax = Math.max(1, ...processedByCalibre.map((r) => r.kg), ...processedKn.map((r) => r.kg))
+  // 2026-08-30: the per-calibre bars are a LIVE BALANCE, not a period flow.
+  // They plotted the period's output under a heading a reader takes for stock:
+  // for August that read K4 = 23,570 kg while only 960 kg was on hand, the rest
+  // dispatched. Now off stock_on_hand_rows via rahbar_stock_snapshot -- the same
+  // view Ombor qoldig'i reads, so the two screens cannot disagree. regroupByCalibre
+  // is reused unchanged, which keeps the Turlar filter working on these bars.
+  const stockByCalibre = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => !isKn(r.calibreId)) : []
+  const stockKn = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => isKn(r.calibreId)) : []
+  const stockMax = Math.max(1, ...stockByCalibre.map((r) => r.kg), ...stockKn.map((r) => r.kg))
+  const stockTotal = [...stockByCalibre, ...stockKn].reduce((sum, r) => sum + r.kg, 0)
   const dispatchedMax = Math.max(1, ...dispatchedByCalibre.map((r) => r.kg), ...dispatchedKnRows.map((r) => r.kg))
 
-  const grandTotal = snapshot ? snapshot.rawKg + snapshot.moykadaKg + snapshot.finishedCalibredKg + snapshot.konditirskiyKg + snapshot.oldKnKg : 0
+  // 2026-08-30: oldKnKg deliberately EXCLUDED from the headline. Its tile was
+  // removed in the same pass, so leaving it in would put 81,915 kg of real
+  // client stock inside a number with nothing on screen accounting for it.
+  // A recorded choice, not a side effect -- see DECISIONS.md "Rahbar dashboard
+  // corrections". Old KN is now reachable only via Ombor qoldig'i and Hisobot.
+  const grandTotal = snapshot ? snapshot.rawKg + snapshot.moykadaKg + snapshot.finishedCalibredKg + snapshot.konditirskiyKg : 0
 
   return (
     <div className="space-y-4">
@@ -426,8 +222,8 @@ export function RahbarHome() {
       {snapLoading || !snapshot ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-          <Tile label="Jami zaxira" value={grandTotal} unit="kg" caption="Hozirgi holat — omborda bor, barcha turkum" tone="neutral" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <Tile label="Jami yuvilgan va yuvilmagan mahsulot" value={grandTotal} unit="kg" caption="Hozirgi holat — xom, moykada va tayyor" tone="neutral" />
           <Tile label="Xom · yuvilmagan" value={snapshot.rawKg} unit="kg" caption="Hozirgi holat — yuvishga tayyor" tone="raw" />
           <Tile label="Moykada" value={snapshot.moykadaKg} unit="kg" caption="Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan" tone="moyka" />
           <Tile
@@ -444,125 +240,15 @@ export function RahbarHome() {
             caption={ledgerLoading ? 'Hozirgi qoldiq' : `Hozirgi qoldiq · bu davrda ${fmt(dispatchedKnPeriod)} kg olib ketilgan`}
             tone="kn"
           />
-          <Tile label="Eski KN (havza)" value={snapshot.oldKnKg} unit="kg" caption="Hozirgi holat — havza zaxirasi, Ledger C'ga kirmaydi" tone="oldKn" />
         </div>
       )}
-
-      {/* Zaxira tarkibi */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-4">
-          <SectionHeading>Zaxira tarkibi</SectionHeading>
-          <p className="text-xs text-slate-400">Hozir omborda nima bor — olib ketilgani chegirilgan</p>
-        </div>
-        {snapLoading || !snapshot ? (
-          <p className="text-sm text-slate-400">Yuklanmoqda…</p>
-        ) : (
-          <div className="grid gap-8 md:grid-cols-2">
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Holat bo'yicha</p>
-              <Silo rawKg={snapshot.rawKg} moykaKg={snapshot.moykadaKg} calibreKg={snapshot.finishedCalibredKg} knKg={snapshot.konditirskiyKg} oldKnKg={snapshot.oldKnKg} />
-            </div>
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Tur bo'yicha</p>
-              <Donut byType={snapshot.byType} typeName={typeName} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Kirim va chiqim */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-4">
-          <SectionHeading>Kirim va chiqim</SectionHeading>
-          <p className="text-xs text-slate-400">
-            {from} — {to} · qizil rang — zavoddan chiqqan
-          </p>
-        </div>
-        {ledgerLoading || !ledger ? (
-          <p className="text-sm text-slate-400">Yuklanmoqda…</p>
-        ) : (
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div>
-              {/* Ledger A -- raw, send-basis */}
-              <div>
-                <LedgerRow label="Zavodga kirdi" value={`${fmt(ledger.raw.receivedKg)} kg`} sign="+" />
-                <LedgerRow label="Vozvrat — xom qaytdi" value={`${fmt(ledger.raw.dispatchedKg)} kg`} sign="−" tone="departed" />
-                <LedgerRow label="Moykaga yuborilgan" value={`${fmt(ledger.raw.sentToMoykaKg)} kg`} sign="·" />
-                {ledger.raw.storageLossKg !== 0 && <LedgerRow label="Saqlashda yo'qolgan (davrda)" value={`${fmt(ledger.raw.storageLossKg)} kg`} sign="−" />}
-                <div className="pt-3">
-                  <LedgerTotal label="Xom qoldiq" value={`${fmt(ledger.raw.closingKg)} kg`} />
-                </div>
-                <ResidualWarning label="Xom balans farqi" residualKg={ledger.raw.residualKg} />
-              </div>
-
-              {/* Moykada -- point-in-time, sits between Ledger A and B */}
-              <div className="my-5 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3.5 dark:border-slate-700 dark:bg-slate-800/50">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Moykada — nuqtadagi holat, davr oqimi emas</p>
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-slate-500 dark:text-slate-400">Davr boshida ({from})</span>
-                  <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{fmt(ledger.moykadaSnapshot.openingKg)} kg</span>
-                </div>
-                <div className="mt-1 flex items-center justify-between text-sm">
-                  <span className="text-slate-500 dark:text-slate-400">Hozir ({ledger.moykadaSnapshot.asOfDate})</span>
-                  <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{fmt(ledger.moykadaSnapshot.closingKg)} kg</span>
-                </div>
-                <p className="mt-2 text-xs text-slate-400">
-                  "Moykaga yuborilgan" (yuborish sanasi) bilan "Yuvib tugallangan" (tugallanish sanasi) o'rtasidagi farqni tushuntiradi — bir xil kg emas, chunki bu ikkisi turli sanaga bog'liq.
-                </p>
-                <ResidualWarning label="Moykada balans farqi" residualKg={ledger.moykadaSnapshot.residualKg} />
-              </div>
-
-              {/* Ledger B -- finished, completion-basis. Kalibrli and
-                  Konditirskiy are PEER rows, flush, never one nested under
-                  the other -- both sum, with yo'qotish, exactly to "Yuvib
-                  tugallangan" below them (standing project rule; matches
-                  the peer treatment the bars section already used). */}
-              <div>
-                <LedgerRow label="Kalibrli" value={`${fmt(ledger.moyka.calibreKg)} kg`} />
-                <LedgerRow label="Konditirskiy" value={`${fmt(ledger.moyka.konditirskiyKg)} kg`} />
-                <LedgerRow label="Yo'qotish" value={`${formatLossKg(ledger.moyka.lossKg)} · ${formatLossPct(ledger.moyka.lossPct)}`} sign="−" tone="loss" />
-                <LedgerSubtotal label="Yuvib tugallangan" value={`${fmt(ledger.moyka.processedKg)} kg`} />
-                <div className="mt-3">
-                  <LedgerRow label="Jami olib ketilgan" value={`${fmt(ledger.finished.dispatchedKg)} kg`} sign="−" tone="departed" />
-                </div>
-                <div className="pt-3">
-                  <LedgerTotal label="Tayyor qoldiq" value={`${fmt(ledger.finished.closingKg)} kg`} />
-                </div>
-              </div>
-
-              {/* Grand total */}
-              {snapshot && (
-                <div className="mt-6 rounded-xl border-2 border-slate-900 p-4 dark:border-slate-100">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Jami zaxira</div>
-                      <div className="mt-0.5 text-xs text-slate-400">
-                        Xom {fmt(snapshot.rawKg)} · moykada {fmt(snapshot.moykadaKg)} · kalibrli {fmt(snapshot.finishedCalibredKg)} · KN {fmt(snapshot.konditirskiyKg)} · Eski KN havza {fmt(snapshot.oldKnKg)}
-                      </div>
-                    </div>
-                    <div className="text-3xl font-extrabold tabular-nums text-slate-900 dark:text-slate-100">
-                      {fmt(grandTotal)}
-                      <span className="ml-1 text-base font-semibold opacity-55">kg</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <p className="mt-3 text-xs text-slate-400">Vozvrat — mijoz yuvdirmasdan qaytarib olgan xom mahsulot. Yo'qotish yuvish jarayonida yo'qolgan qism, zavoddan chiqmagan.</p>
-            </div>
-
-            <div>
-              <TrendChart chart={ledger.chart} />
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Yuvib tugallangan mahsulot */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <SectionHeading>Yuvib tugallangan mahsulot</SectionHeading>
-            <p className="text-xs text-slate-400">{ledger ? `${fmt(ledger.raw.sentToMoykaKg)} kg moykaga yuborilgandan tugallangan natija` : ''}</p>
+            <SectionHeading>Omborda hozir — kalibr bo'yicha</SectionHeading>
+            <p className="text-xs text-slate-400">Jonli qoldiq · yuqoridagi davr tanlovi bu qatorlarga ta'sir qilmaydi</p>
           </div>
           <details className="relative">
             <summary className="cursor-pointer list-none rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-300">
@@ -603,18 +289,19 @@ export function RahbarHome() {
         ) : (
           <>
             <div className="space-y-2.5">
-              {processedByCalibre.map((r) => (
-                <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={processedMax} color={C.calibre} pctOfLabel={ledger.moyka.processedKg > 0 ? `${Math.round((r.kg / ledger.moyka.processedKg) * 100)}%` : undefined} />
+              {stockByCalibre.map((r) => (
+                <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={stockMax} color={C.calibre} pctOfLabel={stockTotal > 0 ? `${Math.round((r.kg / stockTotal) * 100)}%` : undefined} />
               ))}
-              {processedByCalibre.length === 0 && <p className="text-sm text-slate-400">Bu davrda tugallangan natija yo'q.</p>}
-              <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-              {processedKn.map((r) => (
-                <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={processedMax} color={C.kn} pctOfLabel={ledger.moyka.processedKg > 0 ? `${Math.round((r.kg / ledger.moyka.processedKg) * 100)}%` : undefined} />
+              {stockByCalibre.length === 0 && <p className="text-sm text-slate-400">Omborda kalibrlangan mahsulot yo'q.</p>}
+              {stockKn.length > 0 && <div className="my-1 border-t border-slate-100 dark:border-slate-800" />}
+              {stockKn.map((r) => (
+                <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={stockMax} color={C.kn} pctOfLabel={stockTotal > 0 ? `${Math.round((r.kg / stockTotal) * 100)}%` : undefined} />
               ))}
-              <Bar label="Yo'qotish" value={Math.max(0, ledger.moyka.lossKg)} max={processedMax} color={C.loss} pctOfLabel={formatLossPct(ledger.moyka.lossPct)} />
             </div>
             <p className="mt-3 text-xs text-slate-400">
-              Turlar tugmasi orqali bir yoki bir nechta mahsulot turini tanlash mumkin — hech narsa tanlanmasa hammasi ko'rsatiladi. Konditirskiy kalibrli qatorlarga qo'shilmagan, alohida qator.
+              Hozir omborda <strong className="text-slate-700 dark:text-slate-300">{fmt(stockTotal)} kg</strong> tayyor mahsulot — olib ketilgani chegirilgan. Bu qatorlar{' '}
+              <strong className="text-slate-700 dark:text-slate-300">jonli qoldiq</strong>, davr bo'yicha ishlab chiqarish emas. Foizlar — jami qoldiqdan ulush. Konditirskiy alohida qator.
+              {ledger && ` Tanlangan davrda yuvishdan chiqqan: ${fmt(ledger.moyka.calibreKg + ledger.moyka.konditirskiyKg)} kg · yo'qotish ${formatLossKg(ledger.moyka.lossKg)} (${formatLossPct(ledger.moyka.lossPct)}).`}
             </p>
 
             <div className="my-6 h-px bg-slate-200 dark:bg-slate-800" />

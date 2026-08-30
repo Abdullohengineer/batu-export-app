@@ -5,17 +5,32 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useChiqimTrips, type ChiqimTrip } from '../../lib/useChiqimTrips'
 import { GateStageForm, type GateStageValues } from './GateStageForm'
+import { FuraPhotoForm } from './FuraPhotoForm'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { FuraBadge } from '../../components/ui/FuraBadge'
+import { GatePhoto } from '../../components/GatePhoto'
 import { formatDate } from '../../lib/formatDate'
 
 async function uploadGatePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
   const { error } = await supabase.storage.from('gate-photos').upload(path, file)
+  if (error) throw error
+  return path
+}
+
+// Fura photos live in their own bucket, and — unlike every other photo in
+// this app, which is a flat `<uuid>.jpg` — the path is prefixed with the
+// request id, so a trip's two captures sit together in the storage browser.
+// See DECISIONS.md "Fura CHIQIM gate photos".
+const FURA_BUCKET = 'chiqim-fura-photos'
+
+async function uploadFuraPhoto(requestId: string, kind: 'kirdi' | 'chiqdi', file: File) {
+  const path = `${requestId}/${kind}-${crypto.randomUUID()}.jpg`
+  const { error } = await supabase.storage.from(FURA_BUCKET).upload(path, file)
   if (error) throw error
   return path
 }
@@ -49,7 +64,7 @@ export function QorovulChiqimTab() {
   const { owners } = useOwners(true)
   const { trips, loading, refresh } = useChiqimTrips()
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
-  const [activeStage, setActiveStage] = useState<1 | 2 | null>(null)
+  const [activeStage, setActiveStage] = useState<1 | 2 | 'kirdi' | 'chiqdi' | null>(null)
 
   function typeName(typeId: string) {
     return productTypes.find((t) => t.id === typeId)?.name ?? typeId
@@ -123,6 +138,24 @@ export function QorovulChiqimTab() {
     refresh()
   }
 
+  // Fura capture. Writes ONE append-only row; nothing else moves. It does
+  // not touch chiqim_requests, does not create a gate_weighings row, and
+  // does not affect chiqim_departed_at — a fura's departure is still Ombor's
+  // finish click alone (0104). Qorovul's record and Ombor's flow are
+  // physically parallel and neither gates the other.
+  async function handleFuraPhoto(trip: ChiqimTrip, kind: 'kirdi' | 'chiqdi', photo: File) {
+    const path = await uploadFuraPhoto(trip.request.id, kind, photo)
+    const { error } = await supabase.from('chiqim_fura_photos').insert({
+      request_id: trip.request.id,
+      kind,
+      photo_url: path,
+      uploaded_by: profile?.id,
+    })
+    if (error) throw error
+    closeForm()
+    refresh()
+  }
+
   if (loading) return null
 
   // Fura (2026-08-30, see DECISIONS.md "CHIQIM truck type: Fura"): a fura
@@ -136,18 +169,41 @@ export function QorovulChiqimTab() {
   // flips a fura's status at exactly that point, so the courtesy record
   // costs no extra condition here.
   const isGateWeighed = (t: ChiqimTrip) => t.request.truck_type !== 'fura'
+
+  // Fura is BACK in Window 1 (2026-08-30, photo-only — 0104 had excluded it
+  // outright). Its two stages mirror the weighed flow's shape exactly:
+  // Kirdi at entry, Chiqdi at exit, each closed by its own photo.
+  //
+  // 🔒 Fura membership is driven by the PHOTOS, never by `status`. Using
+  // status here would be a real bug, not a style choice: Ombor's finish
+  // click flips a fura to 'olib_ketildi' (0104's completion trigger), so a
+  // status-based window would yank the row out of Qorovul's queue the
+  // moment Ombor finished loading — taking the Chiqdi affordance with it,
+  // before the guard had ever photographed the nakladnoy. The two flows are
+  // physically parallel, so Qorovul's queue tracks Qorovul's own evidence.
+  const furaAwaitingKirdi = trips.filter((t) => !isGateWeighed(t) && !t.kirdiPhoto)
+  const furaAwaitingChiqdi = trips.filter((t) => !isGateWeighed(t) && t.kirdiPhoto && !t.chiqdiPhoto)
+
   const notStarted = trips.filter((t) => isGateWeighed(t) && t.request.status === 'kutilmoqda' && !t.weighing)
   const inProgress = trips.filter(
     (t) => isGateWeighed(t) && t.request.status === 'kutilmoqda' && t.weighing && !t.weighing.completed_at,
   )
-  const completed = trips.filter((t) => t.request.status !== 'kutilmoqda')
-  const activeWindow = [...notStarted, ...inProgress]
+  // A fura leaves the active view once BOTH captures exist — again photo-
+  // driven, not status-driven, for the same reason.
+  const completed = trips.filter((t) =>
+    isGateWeighed(t) ? t.request.status !== 'kutilmoqda' : Boolean(t.kirdiPhoto && t.chiqdiPhoto),
+  )
+  const activeWindow = [...notStarted, ...furaAwaitingKirdi, ...inProgress, ...furaAwaitingChiqdi]
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-3 gap-3">
-        <Stat value={notStarted.length} label="Kutilmoqda" />
-        <Stat value={inProgress.length} label="Yuklanmoqda" tone={inProgress.length > 0 ? 'problem' : 'neutral'} />
+        <Stat value={notStarted.length + furaAwaitingKirdi.length} label="Kutilmoqda" />
+        <Stat
+          value={inProgress.length + furaAwaitingChiqdi.length}
+          label="Yuklanmoqda"
+          tone={inProgress.length + furaAwaitingChiqdi.length > 0 ? 'problem' : 'neutral'}
+        />
         <Stat value={completed.length} label="Yakunlandi" tone="ok" />
       </div>
 
@@ -156,16 +212,27 @@ export function QorovulChiqimTab() {
         <div className="mt-2 space-y-2">
           {activeWindow.length === 0 && <p className="text-sm text-slate-400">Faol reys yo'q.</p>}
           {activeWindow.map((trip) => {
-            const isRed = Boolean(trip.weighing && !trip.weighing.completed_at)
+            // A fura's "red"/second-stage state is having its entry photo
+            // but not its exit one — the same two-stage shape the weighed
+            // flow has, with photos in place of weights.
+            const isFura = !isGateWeighed(trip)
+            const isRed = isFura
+              ? Boolean(trip.kirdiPhoto && !trip.chiqdiPhoto)
+              : Boolean(trip.weighing && !trip.weighing.completed_at)
             const isActive = activeRequestId === trip.request.id
+            const furaStage: 'kirdi' | 'chiqdi' = trip.kirdiPhoto ? 'chiqdi' : 'kirdi'
             // Plate/driver stay in the meta line in BOTH states -- not just
             // the mockup's own "who is this truck" cue, but also how e2e
             // finds this exact row once it's red (hasText: <plate>); the
             // red-state text must not drop it in favour of the saved-weight
             // phrase alone.
-            const meta = isRed
-              ? `Bo'sh ${trip.weighing!.pustoy_kg?.toLocaleString() ?? '—'} kg · yuklandi · yuk bilan vazn kutilmoqda · ${trip.request.driver} · ${trip.request.plate}`
-              : `So'ralgan ${requestedSummary(trip)} · ${trip.request.driver} · ${trip.request.plate}`
+            const meta = isFura
+              ? isRed
+                ? `Kirdi qayd etilgan · nakladnoy rasmi kutilmoqda · ${trip.request.driver} · ${trip.request.plate}`
+                : `O'lchovsiz · moshina rasmi kutilmoqda · ${trip.request.driver} · ${trip.request.plate}`
+              : isRed
+                ? `Bo'sh ${trip.weighing!.pustoy_kg?.toLocaleString() ?? '—'} kg · yuklandi · yuk bilan vazn kutilmoqda · ${trip.request.driver} · ${trip.request.plate}`
+                : `So'ralgan ${requestedSummary(trip)} · ${trip.request.driver} · ${trip.request.plate}`
 
             return (
               <Card key={trip.request.id} tone={isRed ? 'problem' : 'neutral'}>
@@ -173,6 +240,7 @@ export function QorovulChiqimTab() {
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2">
                       <SerialChip>So'rov</SerialChip>
+                      <FuraBadge truckType={trip.request.truck_type} />
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(trip.request.owner_id)} · {typeSummary(trip)}
                       </span>
@@ -185,15 +253,28 @@ export function QorovulChiqimTab() {
                       size="lg"
                       onClick={() => {
                         setActiveRequestId(trip.request.id)
-                        setActiveStage(isRed ? 2 : 1)
+                        setActiveStage(isFura ? furaStage : isRed ? 2 : 1)
                       }}
                     >
-                      {isRed ? 'Yakunlash' : 'Qabul qilish'}
+                      {isFura ? (isRed ? 'Chiqdi' : 'Kirdi') : isRed ? 'Yakunlash' : 'Qabul qilish'}
                     </Button>
                   )}
                 </div>
 
-                {isActive && activeStage && (
+                {isActive && activeStage && isFura && (activeStage === 'kirdi' || activeStage === 'chiqdi') && (
+                  <FuraPhotoForm
+                    stage={activeStage}
+                    tripInfo={[
+                      { label: 'Buyurtmachi', value: ownerName(trip.request.owner_id) },
+                      { label: "So'ralgan", value: requestedSummary(trip) },
+                      { label: 'Moshina · haydovchi', value: `${trip.request.plate} · ${trip.request.driver}` },
+                    ]}
+                    onCancel={closeForm}
+                    onSubmit={(photo) => handleFuraPhoto(trip, activeStage, photo)}
+                  />
+                )}
+
+                {isActive && activeStage && !isFura && (activeStage === 1 || activeStage === 2) && (
                   <GateStageForm
                     stage={activeStage}
                     dir="chiqim"
@@ -236,6 +317,18 @@ export function QorovulChiqimTab() {
                   <div className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {trip.request.driver} · {trip.request.plate}
                   </div>
+                  {/* A completed fura's whole gate record is these two
+                      captures — the weighed flow shows a net kg here, so
+                      showing nothing at all would make the row read as
+                      incomplete. Thumbnails open in a new tab (GatePhoto's
+                      default): this tab has no lightbox of its own, and
+                      adding one is out of scope. */}
+                  {!isGateWeighed(trip) && (
+                    <div className="mt-1 flex items-center gap-2">
+                      <GatePhoto path={trip.kirdiPhoto} label="Moshina rasmi (kirdi)" bucket={FURA_BUCKET} thumbnail />
+                      <GatePhoto path={trip.chiqdiPhoto} label="Nakladnoy rasmi (chiqdi)" bucket={FURA_BUCKET} thumbnail />
+                    </div>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div className="text-right">

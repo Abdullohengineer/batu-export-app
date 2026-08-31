@@ -102,6 +102,7 @@ export function useReportQuery(filters: ReportFilters) {
     stateMoykadanChiqgan: 0,
     stateXomJonatilgan: 0,
     stateOlibKetilgan: 0,
+    stateYoqotish: 0,
     stateK1: 0,
     stateK2: 0,
     stateK3: 0,
@@ -158,6 +159,7 @@ export function useReportQuery(filters: ReportFilters) {
               state_moykadan_chiqgan: number | string
               state_xom_jonatilgan: number | string
               state_olib_ketilgan: number | string
+              state_yoqotish: number | string
               state_k1: number | string
               state_k2: number | string
               state_k3: number | string
@@ -193,6 +195,10 @@ export function useReportQuery(filters: ReportFilters) {
           stateMoykadanChiqgan: Number(t?.state_moykadan_chiqgan ?? 0),
           stateXomJonatilgan: Number(t?.state_xom_jonatilgan ?? 0),
           stateOlibKetilgan: Number(t?.state_olib_ketilgan ?? 0),
+          // Already coalesced to 0 server-side (report_totals' realized_loss
+          // CTE) — the ?? 0 here is the same defensive default every sibling
+          // carries for the "no rows came back at all" case.
+          stateYoqotish: Number(t?.state_yoqotish ?? 0),
           stateK1: Number(t?.state_k1 ?? 0),
           stateK2: Number(t?.state_k2 ?? 0),
           stateK3: Number(t?.state_k3 ?? 0),

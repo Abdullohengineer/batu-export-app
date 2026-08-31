@@ -111,8 +111,12 @@ export type DateBasisSource = 'gate_stage1' | 'order_date' | 'gate_stage2' | 'se
 // identically on every row belonging to that serial, regardless of row
 // kind. Never clipped to the report's date filter (see DECISIONS.md —
 // clipping would break the Qabul qilingan = Omborda qoldi + Moykaga
-// yuborilgan + Xom holda jo'natilgan identity). "Yo'qotish" deliberately
-// not included — no canonical per-serial loss-in-kg figure exists yet.
+// yuborilgan + Xom holda jo'natilgan identity).
+//
+// "Yo'qotish" was excluded here from 2026-08-15 to 2026-08-31 on the
+// grounds that "no canonical per-serial loss-in-kg figure exists yet."
+// Migration 0101 (Yakunlash, 2026-08-29) created one — client_serial_loss_kg
+// — so the field is now carried; see `yoqotish` below.
 export interface SerialState {
   qabulQilingan: number
   ombordaQoldi: number
@@ -121,6 +125,14 @@ export interface SerialState {
   moykadanChiqgan: number
   xomJonatilgan: number
   olibKetilgan: number
+  // Realized wash loss for this serial (2026-08-31), from
+  // client_serial_loss_kg via report_query_page.state_yoqotish. null while
+  // the serial's wash cycle is still open — nothing is booked yet and the
+  // gap reads as `moykada` instead (migration 0101's realized/unrealized
+  // split). Signed once booked, same convention as every other loss figure
+  // in this app: positive = loss, negative = surplus (render via
+  // formatLoss.ts, never bare).
+  yoqotish: number | null
   // Output-by-kalibr (2026-08-29, Prompt 6) -- total EVER produced under
   // that kalibr for this serial (available + already-dispatched, i.e. gross
   // production — see migration 0098's own header for the formula
@@ -367,6 +379,11 @@ export interface ReportTotals {
   stateMoykadanChiqgan: number
   stateXomJonatilgan: number
   stateOlibKetilgan: number
+  // Realized wash loss (2026-08-31) — summed once per distinct serial on the
+  // same basis as the 7 above. Open serials contribute nothing (SQL's sum()
+  // skips their NULL), so this is total BOOKED loss for the filtered set,
+  // never a to-date guess at serials still in the wash.
+  stateYoqotish: number
   // Output-by-kalibr totals (2026-08-29) -- same distinct-serial summing
   // basis as the 7 above, never the KN column folded into K1-K8's own sums.
   stateK1: number
@@ -462,6 +479,12 @@ export interface ReportDbRow {
   state_moykadan_chiqgan?: number | string | null
   state_xom_jonatilgan?: number | string | null
   state_olib_ketilgan?: number | string | null
+  // Yo'qotish (2026-08-31). Unlike every other state_* column this one is
+  // legitimately NULL on a row that HAS a serial (an open wash cycle), so it
+  // can never serve as the null proxy the 7 above share — and it must not be
+  // read through it either: mapState nulls the whole object off
+  // state_qabul_qilingan, then maps this field on its own.
+  state_yoqotish?: number | string | null
   // Output-by-kalibr (2026-08-29) -- same "comes back together, null proxy"
   // shape as the 7 columns above, from kirim_line_calibre_output (0098).
   state_k1?: number | string | null
@@ -489,6 +512,9 @@ function mapState(row: ReportDbRow): SerialState | null {
     moykadanChiqgan: Number(row.state_moykadan_chiqgan),
     xomJonatilgan: Number(row.state_xom_jonatilgan),
     olibKetilgan: Number(row.state_olib_ketilgan),
+    // num(), not Number(): a null here means "not booked yet", which must
+    // survive as null — Number(null) would silently render it as 0 kg lost.
+    yoqotish: num(row.state_yoqotish),
     k1: Number(row.state_k1),
     k2: Number(row.state_k2),
     k3: Number(row.state_k3),
@@ -667,6 +693,10 @@ function zeroState(): SerialState {
     moykadanChiqgan: 0,
     xomJonatilgan: 0,
     olibKetilgan: 0,
+    // null, not 0: this fallback stands in for "the state row is missing",
+    // and 0 would assert that nothing was lost. null renders "—", the same
+    // as a serial whose loss simply is not booked yet.
+    yoqotish: null,
     k1: 0,
     k2: 0,
     k3: 0,

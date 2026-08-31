@@ -7,6 +7,7 @@ import { OldKnRowDetail } from './OldKnRowDetail'
 import { MoykaSendRowDetail } from './MoykaSendRowDetail'
 import { MoykaOutputRowDetail } from './MoykaOutputRowDetail'
 import { formatDate } from '../../lib/formatDate'
+import { formatLossKg } from '../../lib/formatLoss'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { FuraBadge } from '../../components/ui/FuraBadge'
 
@@ -249,6 +250,16 @@ export function ReportTableRow({
         return <StateCell value={state?.xomJonatilgan} />
       case 'olib_ketilgan':
         return <StateCell value={state?.olibKetilgan} />
+      // Yo'qotish renders through formatLossKg, not StateCell: the value is
+      // signed (a surplus is real and must read "+50 kg", not "-50 kg"), and
+      // its null means "not booked yet — the serial is still in the wash",
+      // which StateCell's own "—" for "no serial at all" happens to match.
+      case 'yoqotish':
+        return (
+          <span className="whitespace-nowrap tabular-nums text-slate-700 dark:text-slate-300">
+            {state?.yoqotish != null ? formatLossKg(state.yoqotish) : '—'}
+          </span>
+        )
       case 'k1':
         return <StateCell value={state?.k1} />
       case 'k2':

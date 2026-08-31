@@ -134,6 +134,12 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups): strin
       return row.state?.xomJonatilgan ?? ''
     case 'olib_ketilgan':
       return row.state?.olibKetilgan ?? ''
+    // Exported as a raw signed number, not formatLossKg's display string —
+    // every other kg column in this file exports numerically so the cell
+    // stays summable in Excel. `?? ''` covers both nulls (no serial, and a
+    // serial whose loss is not booked yet), same as every sibling.
+    case 'yoqotish':
+      return row.state?.yoqotish ?? ''
     case 'k1':
       return row.state?.k1 ?? ''
     case 'k2':

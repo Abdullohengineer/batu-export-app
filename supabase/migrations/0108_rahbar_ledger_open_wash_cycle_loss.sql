@@ -1,4 +1,4 @@
--- 0107: rahbar_dashboard_ledger -- stop booking an OPEN wash cycle's
+-- 0108: rahbar_dashboard_ledger -- stop booking an OPEN wash cycle's
 --       unreturned balance as washing loss.
 --
 -- ============================================================
@@ -49,7 +49,7 @@
 -- 7,330 kg of output were invisible to Ledger B entirely, which 0106's own
 -- header names. Basis B is correct and stands. But dropping the closed_at
 -- qualifier also dropped the only thing preventing an open cycle's
--- unreturned balance from being read as loss. 0107 restores that protection
+-- unreturned balance from being read as loss. 0108 restores that protection
 -- without giving up Basis B: the serial still counts, only its unreturned
 -- balance does not count as loss.
 --
@@ -62,7 +62,7 @@
 --
 -- That is what moykadaSnapshot.residualKg has been reading as -15. When 0106
 -- went in the residual moved 7,330 -> -15 and I predicted it would reach 0;
--- it did not, and the remaining -15 was the double count, not slack. 0107
+-- it did not, and the remaining -15 was the double count, not slack. 0108
 -- closes it.
 --
 -- ============================================================
@@ -105,7 +105,7 @@
 -- across p_to = 08-11, 08-15, 08-18, 08-20, 08-24, 08-29, 08-31 (from
 -- 2026-07-15, scope "yangi"), the numbers move ONLY at 08-29 and 08-31.
 --
---   p_to        loss before 0107   loss after 0107
+--   p_to        loss before 0108   loss after 0108
 --   2026-08-18       -1,428            -1,428      (unchanged)
 --   2026-08-20          462               462      (unchanged)
 --   2026-08-24          462               462      (unchanged)
@@ -123,7 +123,7 @@
 -- NOT fixed here
 -- ============================================================
 --   * p_to = 2026-08-18 reports NEGATIVE loss, -1,428 kg. Identical before
---     and after 0107 (table above), so 0107 neither causes nor fixes it.
+--     and after 0108 (table above), so 0108 neither causes nor fixes it.
 --     Cause is the mixed time basis already logged in DECISIONS.md
 --     (2026-08-30): sent_capped_kg counts ALL-TIME moyka sends while the
 --     output it is compared against is period-bounded, so a period whose

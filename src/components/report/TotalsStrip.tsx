@@ -1,5 +1,6 @@
 import type { ReportTotals } from '../../lib/reportQuery'
 import { REPORT_COLUMNS } from '../../lib/reportColumns'
+import { formatLossKg } from '../../lib/formatLoss'
 import { toneStyles } from '../../components/ui/tokens'
 
 function kg(v: number) {
@@ -10,6 +11,12 @@ interface TotalChip {
   label: string
   value: number
   signed?: boolean
+  // `loss` and `signed` are two different sign conventions, never both on
+  // one chip: `signed` prefixes '+' on a positive Neto (a plain signed
+  // number), while `loss` routes through formatLoss.ts, where a real loss
+  // renders bare and a SURPLUS gets the '+'. Using `signed` on a loss
+  // figure would print "+1,432 kg" for 1,432 kg of product lost.
+  loss?: boolean
 }
 
 // One entry per "volume" column key (src/lib/reportColumns.ts) — every
@@ -68,6 +75,10 @@ const STATE_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = {
   moykadan_chiqgan: (t) => [{ label: 'Moykadan chiqgan (joriy)', value: t.stateMoykadanChiqgan }],
   xom_jonatilgan: (t) => [{ label: "Xom holda jo'natilgan", value: t.stateXomJonatilgan }],
   olib_ketilgan: (t) => [{ label: 'Olib ketilgan', value: t.stateOlibKetilgan }],
+  // Yo'qotish (2026-08-31) -- BOOKED loss only: a serial still in the wash
+  // contributes nothing (report_totals' sum skips its NULL), so this chip and
+  // the Moykada chip never double-count the same kilograms.
+  yoqotish: (t) => [{ label: "Yo'qotish (yakunlangan)", value: t.stateYoqotish, loss: true }],
   // Output-by-kalibr (2026-08-29) -- each column its own chip, same group;
   // KN deliberately its own entry, never folded into the K1-K8 sums.
   k1: (t) => [{ label: 'K1', value: t.stateK1 }],
@@ -90,8 +101,14 @@ function ChipGroup({ title, chips }: { title: string; chips: TotalChip[] }) {
         <span key={chip.label} className="text-slate-700 dark:text-slate-300">
           {chip.label}:{' '}
           <span className="font-medium text-slate-900 dark:text-slate-100">
-            {chip.signed && chip.value >= 0 ? '+' : ''}
-            {kg(chip.value)}
+            {chip.loss ? (
+              formatLossKg(chip.value)
+            ) : (
+              <>
+                {chip.signed && chip.value >= 0 ? '+' : ''}
+                {kg(chip.value)}
+              </>
+            )}
           </span>
         </span>
       ))}

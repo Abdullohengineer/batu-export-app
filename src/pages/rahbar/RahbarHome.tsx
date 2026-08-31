@@ -159,7 +159,13 @@ export function RahbarHome() {
   const stockByCalibre = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => !isKn(r.calibreId)) : []
   const stockKn = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => isKn(r.calibreId)) : []
   const stockMax = Math.max(1, ...stockByCalibre.map((r) => r.kg), ...stockKn.map((r) => r.kg))
-  const stockTotal = [...stockByCalibre, ...stockKn].reduce((sum, r) => sum + r.kg, 0)
+  // 2026-08-31: split out explicitly, and derived from the SAME filtered
+  // arrays the bars are drawn from (never from snapshot.finishedCalibredKg,
+  // which the Turlar picker does not narrow) so the sentence can never
+  // describe a different set than the bars directly above it.
+  const stockCalibredTotal = stockByCalibre.reduce((sum, r) => sum + r.kg, 0)
+  const stockKnTotal = stockKn.reduce((sum, r) => sum + r.kg, 0)
+  const stockTotal = stockCalibredTotal + stockKnTotal
   const dispatchedMax = Math.max(1, ...dispatchedByCalibre.map((r) => r.kg), ...dispatchedKnRows.map((r) => r.kg))
 
   // 2026-08-30: oldKnKg deliberately EXCLUDED from the headline. Its tile was
@@ -227,18 +233,34 @@ export function RahbarHome() {
           <Tile label="Jami yuvilgan va yuvilmagan mahsulot" value={grandTotal} unit="kg" caption="Hozirgi holat — xom, moykada va tayyor" tone="neutral" />
           <Tile label="Xom · yuvilmagan" value={snapshot.rawKg} unit="kg" caption="Hozirgi holat — yuvishga tayyor" tone="raw" />
           <Tile label="Moykada" value={snapshot.moykadaKg} unit="kg" caption="Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan" tone="moyka" />
+          {/* 2026-08-31: both tiles now name their own calibre set in the
+              label. This tile reads 11,210 kg where the two sentences lower
+              down the page read 17,580 kg, and the gap between them is
+              exactly the Konditerka tile beside it -- the numbers agreed all
+              along, the labels did not say so. "Tayyor · kalibrli" alone was
+              read as "finished product", not as "K1-K8 only". Reported and
+              confirmed: the figures stay as they are, the wording is what
+              changes -- here and in both sentences below. */}
           <Tile
-            label="Tayyor · kalibrli"
+            label="Tayyor · kalibrli (K1–K8)"
             value={snapshot.finishedCalibredKg}
             unit="kg"
-            caption={ledgerLoading ? 'Hozirgi qoldiq' : `Hozirgi qoldiq · bu davrda ${fmt(dispatchedKalibrliPeriod)} kg olib ketilgan`}
+            caption={
+              ledgerLoading
+                ? "Hozirgi qoldiq · konditerkasiz"
+                : `Hozirgi qoldiq · konditerkasiz · bu davrda ${fmt(dispatchedKalibrliPeriod)} kg olib ketilgan`
+            }
             tone="calibre"
           />
           <Tile
-            label="Konditerka"
+            label="Konditerka (KN)"
             value={snapshot.konditirskiyKg}
             unit="kg"
-            caption={ledgerLoading ? 'Hozirgi qoldiq' : `Hozirgi qoldiq · bu davrda ${fmt(dispatchedKnPeriod)} kg olib ketilgan`}
+            caption={
+              ledgerLoading
+                ? "Hozirgi qoldiq · kalibrlidan alohida"
+                : `Hozirgi qoldiq · kalibrlidan alohida · bu davrda ${fmt(dispatchedKnPeriod)} kg olib ketilgan`
+            }
             tone="kn"
           />
         </div>
@@ -300,8 +322,10 @@ export function RahbarHome() {
               ))}
             </div>
             <p className="mt-3 text-xs text-slate-400">
-              Hozir omborda <strong className="text-slate-700 dark:text-slate-300">{fmt(stockTotal)} kg</strong> tayyor mahsulot — olib ketilgani chegirilgan. Bu qatorlar{' '}
-              <strong className="text-slate-700 dark:text-slate-300">jonli qoldiq</strong>, davr bo'yicha ishlab chiqarish emas. Foizlar — jami qoldiqdan ulush. Konditirskiy alohida qator.
+              Hozir omborda <strong className="text-slate-700 dark:text-slate-300">{fmt(stockTotal)} kg</strong> tayyor mahsulot — kalibrli{' '}
+              <strong className="text-slate-700 dark:text-slate-300">{fmt(stockCalibredTotal)} kg</strong> + konditerka{' '}
+              <strong className="text-slate-700 dark:text-slate-300">{fmt(stockKnTotal)} kg</strong>, olib ketilgani chegirilgan. Bu qatorlar{' '}
+              <strong className="text-slate-700 dark:text-slate-300">jonli qoldiq</strong>, davr bo'yicha ishlab chiqarish emas. Foizlar — jami qoldiqdan ulush. Konditerka alohida qator.
               {ledger && ` Tanlangan davrda yuvishdan chiqqan: ${fmt(ledger.moyka.calibreKg + ledger.moyka.konditirskiyKg)} kg · yo'qotish ${formatLossKg(ledger.moyka.lossKg)} (${formatLossPct(ledger.moyka.lossPct)}).`}
             </p>
 
@@ -323,7 +347,8 @@ export function RahbarHome() {
             </div>
             <p className="mt-3 text-xs text-slate-400">
               Jami olib ketilgan <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.dispatchedKg)} kg</strong> · omborda qolgan{' '}
-              <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.closingKg)} kg</strong>. Foizlar — o'sha kalibrning jami olib ketilgan miqdoridan qancha qismi.
+              <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.closingKg)} kg</strong> (kalibrli va konditerka birgalikda — yuqoridagi{' '}
+              <em>Tayyor · kalibrli</em> katakchasi faqat K1–K8ni ko'rsatadi). Foizlar — o'sha kalibrning jami olib ketilgan miqdoridan qancha qismi.
             </p>
           </>
         )}

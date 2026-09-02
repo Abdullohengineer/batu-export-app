@@ -4,9 +4,10 @@ import { supabase } from './supabase'
 export interface Calibre {
   id: string
   category_id: string
-  code: string // '04' | '06' | 'KN' … — used in Barcode #2 (PLT-<serial>-<code>)
+  code: string // '04' | '06' | 'KN' | 'RKN' … — used in Barcode #2 (PLT-<serial>-<code>)
   label: string // 'Kalibr 4' | 'Konditirskiy'
   is_numberless: boolean // true for Konditirskiy
+  is_rezka_output: boolean // true for the single Rezka KN calibre (client Расход "Резка KN" bucket)
   sort_order: number
   active: boolean
 }
@@ -28,7 +29,7 @@ export function useCalibres(includeInactive = false) {
     try {
       let query = supabase
         .from('calibres')
-        .select('id, category_id, code, label, is_numberless, sort_order, active')
+        .select('id, category_id, code, label, is_numberless, is_rezka_output, sort_order, active')
         .order('sort_order')
       if (!includeInactive) query = query.eq('active', true)
       const { data } = await query

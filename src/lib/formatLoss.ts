@@ -15,10 +15,10 @@
 // loss (the common case) with nothing and surplus with a bare "-50" that
 // reads as a negative/bad number instead of the good news it actually is.
 // `unit` defaults to 'kg' (every internal, Uzbek-labelled screen); the
-// client-portal screens (ClientHisobotTab/ClientSerialSummaryModal) are
-// Russian-labelled end to end and pass 'кг' so the unit matches every other
-// figure on the same row -- the sign convention itself is identical either
-// way, this only swaps which unit string gets appended.
+// client-portal screens (ClientPrihodTab and friends) are Russian-labelled
+// end to end and pass 'кг' so the unit matches every other figure on the
+// same row -- the sign convention itself is identical either way, this
+// only swaps which unit string gets appended.
 export function formatLossKg(signedKg: number, unit = 'kg'): string {
   if (signedKg > 0) return `${Math.round(signedKg).toLocaleString()} ${unit}`
   if (signedKg < 0) return `+${Math.round(Math.abs(signedKg)).toLocaleString()} ${unit}`

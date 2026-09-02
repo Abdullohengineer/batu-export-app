@@ -33,7 +33,8 @@ import { LaboratorKirimTab } from './pages/laborator/LaboratorKirimTab'
 import { LaboratorChiqimTab } from './pages/laborator/LaboratorChiqimTab'
 import { LaboratorTarixTab } from './pages/laborator/LaboratorTarixTab'
 import { ClientLayout } from './pages/client/ClientLayout'
-import { ClientHisobotTab } from './pages/client/ClientHisobotTab'
+import { ClientPrihodTab } from './pages/client/ClientPrihodTab'
+import { ClientRashodTab } from './pages/client/ClientRashodTab'
 
 function App() {
   return (
@@ -143,7 +144,9 @@ function AppRoutes() {
           </RoleRoute>
         }
       >
-        <Route index element={<ClientHisobotTab />} />
+        <Route index element={<Navigate to="/client/prihod" replace />} />
+        <Route path="prihod" element={<ClientPrihodTab />} />
+        <Route path="rashod" element={<ClientRashodTab />} />
       </Route>
 
       <Route path="*" element={<Navigate to={homePath} replace />} />

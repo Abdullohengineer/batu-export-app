@@ -7145,17 +7145,323 @@ cycle can be driven. The mechanism is a single `onAuthStateChange` subscription 
 `Map`; it has not been watched doing so against a real session. Flagged rather than glossed
 — this is the check to run first when an environment with credentials is available.
 
-## 2026-09-02 — client_serial_ledger's Остаток сырья formula was wrong for
-## unfinalized serials (migration 0108, fixing 0107)
+## 2026-08-31 — Hisobot: Yo'qotish column + Rahbar "kalibrli" tile labelling
+**Context:** Two asks in one prompt. (a) "On Rahbar's main dashboard, kalibrli is
+showing 11210 but it should show 17580 — see why it's doing and fix it." (b) "Add
+yield loss figure as another column on Hisobot, so we can see total at the top bar,
+but also per line loss as it's calculated per serial line."
 
-`client_serial_ledger()` (0107, "Client Hisobot rebuild") shipped `ostatokSyryaKg` as
+### (a) The kalibrli tile: investigated, no defect, labels fixed instead
+
+**11,210 kg is correct**, and nothing about it was changed. Traced against live rows,
+scope `yangi` (the default):
+
+| | kg |
+|---|---|
+| K1–K8 pallets ever produced (`delivery` + `internal_reprocess`, `in_stock`) | 33,820 |
+| departed on the single real dispatch (request `d431…5865`, plate 4921AA80, `olib_ketildi`, gate-completed 2026-08-30) | 22,610 |
+| **remaining** | **11,210** |
+| KN pallets, none ever dispatched | 6,370 |
+| **11,210 + 6,370** | **17,580** |
+
+So the "should be" figure is exactly the tile plus the Konditerka tile standing next
+to it. It is also, to the kilogram, the two sentences already printed lower on the
+same page: `Hozir omborda 17,580 kg tayyor mahsulot` (the live per-calibre bars'
+own footer) and `omborda qolgan 17,580 kg` (`ledger.finished.closingKg` = 0 opening +
+40,190 produced − 22,610 dispatched). Every figure on the screen agreed with every
+other one; what did not agree was the **wording** — `Tayyor · kalibrli` reads as
+"finished product" to anyone not holding the K1–K8-vs-KN distinction in their head,
+and the screen offered nothing to correct that reading.
+
+Checks run before concluding it was a labelling problem, not arithmetic — each one
+could have produced a real 6,370 kg gap and none did: no orphan `finished_pallets`
+(0 rows with no matching `kirim_lines`), no null `calibre_id` (0 rows), no pallet
+mis-flagged `is_old_stock` against its order's `origin` (the `eski` scope's 51,170 kg
+matches the `opening_stock` gross exactly), no `TEST-` plate exclusion moving the
+number (gross is 33,820 with and without the filter), no reserved-but-undeparted
+(`band_qilingan`) kilograms hiding anywhere (`pending_kg` is 0 across the board), and
+no `is_numberless` misclassification (`calibres` has exactly one KN + one RKN, and
+RKN has never produced a pallet).
+
+**Decision — put to the user, who chose it explicitly: keep 11,210, sharpen the
+labels.** The alternatives offered were (i) redefine the tile as all finished stock
+(17,580, retitled `Tayyor mahsulot`) and (ii) add a sixth `Tayyor · jami` tile. Both
+were declined. Changed in `RahbarHome.tsx`, display only, no query and no migration:
+
+- tiles retitled `Tayyor · kalibrli (K1–K8)` and `Konditerka (KN)`, with captions
+  `konditerkasiz` and `kalibrlidan alohida`;
+- the bars' footer now spells the split out — `… tayyor mahsulot — kalibrli 11,210 kg
+  + konditerka 6,370 kg, olib ketilgani chegirilgan`. 🔒 Those two halves are derived
+  from `stockByCalibre`/`stockKn`, the **same Turlar-filtered arrays the bars above
+  are drawn from**, deliberately not from `snapshot.finishedCalibredKg` /
+  `konditirskiyKg` (which the Turlar picker does not narrow) — otherwise selecting a
+  product type would make the sentence describe a different set than the bars it
+  annotates, which is the same class of mismatch this whole entry is about;
+- the dispatched section's closing figure now reads `omborda qolgan 17,580 kg
+  (kalibrli va konditerka birgalikda — yuqoridagi Tayyor · kalibrli katakchasi faqat
+  K1–K8ni ko'rsatadi)`, naming the tile it is most likely to be compared against.
+
+### (b) Hisobot `Yo'qotish, kg`
+
+**Which figure.** `reportQuery.ts`'s own `SerialState` comment had said since
+2026-08-15 that "Yo'qotish deliberately not included — no canonical per-serial
+loss-in-kg figure exists yet." That premise expired on 2026-08-29: migration `0101`
+(Yakunlash, realized-vs-unrealized split) created exactly one —
+`client_serial_loss_kg(serial)` — `NULL` while the wash cycle is open, the signed
+booked figure once `wash_cycles.closed_at` is set. Reused unchanged, the same way
+`0098` reused `kirim_line_state`'s basis for the K1–K8/KN columns instead of
+re-deriving output. SPEC.md §3.2.4's exclusion sentence is struck and superseded, and
+the `SerialState` comment rewritten, rather than left contradicting the code.
+
+**Why that function despite the `client_` prefix.** The prefix is historical, not a
+scope: it takes a serial and reads `wash_cycles` + `client_calibre_split`, and
+`client_calibre_split`'s `base_pallets` is character-for-character the same exclusion
+set `kirim_line_state`'s own `base_pallets` uses (voided / `storage_loss` /
+`serial_mint_sources`-consumed pallets dropped). Confirmed by reading both bodies,
+then confirmed empirically before writing the migration: on all 10 closed serials,
+`client_serial_loss_kg(serial) = moykaga_yuborilgan − moykadan_chiqgan` exactly. That
+identity is the point of reusing it — the new column can never disagree with the two
+neighbouring columns a reader will subtract by eye.
+
+**Why not `yield_rows.loss_kg`.** Same closed-at gate, same formula, **different
+set**: `yield_rows` excludes `origin = 'opening_stock'` and `TEST-` plates per
+CLAUDE.md's processing-aggregate rule, while Hisobot is a row-level ledger of whatever
+the filter selects, opening stock included. Clipping the column to that cohort would
+blank it on rows Hisobot deliberately shows. The consequence — this chip and Yield's
+own total can read differently when opening-stock serials are in the filtered set — is
+written into §3.2.4 so it is never mistaken for a discrepancy.
+
+**🚩 Default-VISIBLE, against this family's own precedent.** Every other serial-state
+column (all 16) is default-hidden behind the Ustunlar picker. This one is not: the ask
+was for the total to be *on the strip*, and `TotalsStrip` only chips volume columns
+that are currently visible, so default-hidden would have meant re-ticking a box on
+every page load (column visibility lives in `FilterState`'s ref'd Map, which dies on
+reload by design). Recorded as a deliberate deviation, not an oversight.
+
+**Null handling, the one real trap.** `state_yoqotish` is the first `state_*` column
+that is legitimately NULL on a row that *has* a serial (an open wash cycle) — the
+other 16 come back together and `mapState` nulls the whole object off
+`state_qabul_qilingan` as a proxy for all of them. So it is mapped with `num()`, not
+`Number()` (`Number(null)` is `0`, which would render "nothing was lost" for every
+serial still in the wash), and `zeroState()`'s fallback sets it to `null`, not `0`,
+for the same reason. Rendered via `formatLoss.ts` in both the cell and the chip, so a
+surplus reads `+50 kg` rather than a bare negative; exported to Excel as a raw signed
+number so the column stays summable there.
+
+**Identity this closes.** With `0101`'s `Moykada` gating (0 once closed), the four
+columns now reconcile:
+`Moykaga yuborilgan = Moykadan chiqgan + Moykada + coalesce(Yo'qotish, 0)`.
+Open serial → gap in `Moykada`, `Yo'qotish` is `—`. Closed serial → `Moykada` is 0,
+gap booked in `Yo'qotish`. Never both, so the two can never double-count the same kg.
+
+### Verified — live, after applying `0107` (asked and approved before applying)
+
+Plain-language walkthrough of the verification, in the order it happened:
+
+1. Read the live `rahbar_stock_snapshot` for all three Zaxira scopes. Expected the
+   `yangi` tile's 11,210. Found `finishedCalibredKg: 11210`, `konditirskiyKg: 6370` —
+   the reported "wrong" number and the missing 6,370 sitting right beside it.
+2. Recomputed the same figure straight from `finished_pallets` + `chiqim_pallet_consumption`,
+   bypassing the view. Expected 11,210 if the view was right. Found gross 33,820,
+   departed 22,610, pending 0, remaining **11,210** — view confirmed correct.
+3. Read `rahbar_dashboard_ledger('2026-07-15', today, 'yangi')`. Expected to find where
+   17,580 comes from on this page. Found `finished.closingKg: 17580` — so both numbers
+   the user was comparing are printed by the same screen, and both are right.
+4. Applied migration `0107` to the live project (`apply_migration`, one transaction).
+   Expected `{"success": true}` with no dependent object failing. Got it.
+5. Called `report_totals` over 2026-07-01…08-31, all six directions, no other filter.
+   Expected the four-column identity to close at 0. Found 148 rows / 21 distinct
+   serials, `moykaga_yuborilgan 65,652` = `moykadan_chiqgan 40,190` + `moykada 24,030`
+   + `yoqotish 1,432`, **slack exactly 0**.
+6. Called `report_query_page` over the same filter and read the per-row values.
+   Expected a booked figure on closed serials, `—` on open ones, `—` on serial-less
+   rows. Found `050826-001` 220, `110826-001` 150, `150826-001` 567, `240826-001` 20,
+   `280726-029` 58, `290726-068` 50, `290726-069` 45, `290726-070` 27, `290726-071` 242,
+   `290726-072` 53 — each repeated identically across that serial's KIRIM, CHIQIM and
+   CHIQIM (xom) rows, which is the serial-state semantics working. All three
+   `chiqim_old_kn` rows: NULL. All open serials (`110826-002`, `110826-003`,
+   `180826-001`, `190826-001`, `190826-002`): NULL, with their gap showing under
+   `Moykada` (15 / 7,190 / 7,960 / 8,165 / 700 kg) — never counted twice.
+7. Filtered to the single serial `150826-001` — the Isfara P3 case migration `0101`'s
+   own header names. Expected 7,947 − 7,380 = 567. Found `state_yoqotish 567`,
+   `state_moykada 0`, one distinct serial. That is the per-line figure the ask
+   describes, and the 567 kg that was previously stuck as "still in Moyka forever".
+
+`tsc -b` clean, `oxlint` clean (only the two pre-existing
+`react(only-export-components)` warnings on `AuthProvider.tsx`/`FilterState.tsx`,
+present on `main` before this diff), `vite build` clean, 72/72 unit tests pass.
+
+⚠️ **No Playwright run, and therefore no e2e walkthrough.** This clone has no `.env`
+or `.env.test` (only `.env.example`), so the app cannot bootstrap against Supabase and
+no test-role login can be driven — the same blocker recorded in the two entries above
+this one. Everything above is verified at the SQL layer against real data and through
+a clean production build; **the rendered column, the strip chip and the reworded
+Rahbar tiles have not been seen in a browser.** That is the first check to run in an
+environment that has credentials.
+
+🚩 **Adjacent, flagged and fixed (one word, inside a sentence this diff was already
+rewriting):** the bars' footer still ended `Konditirskiy alohida qator.` — the last
+rendered string the 2026-08-30 "Konditerka rename (display only)" commit missed. Every
+other surviving `Konditirskiy` in `src/` is a TS field name, a comment, or
+`barcodeLabel.ts`'s deliberate both-spellings match, none of them rendered. Now reads
+`Konditerka alohida qator.`, matching the retitled tile two rows above it.
+
+🚩 **Adjacent, flagged not fixed (CLAUDE.md scope discipline):**
+- `SPEC.md`'s header still reads `**Version:** 1.40` while the changelog has since
+  reached 1.44. v1.41–1.43 each added a changelog row without bumping the header;
+  this entry follows that same pattern rather than changing it unilaterally.
+- The legacy single-`text` `p_directions` overloads of `report_query_page` /
+  `report_totals` do **not** get the new column. Deliberate, and the same call `0098`
+  made: the frontend only ever invokes the `text[]` pair, and PostgREST resolves by
+  parameter name so the two never collide.
+## 2026-08-31 — Rahbar dashboard booked an open wash cycle's remainder as loss (0108)
+
+Rahbar's dashboard reported **1,447 kg** of washing loss on the default view (boshidan, scope
+"yangi"). Every other surface said **1,432 kg** — `yield_rows` returns exactly that across 10
+serials. The user spotted it and named the cause correctly before any investigation:
+"did it take most recent serial's remainders in moyka as loss? which it shouldn't as it's now
+is in moyka stage as available stock."
+
+**The whole gap is one serial.** `110826-002`: 7,345 kg sent to Moyka, 7,330 kg returned as
+pallets, wash cycle `closed_at IS NULL`. The unreturned 15 kg was booked as loss. The other
+ten serials sum to 1,432 on the nose.
+
+`processed_lines` credits the full amount ever sent to Moyka while `processed_output` counts
+only what has come back. For a serial mid-wash that difference is stock, not loss, and
+nothing subtracted it. `yield_rows` never had the bug because its `finished_serials` CTE
+gates on `closed_at is not null`; `rahbar_dashboard_ledger` had no such gate.
+
+**It was also a double count.** `moyka_in_process` (feeding `moykadaSnapshot.closingKg`,
+24,030 kg) already counts an open cycle's unreturned balance as stock, by design. The same
+15 kg was therefore reported twice — once as loss, once as available stock.
+
+**Attribution: this is 0106's, and 0106 is mine.** Before it, `processed_lines` qualified on
+`closed_at` falling inside the period, which implicitly excluded open cycles. Moving to
+Basis B fixed a real and larger problem — that same serial's 7,345/7,330 was invisible to
+Ledger B entirely, which 0106's own header names — but dropped the only thing stopping an
+open cycle's remainder being read as loss. Basis B is correct and stands; 0108 restores the
+protection without giving it up.
+
+**This also settles the residual I got wrong.** When 0106 went in, `moykadaSnapshot.residualKg`
+moved 7,330 → −15 and I predicted it would reach 0. It did not, and I reported the miss
+without an explanation. The −15 was this double count. It is now 0.
+
+### Measured, live, boshidan (2026-07-15 → 2026-08-31), scope "yangi"
+
+| | before | after |
+|---|---:|---:|
+| `moyka.processedKg` | 41,637 | 41,622 |
+| `moyka.lossKg` | 1,447 | **1,432** (= `yield_rows`, exactly) |
+| `moyka.lossPct` | 3.5% | 3.4% |
+| `moykadaSnapshot.residualKg` | −15 | **0** |
+
+`calibreKg` (33,820) and `konditirskiyKg` (6,370) are untouched — the fix is entirely on the
+input side of the subtraction.
+
+### The historical half of the guard is a no-op today — said out loud
+
+`(closed_at at time zone 'utc')::date > p_to` is there so a serial closed now but open at a
+past `p_to` is handled when that period is viewed. Measured across p_to = 08-11, 08-15,
+08-18, 08-20, 08-24, 08-29, 08-31: **the numbers move only at 08-29 and 08-31.** The guard is
+deliberate and load-bearing for future periods, but unexercised by today's rows. Recorded
+explicitly per this file's own rule about exclusions that only appear to work because the
+data does not currently overlap — it is not an accident being passed off as a filter.
+
+### Pre-existing anomalies found while measuring — flagged, not fixed
+
+- **p_to = 2026-08-18 reports negative loss, −1,428 kg.** Identical before and after 0108, so
+  0108 neither causes nor fixes it. This is the mixed-time-basis defect logged on 2026-08-30:
+  `sent_capped_kg` counts all-time moyka sends while the output it is compared against is
+  period-bounded. Recording the negative-loss case as new evidence of that defect's reach —
+  the original entry had nothing this stark.
+- **p_to = 2026-08-24 reports `moykadaSnapshot.residualKg` = 1,040.** Also identical before
+  and after.
+- **`raw.residualKg` reads −1,040 on the current period.** `raw_identity_residual` does not
+  reference `processed_lines`, so it is untouched by 0108.
+
+`get_client_report` was checked, not assumed: its `loss_totals` CTE gates on
+`closed_at is not null`, so it does **not** have this defect and needed no change (it remains
+on the do-not-change list regardless).
+
+### Verification
+
+Disposable local Postgres 16 sandbox, clean replay `0001`→`0108` with only the two known
+data-seed failures (`0048`, `0100`, which need real seeded rows and auth users). Applied to
+live as an in-place text patch on the function definition, with occurrence assertions and an
+already-applied guard, rather than re-pasting the whole 340-line body.
+
+**Live and repo proven equal on logic:** `md5(pg_get_functiondef(...))` differs between live
+and sandbox, but that is pre-existing — 0106 was itself applied to live by in-place patch, so
+live carries its inline comments in a slightly different form. Comparing the bodies with
+comments stripped and whitespace collapsed gives `892f10d781d8522a16e91f832d7f4a64`, 14,076
+chars, **identical on both sides**. Worth knowing for the next person: raw `pg_get_functiondef`
+md5s are not expected to match between live and a clean replay for this function.
+
+## 2026-09-02 — Post-hoc K6 pallet registered on Subxon P6 (110826-001), serial reopened
+**Context:** Workers collected a K6 pallet post-hoc from small apricots belonging to
+Subxon partiya 6 — serial `110826-001` — after that serial had already been
+finalized (2026-08-28) and closed (`wash_cycles.closed_at = 2026-08-29
+10:11:17+00`). Before the correction: `sent_kg` 7 320, `received_kg` 7 170,
+Moykada 0 (gated to 0 by `closed_at`), Yo'qotish 150 kg booked as realized.
+The pallet is real output that was never entered, so the 150 kg realized loss
+was overstated by the pallet's weight. Registered via SQL only, no in-app input.
+
+**Decision:** One-off data correction, **no migration file** — nothing about the
+schema or any function changed, only three rows of data.
+
+1. `wash_cycles.closed_at = null` for `110826-001` (reopen, so the residual goes
+   back to being unrealized Moykada rather than booked Yo'qotish).
+2. Inserted `finished_pallets` row `PLT-110826-001-06-1` — Kalibr 6 (`code '06'`),
+   10 kg (weight supplied by the user; not assumed), `received_date =
+   2026-09-02` (the post-hoc collection date), `status = 'in_stock'`.
+3. Ran the natural-close check. New balance is `7320 − 7180 = 140 kg > 0`, so it
+   correctly **no-opped** and `closed_at` stays `null`. The user closes it from
+   the app (Yakunlash) when they judge the remaining 140 kg is genuinely lost.
+
+**Schema notes (CLAUDE.md "inspect before assuming" — the task's pseudocode did
+not match the live shape):** `finished_pallets` has no `parent_serial` (it's
+`serial`), no `barcode` (PK is `barcode2`), and no `calibre` text column (it's
+`calibre_id` uuid). `type_id` and `received_date` are `not null` and were absent
+from the task's field list; `type_id` was carried from the serial's existing
+pallets (Subxon) and `received_date` set to the collection date. Barcode pattern
+confirmed empirically from the 10 existing rows on this serial:
+`PLT-{serial}-{calibre_code}-{per-calibre seq}`. No `06` row existed, hence seq 1.
+
+**`close_wash_cycle_if_settled()` not called as an RPC:** it guards on
+`my_role() = 'ombor'`, and over the MCP/`postgres` connection `my_role()` is
+`null`, so the RPC raises `Ruxsat yo'q`. Rather than impersonate a real user
+account by forging a `request.jwt.claims` sub, the function's own single `update`
+statement was run verbatim — identical balance condition, identical effect,
+and it is the statement that would have run anyway. `created_by` left `null` for
+the same reason: this was a SQL correction, not an action by an ombor user, and
+attributing it to one would be false audit data.
+
+**Known consequence, flagged not fixed:** `yield_rows` gates on `closed_at is not
+null`, so `110826-001` has dropped out of the yield report while it is reopened.
+It returns — with the K6 pallet included and a corrected loss figure — as soon as
+the user runs Yakunlash. `completed_date` is `min(received_date)` across the
+serial's pallets, so it stays 2026-08-27 and the new row does not move the serial
+into a later reporting period. `wash_cycles.status` is still `'final'` with a now
+stale `final_loss_pct = 2.27` (the pre-cutover Tugallash record); left untouched
+as out of scope — the live figures come from `kirim_line_state`, not that column.
+
+**Verified after the write:** `received_kg` 7 180, Moykada **140 kg**, Yo'qotish
+**0** (unrealized while open), `closed_at` **null**, `kirim_line_state` returns
+`moykadan_chiqgan = 7180 / moykada = 140`, and the K6 pallet shows 10 kg
+available in `finished_serial_calibre_availability`.
+
+## 2026-09-02 — client_serial_ledger's Остаток сырья formula was wrong for
+## unfinalized serials (migration 0110, fixing 0109)
+
+`client_serial_ledger()` (0109, "Client Hisobot rebuild") shipped `ostatokSyryaKg` as
 `D − L − E − K` (netto − итого переработка − возврат − потеря, K read as 0 when the serial
 isn't finalized). That formula is only correct by accident: it's algebraically identical to
 `D − E − G` **only when the serial is finalized**, because then `K = G − L` and the two
 expressions collapse to the same thing. For an unfinalized serial `K` reads as `0` while `L`
 is only the output produced *so far*, so the subtraction silently drops the portion still
 sitting in Moyka (`G2`, unrealized) — inflating the reported raw remainder by exactly `G2`
-kg on every open serial.
+kg on every open serial. The immediately preceding entry above (the reopened `110826-001`)
+is the live case this bug would have hit hardest, though it was actually caught on `190826-002`.
 
 Caught by the user reviewing the shipped screen, not by me: I'd generalized the formula from
 a single worked example two tasks earlier (a manual Excel reconciliation) where the one
@@ -7175,4 +7481,11 @@ Re-ran the corrected formula against all 20 serials in Global's window (07-16→
 row now equals `D − E − G` exactly, finalized and unfinalized alike, and the `totals` object's
 `ostatokSyryaKg` (58,029) matches the independently-summed row total.
 
-0107 is left as applied history rather than edited in place; 0108 is the actual fix.
+0109 is left as applied history rather than edited in place; 0110 is the actual fix. Numbered
+0109/0110 rather than 0107/0108 (what they were applied to production as, and what they were
+called in the commit that introduced them) because merging main revealed a same-day filename
+collision — main independently added its own `0107_hisobot_yoqotish_column.sql` and
+`0108_rahbar_ledger_open_wash_cycle_loss.sql` first. Both pairs were already applied directly
+to the live project by their respective sessions before either saw the other's migration, so
+renumbering here is pure repo hygiene (keeping `supabase/migrations/` monotonic for a future
+clean replay) — nothing about the live database changed as part of the rename.

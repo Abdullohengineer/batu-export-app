@@ -94,6 +94,21 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // 'both': also a real per-row MOVEMENT total (report_totals.total_kg_from_moyka) — deliberately allowed to diverge from the state figure, see DECISIONS.md.
   { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'both' },
+  // Yo'qotish (2026-08-31) — the per-serial REALIZED wash loss, booked only
+  // once the serial is closed via Yakunlash (migration 0101's split; NULL,
+  // rendered "—", while it is still open, because that gap is still
+  // in-process and already shows under Moykada). Sits directly after
+  // Moykadan chiqgan because that is the subtraction it is: the four
+  // columns close as Moykaga yuborilgan = Moykadan chiqgan + Moykada +
+  // Yo'qotish, and its value is sourced from the same basis those two are
+  // (see migration 0107) so the row can never fail that arithmetic on
+  // screen.
+  //
+  // 🚩 The one state column that is default-VISIBLE, deliberately, against
+  // this family's own "expandable via the column picker" precedent: it was
+  // asked for so the loss TOTAL is on the strip without hunting through
+  // Ustunlar first, and the strip only chips columns that are visible.
+  { key: 'yoqotish', label: "Yo'qotish, kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'state' },
   { key: 'xom_jonatilgan', label: "Xom holda jo'natilgan, kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'olib_ketilgan', label: 'Olib ketilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // Output-by-kalibr (2026-08-15 pattern, added 2026-08-29 -- Prompt 6, see

@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 
 // Расход sub-tab (Профиль → Отчёт), per-dispatch-event CHIQIM ledger for
 // the Global Export client portal. Reads client_chiqim_ledger()
-// (supabase/migrations/0107_client_serial_and_chiqim_ledger.sql) — same
+// (supabase/migrations/0109_client_serial_and_chiqim_ledger.sql) — same
 // self-scoping (my_owner_id()) as clientSerialLedger.ts.
 
 export type ClientChiqimKind = 'tayyor' | 'konditerka' | 'rezka_kn' | 'xom' | 'vozvrat' | 'eski_yuvilgan' | 'eski_kn'
@@ -10,7 +10,7 @@ export type ClientChiqimKind = 'tayyor' | 'konditerka' | 'rezka_kn' | 'xom' | 'v
 // "Хом" (xom) has zero rows by construction — chiqim_lines.line_kind='raw'
 // carries no field distinguishing a sale from a return, so every such row
 // is labelled Возврат (confirmed against the schema before this shipped;
-// see migration 0107's own header comment). Listed here anyway so the
+// see migration 0109's own header comment). Listed here anyway so the
 // filter and totals bar both show all 7 categories, not 6 — a client
 // reading "Хом: 0" is told something real; a missing row would just look
 // like an omission.

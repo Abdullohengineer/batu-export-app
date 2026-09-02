@@ -2,7 +2,8 @@ import { supabase } from './supabase'
 
 // Приход sub-tab (Профиль → Отчёт), per-serial KIRIM ledger for the Global
 // Export client portal. Reads client_serial_ledger()
-// (supabase/migrations/0107_client_serial_and_chiqim_ledger.sql), which
+// (supabase/migrations/0109_client_serial_and_chiqim_ledger.sql, fixed by
+// 0110 -- see that file's own header for the Остаток сырья correction), which
 // self-scopes to the caller's own owner via my_owner_id() — this module
 // deliberately never sends an owner/client id, see that migration's own
 // header comment for why. Replaces the old client_report_rows/

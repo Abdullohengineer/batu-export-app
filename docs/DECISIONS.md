@@ -7489,3 +7489,111 @@ collision — main independently added its own `0107_hisobot_yoqotish_column.sql
 to the live project by their respective sessions before either saw the other's migration, so
 renumbering here is pure repo hygiene (keeping `supabase/migrations/` monotonic for a future
 clean replay) — nothing about the live database changed as part of the rename.
+
+---
+
+## 2026-09-03 — K6/110826-001 redate: correcting the 2026-09-02 correction
+
+**Context:** a follow-up task asked to investigate a temporal inconsistency — the same
+`PLT-110826-001-06-1` K6 pallet the 2026-09-02 entry above registered, dated to that entry's own
+"post-hoc collection date" (2026-09-02), consumed by a `chiqim_requests` row (`061ac7f8…`, plate
+`PIYODA`) dated `request_date = 2026-08-28`. A pallet consumed five days before its own recorded
+existence.
+
+**Investigation (read-only, live SQL) found the mechanism precisely, and it did NOT match the
+task brief's own working theory** (full findings shown to the user before any SQL was drafted):
+- Hisobot MOYKADAN's August 2026 total held at **40,190 kg** across the entire investigation —
+  independently reconciled four separate ways (twice against `rahbar_dashboard_ledger`, once by
+  hand-applying migration 0106's exclusion set, once against SPEC.md's own v1.44-verified
+  identity) both before and after this task started. The brief's cited "43,380 kg buggy / 40,200
+  kg true" figures never reproduced against live data via any query path tried.
+- The K6 pallet is only 10 kg — nowhere near the ~3,180 kg the brief's arithmetic guessed. That
+  3,180 kg belonged to an unrelated, unproblematic September batch on a different serial
+  (`110826-003`, K4 2,500 kg + KN 680 kg, never touched by any CHIQIM).
+- `chiqim_departed_at()` (used by every kg-authoritative report — `rahbar_dashboard_ledger`,
+  `kirim_line_state`, `get_client_report`) reads `ombor_finished_at` for `truck_type = 'fura'`
+  requests, not `request_date` — so Request B's real completion timestamp (2026-09-02 05:31:18)
+  already correctly placed its 30 kg in September everywhere that matters. **Zero kg-total
+  contamination existed anywhere before this correction** — the only place the mismatch was even
+  visible was Hisobot's `CHIQIM (tayyor)` *direction* (dated by `request_date` per §3.2.3,
+  deliberately, same known gap the spec already documents for reserved-but-undeparted pallets).
+- `chiqim_requests` INSERT is RLS-restricted to `menejer` only. Request B's `created_by` is an
+  `ombor`-role profile, meaning it could not have been created through the app's normal UI — it
+  was written directly via SQL, almost certainly in the same 2026-09-02 correction session as the
+  K6 pallet itself, but never itself logged in DECISIONS.md until now.
+
+**Two proposed remedies were raised and set aside before this one, both flagged to the user
+directly rather than executed on request text alone:**
+1. *Delete Request B.* The permission to do this was cited as a SPEC.md exception for "test
+   debris." That exception does not exist in SPEC.md — what's actually there (line 142) is the
+   opposite: **"Never DELETE — void... The audit trail is the defence in a client dispute."**
+   Real (non-`TEST-`) production rows tied to a real client don't qualify for a deletion path that
+   isn't documented to exist. Flagged; not executed.
+2. *Void Request B.* SPEC-correct methodology, but read against the actual code:
+   `chiqim_requests.voided_at` is not read by `chiqim_departed_at()`, `rahbar_dashboard_ledger`,
+   `kirim_line_state`, or `get_client_report` — voiding a request changes nothing about any
+   reported kg total, only its own status pill in `FinishedChiqimList.tsx`. Making it actually
+   move numbers would have required teaching those four functions a new filter — real, migration-
+   scale work, out of scope for a "fabricated placeholder" that turned out to also be carrying two
+   unrelated, non-anomalous 10 kg lines (K2 and K4, from stock with no timing problem of its own)
+   — which undercuts "purely fabricated" as the explanation for Request B's existence in the first
+   place. Flagged; not executed.
+
+**What was actually done, on Abdulloh's direct instruction** (first-hand knowledge of the
+physical event that the data alone couldn't corroborate or refute either way — the K6 pallet's
+own 2026-09-02 entry describes a "post-hoc collection," which reads as the collection itself
+being late, not just its paperwork; Abdulloh's account is that only the paperwork was late):
+
+```sql
+update finished_pallets set received_date = '2026-08-28'
+where barcode2 = 'PLT-110826-001-06-1';
+-- + an audit_log row, actor null (SQL correction, not an app action --
+-- same convention the original 2026-09-02 correction used).
+```
+
+Archived in full at `docs/data-corrections/2026-09-03_110826-001-k6-redate.sql`. Dry-run verified
+(`BEGIN...ROLLBACK`) before applying for real. **Request B is deliberately left untouched** — once
+the pallet's own date matches its siblings (2026-08-28), Request B's identical `request_date`
+stops being a temporal impossibility and becomes an ordinary (if late-entered, like Request A's
+own 2-day backdate) record of what actually happened. No void, no delete, no report-function
+change.
+
+**Verified live, before vs. after (not a dry run — the real committed values):**
+
+| Figure | Before | After |
+|---|---:|---:|
+| Hisobot MOYKADAN, August 2026 | 40,190 kg / 11 rows | **40,200 kg** / 11 rows, 0 duplicates |
+| Hisobot MOYKADAN, September 2026 | 3,190 kg / 2 rows | **3,180 kg** / 1 row |
+| `rahbar_dashboard_ledger` Aug `finished.producedKg` | 40,190 | **40,200** |
+| `rahbar_dashboard_ledger` Sep `finished.producedKg` | 3,190 | **3,180** |
+| `get_client_report` (Global Export Company) Aug `finished.producedKg` | — | **40,200**, matches the ledger exactly |
+| `yield_rows('110826-001')` loss_kg | 140 | **140**, unchanged (received_date doesn't affect the sent-minus-received basis) |
+
+Every number the user's verification checklist named came back exactly as predicted before the
+fix was applied for real — the dry run matched first, live matched after.
+
+**No PR opened yet this session.** Branch: `k6-110826-001-redate-correction`.
+
+---
+
+## 2026-09-03 — Dating principle for post-hoc corrections (standing rule)
+
+Prompted directly by the redate above. Recorded here as a rule for **every future post-hoc
+correction**, not just this one:
+
+🔒 **A post-hoc correction's date fields (`received_date`, `request_date`, and any equivalent
+"when did this really happen" column elsewhere) must carry the real physical event date — when
+the thing actually happened in the world — never the date the correction itself was typed into
+SQL.** The SQL-registration timestamp already exists, verbatim, in `created_at` (or the
+equivalent audit column) and in the `audit_log` row the correction itself should always write
+(actor `null` when it's a direct SQL correction with no single attributable app-role actor, per
+the convention both this entry and the 2026-09-02 one above used) — there is no need to also
+encode "when was this typed in" into the business-meaning date column, and doing so is exactly
+what produced this incident's apparent (and, as investigated, largely illusory in terms of actual
+kg-total impact) temporal impossibility.
+
+Practically: before writing a post-hoc `UPDATE`/`INSERT`, ask "what date would this row have
+carried if it had been entered on time?" — and use that, not `now()`/`CURRENT_DATE`. When the
+true physical date is genuinely unknown or unknowable from the data itself, say so explicitly in
+the DECISIONS.md entry (as the 2026-09-02 entry did — "the post-hoc collection date") rather than
+defaulting silently to the registration date and letting a reader assume it's the real one.

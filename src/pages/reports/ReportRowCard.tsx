@@ -72,6 +72,12 @@ export function ReportRowCard({
   } else if (row.kind === 'moyka_send') {
     tone = 'neutral'
     label = `${qty.toLocaleString()} kg`
+  } else if (row.kind === 'moyka_output') {
+    // Per-serial aggregate row (2026-09-03) — no single pallet status
+    // applies any more; the row's own kg is already exclusion-filtered
+    // (see reportQuery.ts's MoykaOutputReportRow comment).
+    tone = 'neutral'
+    label = `${qty.toLocaleString()} kg`
   } else if (row.palletStatus === 'bekor_qilingan') {
     tone = 'problem'
     label = 'Bekor qilingan'
@@ -93,7 +99,7 @@ export function ReportRowCard({
     <Card padding="compact">
       <button type="button" onClick={onToggle} className="flex min-h-12 w-full items-center gap-3 text-left">
         <SerialChip>
-          {row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}
+          {row.kind === 'chiqim' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}
         </SerialChip>
         <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />
         {(row.kind === 'chiqim' || row.kind === 'chiqim_raw' || row.kind === 'chiqim_old_kn') && row.requestId ? (
@@ -102,7 +108,7 @@ export function ReportRowCard({
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-slate-900 dark:text-slate-100">
             {ownerName(row.ownerId)} · {typeName(row.typeId)}
-            {(row.kind === 'chiqim' || row.kind === 'moyka_output') && ` · ${calibreLabel(row.calibreId)}`}
+            {row.kind === 'chiqim' && ` · ${calibreLabel(row.calibreId)}`}
           </span>
           <span className="block text-sm text-slate-500 dark:text-slate-400">
             {formatDate(row.dateBasis)} · {row.plate || '—'} ·{' '}
@@ -122,7 +128,7 @@ export function ReportRowCard({
           ) : row.kind === 'moyka_send' ? (
             <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />
           ) : row.kind === 'moyka_output' ? (
-            <MoykaOutputRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
+            <MoykaOutputRowDetail row={row} typeName={typeName} onOpenPassport={onOpenPassport} />
           ) : (
             <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
           )}

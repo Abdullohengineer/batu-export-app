@@ -2,36 +2,33 @@ import type { MoykaOutputReportRow } from '../../lib/reportQuery'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // Row-expand content for a MOYKADAN row — sibling to ChiqimRowDetail.tsx.
-// This is the PRODUCTION event for this barcode2 (received_date), not its
-// later dispatch — a CHIQIM row for the same pallet, if one exists, is a
-// separate row on its own request_date (see reportQuery.ts's own comment on
-// MoykaOutputReportRow). Deliberately unfiltered by pallet status at the row
-// level, so a voided/consumed/storage-loss pallet still shows here — surface
-// that status plainly rather than hiding it.
+// Collapsed to a per-serial-per-period aggregate (2026-09-03, see
+// reportQuery.ts's MoykaOutputReportRow comment and migration 0111) — this
+// row no longer identifies a single pallet, so there is no single
+// barcode2/calibre/lab reading left to show here. The per-pallet breakdown
+// (Barcode #2, kalibr, kg, lab result) still exists and is still reachable
+// — it lives on the serial passport's own Moyka section (SPEC.md §3.2.5),
+// reused rather than rebuilt here.
 export function MoykaOutputRowDetail({
   row,
   typeName,
-  calibreLabel,
   onOpenPassport,
 }: {
   row: MoykaOutputReportRow
   typeName: (id: string) => string
-  calibreLabel: (id: string) => string
   onOpenPassport: (serial: string) => void
 }) {
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
       <div>
         Ona seriya: <span className="font-mono">{row.serial}</span> <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} /> ·{' '}
-        {typeName(row.typeId)} · {calibreLabel(row.calibreId)}
+        {typeName(row.typeId)}
       </div>
       <div>
-        Laboratoriya: namligi {row.moisturePct !== null ? `${row.moisturePct}%` : 'tekshirilmagan'}
-        {' · '}
-        SO₂: {row.so2MgKg !== null ? `${row.so2MgKg} ppm` : "yo'q"}
-        {' · '}
-        Xulosa:{' '}
-        {row.labVerdict === 'o_tdi' ? "o'tdi" : row.labVerdict === 'qayta_yuvish' ? 'qayta yuvish' : 'tekshirilmagan'}
+        Ushbu davrda Moykadan chiqqan (yakuniy mahsulot): <span className="font-medium text-slate-700 dark:text-slate-300">{row.weightKg.toLocaleString()} kg</span>
+      </div>
+      <div className="text-xs">
+        Bir nechta pallet yig'indisi — har bir pallet (Barcode #2, kalibr, laboratoriya natijasi) seriya pasportida ko'rinadi.
       </div>
       <button
         type="button"

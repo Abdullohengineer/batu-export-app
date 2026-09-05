@@ -90,10 +90,15 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'qabul_qilingan', label: 'Qabul qilingan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'omborda_qoldi', label: 'Omborda qoldi, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // 'both': also a real per-row MOVEMENT total (report_totals.total_kg_to_moyka) — see ReportColumnTotalBasis above.
-  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'both' },
+  // Default-VISIBLE (2026-09-03, MOYKADAN per-serial rows) — the "how much
+  // sent to / received from Moyka" headline figures used to require opening
+  // Ustunlar to see at all. Global default (this registry has no per-
+  // direction notion of "visible"), same as every other column here — every
+  // OTHER column's defaultVisible is unchanged by this migration.
+  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'both' },
   { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // 'both': also a real per-row MOVEMENT total (report_totals.total_kg_from_moyka) — deliberately allowed to diverge from the state figure, see DECISIONS.md.
-  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'both' },
+  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'both' },
   // Yo'qotish (2026-08-31) — the per-serial REALIZED wash loss, booked only
   // once the serial is closed via Yakunlash (migration 0101's split; NULL,
   // rendered "—", while it is still open, because that gap is still

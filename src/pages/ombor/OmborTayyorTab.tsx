@@ -17,6 +17,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { todayInTashkent } from '../../lib/dateRange'
 
 // §5.3 Tayyor Mahsulot: single-tile receive picker (2026-08-28 — see
 // DECISIONS.md "Section 3 single-tile receive picker"). Replaces the old
@@ -98,7 +99,7 @@ export function OmborTayyorTab() {
       type_id: serial.type_id,
       calibre_id: values.calibreId,
       weight_kg: values.weightKg,
-      received_date: new Date().toISOString().slice(0, 10),
+      received_date: todayInTashkent(),
       created_by: profile?.id,
     })
     if (error) throw error

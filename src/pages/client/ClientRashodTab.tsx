@@ -16,6 +16,7 @@ import {
 } from '../../lib/clientChiqimLedger'
 import { formatDate } from '../../lib/formatDate'
 import { downloadClientChiqimLedgerExcel } from '../../lib/clientChiqimLedgerExport'
+import { todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 
 // Расход sub-tab — rewritten (CLAUDE.md task "Rebuild the client portal..."
 // Part B.3) from a flat per-dispatch-event table to one row per serial,
@@ -28,13 +29,6 @@ const pillClass =
 
 function kg(v: number): string {
   return `${Math.round(v).toLocaleString()} кг`
-}
-function isoToday(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-function isoFirstOfMonth(): string {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
 }
 
 function calibreString(calibres: { label: string; kg: number }[]): string {
@@ -124,7 +118,7 @@ function TotalsBlock({ totals }: { totals: ClientChiqimLedger['totals'] }) {
 
 export function ClientRashodTab() {
   const { productTypes } = useProductTypes(true)
-  const defaultRange = { from: isoFirstOfMonth(), to: isoToday() }
+  const defaultRange = { from: firstOfMonthInTashkent(), to: todayInTashkent() }
   const [filters, setFilters] = usePersistentState<ClientChiqimLedgerFilters>(
     'clientHisobot.rashod.filters',
     defaultClientChiqimLedgerFilters(defaultRange.from, defaultRange.to),
@@ -185,10 +179,10 @@ export function ClientRashodTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Период</span>
-        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: isoToday(), to: isoToday() }))} className={pillClass}>
+        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: todayInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Сегодня
         </button>
-        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: isoFirstOfMonth(), to: isoToday() }))} className={pillClass}>
+        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: firstOfMonthInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Этот месяц
         </button>
         <label className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">

@@ -8,6 +8,7 @@ import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { OldStockDrilldown } from '../../components/OldStockDrilldown'
+import { todayInTashkent, firstOfMonthInTashkent, previousMonthRangeInTashkent } from '../../lib/dateRange'
 
 // Rahbar "Bosh sahifa" -- stock-reconciliation dashboard, rebuilt against
 // docs/mockups/BATU-Rahbar-dashboard-v3.html (2026-08-14). Replaces this
@@ -22,22 +23,6 @@ import { OldStockDrilldown } from '../../components/OldStockDrilldown'
 // side regroup of server totals, not a new sum.
 
 const BOSHIDAN = '2026-07-15'
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-function isoOf(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-function firstOfMonth(d: Date): string {
-  return isoOf(new Date(d.getFullYear(), d.getMonth(), 1))
-}
-function lastMonthRange(): { from: string; to: string } {
-  const now = new Date()
-  const firstThis = new Date(now.getFullYear(), now.getMonth(), 1)
-  const lastPrev = new Date(firstThis.getTime() - 86400000)
-  return { from: firstOfMonth(lastPrev), to: isoOf(lastPrev) }
-}
 
 type PeriodPreset = 'boshidan' | 'bu_oy' | 'otgan_oy' | 'custom'
 
@@ -111,16 +96,16 @@ export function RahbarHome() {
   const [scope, setScope] = usePersistentState<ZaxiraScope>('rahbar.scope', 'yangi')
   const [preset, setPreset] = usePersistentState<PeriodPreset>('rahbar.preset', 'boshidan')
   const [customFrom, setCustomFrom] = usePersistentState('rahbar.customFrom', BOSHIDAN)
-  const [customTo, setCustomTo] = usePersistentState('rahbar.customTo', () => todayIso())
+  const [customTo, setCustomTo] = usePersistentState('rahbar.customTo', () => todayInTashkent())
   const [selectedTypeIds, setSelectedTypeIds] = usePersistentState<string[] | null>('rahbar.types', null) // null = hammasi
 
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
 
   const { from, to } = useMemo(() => {
-    if (preset === 'boshidan') return { from: BOSHIDAN, to: todayIso() }
-    if (preset === 'bu_oy') return { from: firstOfMonth(new Date()), to: todayIso() }
-    if (preset === 'otgan_oy') return lastMonthRange()
+    if (preset === 'boshidan') return { from: BOSHIDAN, to: todayInTashkent() }
+    if (preset === 'bu_oy') return { from: firstOfMonthInTashkent(), to: todayInTashkent() }
+    if (preset === 'otgan_oy') return previousMonthRangeInTashkent()
     return { from: customFrom, to: customTo }
   }, [preset, customFrom, customTo])
 

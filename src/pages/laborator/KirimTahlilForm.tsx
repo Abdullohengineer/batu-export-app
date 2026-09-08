@@ -7,6 +7,7 @@ import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { todayInTashkent } from '../../lib/dateRange'
 
 export interface TahlilValues {
   sampleDate: string
@@ -43,7 +44,7 @@ export function KirimTahlilForm({
   onCancel: () => void
   onSubmit: (values: TahlilValues) => Promise<void>
 }) {
-  const [sampleDate, setSampleDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [sampleDate, setSampleDate] = useState(() => todayInTashkent())
   const [moisture, setMoisture] = useState('')
   const [classification, setClassification] = useState<SulfurChoice>(sulfurChoiceFromFlag(line.is_sulfured))
   const [photoFile, setPhotoFile] = useState<File | null>(null)

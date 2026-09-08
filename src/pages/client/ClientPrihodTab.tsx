@@ -13,6 +13,7 @@ import { formatDate } from '../../lib/formatDate'
 import { formatLossKg } from '../../lib/formatLoss'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { downloadClientSerialLedgerExcel } from '../../lib/clientSerialLedgerExport'
+import { todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 
 const pillClass =
   'rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
@@ -21,13 +22,6 @@ function kg(v: number): string {
   return `${Math.round(v).toLocaleString()} кг`
 }
 
-function isoToday(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-function isoFirstOfMonth(): string {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
-}
 
 // Gap sign convention matches formatLossKg's own documented rule (see
 // formatLoss.ts) exactly: positive = real loss (bare, red), negative =
@@ -175,7 +169,7 @@ function TotalsBar({ totals }: { totals: ClientSerialLedger['totals'] }) {
 
 export function ClientPrihodTab() {
   const { productTypes } = useProductTypes(true)
-  const defaultRange = { from: isoFirstOfMonth(), to: isoToday() } // "Default period: current month"
+  const defaultRange = { from: firstOfMonthInTashkent(), to: todayInTashkent() } // "Default period: current month"
   const [filters, setFilters] = usePersistentState<ClientSerialLedgerFilters>(
     'clientHisobot.prihod.filters',
     defaultClientSerialLedgerFilters(defaultRange.from, defaultRange.to),
@@ -232,10 +226,10 @@ export function ClientPrihodTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Период</span>
-        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: isoToday(), to: isoToday() }))} className={pillClass}>
+        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: todayInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Сегодня
         </button>
-        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: isoFirstOfMonth(), to: isoToday() }))} className={pillClass}>
+        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: firstOfMonthInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Этот месяц
         </button>
         <label className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">

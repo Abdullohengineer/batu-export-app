@@ -3,17 +3,25 @@ import { usePersistentState } from '../../lib/FilterState'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
 import {
-  CLIENT_CHIQIM_KIND_OPTIONS,
-  KIND_COLOR,
-  chiqimKindLabel,
+  TIP_OPTIONS,
+  TIP_COLOR,
+  tipLabel,
+  tipTotals,
   defaultClientChiqimLedgerFilters,
   fetchClientChiqimLedger,
-  type ClientChiqimKind,
+  type ClientTip,
   type ClientChiqimLedger,
   type ClientChiqimLedgerFilters,
+  type ClientChiqimSerialRow,
 } from '../../lib/clientChiqimLedger'
 import { formatDate } from '../../lib/formatDate'
 import { downloadClientChiqimLedgerExcel } from '../../lib/clientChiqimLedgerExport'
+
+// Расход sub-tab — rewritten (CLAUDE.md task "Rebuild the client portal..."
+// Part B.3) from a flat per-dispatch-event table to one row per serial,
+// each expandable to its own per-dispatch detail. See
+// src/lib/clientChiqimLedger.ts for the Тип taxonomy and
+// supabase/migrations/0114/0116 for the backing RPC pivot.
 
 const pillClass =
   'rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
@@ -29,41 +37,80 @@ function isoFirstOfMonth(): string {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
 }
 
-function KindBadge({ kind }: { kind: ClientChiqimKind }) {
-  const c = KIND_COLOR[kind]
+function calibreString(calibres: { label: string; kg: number }[]): string {
+  if (calibres.length === 0) return '—'
+  return calibres.map((c) => `${c.label}: ${Math.round(c.kg).toLocaleString()}`).join(', ')
+}
+
+// Тип badge(s) — usually one; the task's own "rare edge case" (a serial
+// whose dispatches span multiple types in the period) renders as several
+// comma-joined badges rather than picking just one and hiding the rest.
+function TipBadges({ tips }: { tips: ClientTip[] }) {
   return (
-    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${c.bg} ${c.text}`}>
-      {chiqimKindLabel(kind)}
+    <span className="inline-flex flex-wrap gap-1">
+      {tips.map((t) => {
+        const c = TIP_COLOR[t]
+        return (
+          <span key={t} className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${c.bg} ${c.text}`}>
+            {tipLabel(t)}
+          </span>
+        )
+      })}
     </span>
   )
 }
 
-function calibreString(calibres: { label: string; kg: number }[] | null): string {
-  if (!calibres || calibres.length === 0) return '—'
-  return calibres.map((c) => `${c.label}: ${Math.round(c.kg).toLocaleString()}`).join(', ')
+function ExpandedDispatches({ row }: { row: ClientChiqimSerialRow }) {
+  return (
+    <div className="border-t border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/40">
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Отгрузки</p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
+            <th className="py-1 pr-2">№</th>
+            <th className="py-1 pr-2">Дата</th>
+            <th className="py-1 pr-2">Машина</th>
+            <th className="py-1 pr-2">Водитель</th>
+            <th className="py-1 text-right">Кол-во</th>
+            <th className="py-1">По калибрам</th>
+          </tr>
+        </thead>
+        <tbody>
+          {row.dispatches.map((d, i) => (
+            <tr key={d.requestId} className="border-t border-slate-100 dark:border-slate-800">
+              <td className="py-1 pr-2 text-slate-400">N{i + 1}</td>
+              <td className="py-1 pr-2 whitespace-nowrap">{formatDate(d.date)}</td>
+              <td className="py-1 pr-2 whitespace-nowrap">{d.plate}</td>
+              <td className="py-1 pr-2 whitespace-nowrap">{d.driver}</td>
+              <td className="py-1 text-right tabular-nums">{kg(d.kg)}</td>
+              <td className="py-1 text-xs text-slate-500 dark:text-slate-400">{calibreString(d.calibres)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
-// Totals bar — server-computed (ledger.totals), never re-derived from
-// `rows` client-side, same rule as ClientPrihodTab's TotalsBar.
-function TotalsBar({ totals }: { totals: ClientChiqimLedger['totals'] }) {
+// Top-of-page totals block (task's own list): Всего, one per Тип, plus the
+// Готовая продукция per-calibre split. Server-computed (ledger.totals),
+// never re-derived from `rows` client-side.
+function TotalsBlock({ totals }: { totals: ClientChiqimLedger['totals'] }) {
   return (
-    <div className="sticky bottom-0 z-10 flex flex-col gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm backdrop-blur dark:border-sky-900 dark:bg-sky-950">
+    <div className="flex flex-col gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm dark:border-sky-900 dark:bg-sky-950">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <span className="text-slate-700 dark:text-slate-300">
           Всего отгружено: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.totalKg)}</span>
         </span>
-        {CLIENT_CHIQIM_KIND_OPTIONS.map((o) => {
-          const t = totals.byKind.find((k) => k.kind === o.value)
-          return (
-            <span key={o.value} className="text-slate-700 dark:text-slate-300">
-              {o.label}: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(t?.kg ?? 0)}</span>
-            </span>
-          )
-        })}
+        {tipTotals(totals).map((t) => (
+          <span key={t.tip} className="text-slate-700 dark:text-slate-300">
+            {tipLabel(t.tip)}: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(t.kg)}</span>
+          </span>
+        ))}
       </div>
       {totals.tayyorByCalibre.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-sky-100 pt-1 dark:border-sky-900">
-          <span className="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">Тайёр по калибрам</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">Готовая продукция по калибрам</span>
           {totals.tayyorByCalibre.map((c) => (
             <span key={c.calibreId} className="text-slate-700 dark:text-slate-300">
               {c.label}: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(c.kg)}</span>
@@ -85,6 +132,7 @@ export function ClientRashodTab() {
   const [ledger, setLedger] = useState<ClientChiqimLedger | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
@@ -110,6 +158,19 @@ export function ClientRashodTab() {
     return productTypes.find((t) => t.id === id)?.name ?? '—'
   }
 
+  function rowKey(row: ClientChiqimSerialRow): string {
+    return row.serial ?? `pool-${row.typeId}`
+  }
+
+  function toggle(key: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   async function handleExport() {
     if (!ledger) return
     setExporting(true)
@@ -123,6 +184,7 @@ export function ClientRashodTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Период</span>
         <button type="button" onClick={() => setFilters((f) => ({ ...f, from: isoToday(), to: isoToday() }))} className={pillClass}>
           Сегодня
         </button>
@@ -141,11 +203,21 @@ export function ClientRashodTab() {
         </label>
 
         <FilterField
-          label="Тури"
+          label="Вид сырья"
           allLabel="Все"
-          options={CLIENT_CHIQIM_KIND_OPTIONS}
-          selected={filters.kinds}
-          onChange={(vals) => setFilters((f) => ({ ...f, kinds: vals as ClientChiqimKind[] }))}
+          options={productTypes.map((t) => ({ value: t.id, label: t.name }))}
+          selected={filters.typeId ? [filters.typeId] : []}
+          onChange={(vals) => setFilters((f) => ({ ...f, typeId: vals[0] ?? '' }))}
+          multi={false}
+          compact
+        />
+
+        <FilterField
+          label="Тип отгрузки"
+          allLabel="Все"
+          options={TIP_OPTIONS}
+          selected={filters.tips}
+          onChange={(vals) => setFilters((f) => ({ ...f, tips: vals as ClientTip[] }))}
           multi
           compact
         />
@@ -163,52 +235,76 @@ export function ClientRashodTab() {
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
+      {!loading && !error && ledger && <TotalsBlock totals={ledger.totals} />}
+
       {!loading && !error && ledger && (
         <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-          <table className="w-full min-w-[1000px] border-collapse text-sm">
+          <table className="w-full min-w-[900px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-                <th className="px-3 py-2">Тури</th>
-                <th className="px-3 py-2">Дата</th>
-                <th className="px-3 py-2">Вид сырья</th>
+                <th className="px-3 py-2" />
                 <th className="px-3 py-2">Серия</th>
-                <th className="px-3 py-2 text-right">Кол-во (кг)</th>
-                <th className="px-3 py-2">По калибрам</th>
-                <th className="px-3 py-2">Мошина №</th>
-                <th className="px-3 py-2">Водитель</th>
+                <th className="px-3 py-2">Вид сырья</th>
+                <th className="px-3 py-2">Тип</th>
+                <th className="px-3 py-2 text-right">ИТОГО отгружено (кг)</th>
+                <th className="px-3 py-2">ИТОГО по калибрам</th>
+                <th className="px-3 py-2 text-right">Отгрузок</th>
               </tr>
             </thead>
             <tbody>
               {ledger.rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={7} className="px-3 py-6 text-center text-slate-400">
                     Ничего не найдено
                   </td>
                 </tr>
               )}
-              {ledger.rows.map((row, i) => (
-                <tr
-                  key={`${row.requestId}-${row.kind}-${i}`}
-                  className="border-b border-slate-100 align-top dark:border-slate-800"
-                >
-                  <td className="px-3 py-2">
-                    <KindBadge kind={row.kind} />
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.date)}</td>
-                  <td className="px-3 py-2">{typeName(row.typeId)}</td>
-                  <td className="px-3 py-2">{row.serials ?? '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.kg)}</td>
-                  <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">{calibreString(row.calibres)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.plate}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.driver}</td>
-                </tr>
-              ))}
+              {ledger.rows.map((row) => {
+                const key = rowKey(row)
+                const isOpen = expanded.has(key)
+                return (
+                  <>
+                    <tr
+                      key={key}
+                      onClick={() => toggle(key)}
+                      className="cursor-pointer border-b border-slate-100 align-top hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
+                    >
+                      <td className="px-3 py-2">
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className={`h-4 w-4 text-slate-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+                        </svg>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {row.isPool ? <span className="text-slate-400">— (склад KN)</span> : row.serial}
+                      </td>
+                      <td className="px-3 py-2">{typeName(row.typeId)}</td>
+                      <td className="px-3 py-2">
+                        <TipBadges tips={row.tips} />
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{kg(row.totalKg)}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">{calibreString(row.calibres)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{row.dispatchCount}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr key={`${key}-panel`}>
+                        <td colSpan={7} className="p-0">
+                          <ExpandedDispatches row={row} />
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )
+              })}
             </tbody>
           </table>
         </div>
       )}
-
-      {!loading && !error && ledger && <TotalsBar totals={ledger.totals} />}
     </div>
   )
 }

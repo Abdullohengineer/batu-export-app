@@ -1,0 +1,6 @@
+## 2026-07-13 — Diagnostic cleanup
+**Context:** Both temporary diagnostics from the CORS/RLS debugging session had served their purpose and needed cleaning up before they became permanent clutter (or, in the Edge Function's case, permanently-served debug headers).
+**Decision:**
+- `supabase/functions/admin-users/index.ts`: removed `DIAG_VERSION`, its module-load `console.log`, the `X-Admin-Users-Diag` response header, and the entry-point `console.log` — the function is back to exactly the CORS-fix version from the earlier entry, nothing else changed.
+- `src/lib/supabase.ts`: kept the `window.supabase` exposure rather than deleting it, since it's already gated behind `import.meta.env.DEV` — a Vite build-time constant, not a runtime check — and was already verified to be fully absent from the production bundle. Reworded the comment (dropped "TEMPORARY DIAGNOSTIC — remove once...") since this is staying as a permanent dev-only debugging convenience, not something waiting to be deleted. Re-verified after this pass: `npm run build` output still has zero occurrences of `window.supabase`.
+**Action required outside this repo:** redeploy — `npx supabase functions deploy admin-users`. Same network caveat as every other Edge Function change in this log: this sandbox can't reach Supabase to do it directly.

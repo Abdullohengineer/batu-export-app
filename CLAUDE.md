@@ -1,6 +1,7 @@
 # CLAUDE.md — BATU EXPORT project rules
 
-Source of truth: `/docs/SPEC.md` (versioned). Decision log: `/docs/DECISIONS.md`.
+Source of truth: `/docs/SPEC.md` (versioned). Decision log: `/docs/decisions/`
+(one file per entry; `/docs/DECISIONS.md` is the pointer/convention note).
 Read both, relevant sections only, before every task.
 
 ## Schema
@@ -89,9 +90,11 @@ Read both, relevant sections only, before every task.
 - If no MCP: verify against a disposable local Postgres sandbox, say so
   explicitly, and flag that live application/testing is still needed.
 - Log schema surprises, resolved ambiguities, and spec deviations in
-  DECISIONS.md. If a build reveals the spec text is wrong or superseded,
+  a NEW file `docs/decisions/NNNN-YYYY-MM-DD-short-slug.md` — never append to
+  `docs/DECISIONS.md`, which holds no entries. If a build reveals the spec text
+  is wrong or superseded,
   update SPEC.md inline (mark/strike the old text, don't delete silently)
-  and log why in DECISIONS.md — never contradict the spec silently.
+  and log why in that entry file — never contradict the spec silently.
 - Don't leave debug code, temp routes, or test dependencies in the final
   diff — verify, then revert.
 
@@ -111,7 +114,8 @@ Read both, relevant sections only, before every task.
   this rule is specifically for the irreversible ones.
 
 Automated (Playwright) end-to-end tests exist from Step 7 onward. See
-`docs/DECISIONS.md` "Step 7 testing infra" for the full history, including
+`docs/decisions/` "Step 7 testing infra" (cite entries by title;
+`grep -rl` the title in that directory) for the full history, including
 why this section reads the way it does.
 
 - 🚩 **Plan limitation, not the original design.** Supabase dev branching

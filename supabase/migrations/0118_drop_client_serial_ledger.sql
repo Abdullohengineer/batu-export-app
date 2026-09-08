@@ -1,0 +1,14 @@
+-- Приход rewrite (Phase 5, client-portal reset): ClientPrihodTab.tsx no
+-- longer calls client_serial_ledger (migration 0109) -- it's now a KIRIM-only
+-- mirror of Rahbar/Menejer's own Hisobot, reusing report_query_page/
+-- report_totals directly (no parallel RPC, per explicit instruction). Drop
+-- the now-dead function. client_chiqim_ledger, defined in the SAME migration
+-- 0109, is NOT touched -- it still backs ClientRashodTab.tsx, untouched this
+-- round.
+--
+-- Confirmed dead before dropping, not assumed (CLAUDE.md): grep over src/
+-- found zero remaining call sites once ClientPrihodTab.tsx/
+-- clientSerialLedger.ts/clientSerialLedgerExport.ts were removed in this
+-- same change, and a search over every live function's pg_get_functiondef
+-- found nothing else in the database calling it.
+drop function if exists public.client_serial_ledger(date, date, uuid);

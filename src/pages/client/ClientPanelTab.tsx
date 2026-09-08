@@ -76,15 +76,17 @@ export function ClientPanelTab() {
             tone="oldKn") -- an exact counterpart, same position (last in the
             row) on both dashboards. Эски ювилган has no Rahbar HERO TILE
             counterpart to mirror (Rahbar only shows it as a drill-down graph,
-            never a hero tile) -- color reuses that drill-down graph's own
-            established green (#059669, OldStockDrilldown.tsx), which is also
-            already this screen's "Готовая продукция" color; flagged in
-            DECISIONS.md rather than silently picked, since Rahbar's own page
-            never has to face that particular adjacency. */}
+            never a hero tile) -- color is teal (#0d9488), deliberately NOT
+            OldStockDrilldown.tsx's own green for the same concept, because
+            that green is already this screen's adjacent "Готовая продукция"
+            tile (2026-09-08, explicit instruction). This is now the
+            established "Эски ювилган hero tile" color -- reuse it verbatim
+            if Rahbar ever gains an equivalent tile of its own, rather than
+            picking independently. */}
         <Tile
           label="Эски ювилган"
           value={oldStock.oldWashed.totalKg}
-          color="#059669"
+          color="#0d9488"
           caption="Текущий остаток · промытая продукция"
         />
         <Tile

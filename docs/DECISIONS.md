@@ -7597,3 +7597,109 @@ carried if it had been entered on time?" — and use that, not `now()`/`CURRENT_
 true physical date is genuinely unknown or unknowable from the data itself, say so explicitly in
 the DECISIONS.md entry (as the 2026-09-02 entry did — "the post-hoc collection date") rather than
 defaulting silently to the registration date and letting a reader assume it's the real one.
+
+## 2026-09-08 — P8/P9 moyka batch reconciliation (110826-003 / 180826-001)
+
+**Context:** On 2026-09-05, ~590 kg of serial `110826-003`'s (Partiya 8) moyka output was
+physically mixed into serial `180826-001`'s (Partiya 9) processing run and the entire mixed
+batch was registered under `180826-001` on 2026-09-07. Every kg physically produced by P8
+that day was therefore booked to P9's calibre totals instead. Full SQL archived at
+`docs/data-corrections/2026-09-08_p8-p9-moyka-batch-reconciliation.sql`.
+
+### Booked state before correction vs. target
+
+| Serial | K1 | K2 | K4 | K6 | K8 | KN | Output total | Sent | Loss(+danak) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 110826-003 (P8) — before | 800 | 830 | 3,020 | 0 | 60 | 1,290 | 6,000 | 7,190 | 1,190 |
+| 110826-003 (P8) — target | 800 | 830 | 3,400 | 60 | 60 | 1,440 | 6,590 | 7,190 | 600 |
+| 180826-001 (P9) — before | 0 | 320 | 5,020 | 580 | 40 | 1,920 | 7,880 | 7,960 | 80 |
+| 180826-001 (P9) — target | 0 | 320 | 4,640 | 520 | 40 | 1,770 | 7,290 | 7,960 | 670 (incl. 10 danak) |
+
+The delta is exactly K4 −380/+380, K6 −60/+60, KN −150/+150 (590 kg total), confirmed against
+the user's stated ~590 kg before writing anything. `moyka_sends` (7,190 / 7,960 kg) was already
+correct for both serials on both sides and needed no change — only `finished_pallets`
+(the calibre breakdown) was wrong. The mixed batch traced to exactly 3 pallets on
+`180826-001`, all registered in one ~20-second session on 2026-09-07:
+`PLT-180826-001-04-2` (3,610 kg), `PLT-180826-001-06-1` (580 kg), `PLT-180826-001-KN-2`
+(1,430 kg) — their corrected weights are 3,230 / 520 / 1,280 kg respectively, with the
+380/60/150 kg difference belonging to P8.
+
+**Confirmed no downstream entanglement before writing:** zero `chiqim_pallet_consumption`
+rows, zero `serial_mint_sources` rows, and zero pallet-keyed `lab_results` (`sampled_pallet`)
+reference any of the 3 touched pallets — nothing needed unwinding first.
+
+### Aggregation audit (per CLAUDE.md's origin-filtering discipline, applied to void status here)
+
+Every consumer of `finished_pallets` was read via `pg_get_functiondef`/source, not assumed,
+and checked against the 3-category exclusion (`status = 'bekor_qilindi'` OR
+`status = 'storage_loss'` OR referenced by `serial_mint_sources.source_barcode2`) that this
+correction relies on to make voided rows disappear from every total:
+
+- `kirim_line_calibre_output(p_serial)` — full 3-category exclusion via its own `base_pallets`
+  CTE. Correct.
+- `get_client_report`'s `client_pallet_base` CTE — full 3-category exclusion (with the
+  as-of-`p_to` date guards this function already carries). Correct.
+- `kirim_line_state(p_serial)` — `moyka_out`/`moykadan_chiqgan` uses the same 3-category
+  exclusion. Correct.
+- Hisobot MOYKADAN (`report_query_page(['moyka_output'], ...)`, migration 0111's
+  `report_moyka_output_rows_by_serial`) — excludes voided pallets from `qty_kg`. Correct.
+- `useMoykaOutput.ts` (Ombor's live "Moykadan qabul qilish" screen) — `if (p.status ===
+  'bekor_qilindi') continue`. Correct.
+- **Flagged, not fixed (pre-existing, out of scope for this correction):**
+  `get_serial_passport`'s `finished_returned_total` CTE excludes only `status <>
+  'bekor_qilindi'` — missing `storage_loss` and mint-consumed exclusion, unlike the
+  3-category pattern everywhere else. Doesn't affect this correction's numbers (neither
+  touched pallet is `storage_loss` or mint-consumed) but is a genuine latent gap in that
+  function, left as a flag for a future task.
+- **Fixed as part of this task, on explicit confirmation (see below):**
+  `get_serial_passport`'s raw `cycles[].pallets` array (backing `SerialPassportModal.tsx`) is
+  an unfiltered event log by longstanding design — it rendered voided pallets alongside active
+  ones with a "Bekor qilindi" status label. That's in direct tension with this task's rule
+  that voided rows stay off-screen by default. Asked the user whether to change this app-wide
+  display behavior (it affects every serial, not just P8/P9); they said yes. Fixed in
+  `SerialPassportModal.tsx` with a `.filter((p) => p.palletStatus !== 'bekor_qilingan')` before
+  the `.map()` — display-only, no calculation touched. Void history stays fully queryable in
+  `finished_pallets.status`/`voided_at` and `audit_log`; the aggregate totals above the pallet
+  list already excluded these rows before this change (`get_serial_passport`'s summary fields
+  read from `kirim_line_calibre_output`/`kirim_line_state`, not from the raw pallet array).
+
+### Mechanism: void + replace, not in-place UPDATE
+
+Per SPEC.md's "never DELETE — void" invariant, the wrong-weight pallets are not corrected by
+overwriting `weight_kg` in place — that would erase the fact a correction happened at that
+granularity with no audit trail of what the number used to be. Instead: the 3 wrong-weight
+`180826-001` pallets are voided (`status = 'bekor_qilindi'`, `voided_at = now()`), 3 new
+`180826-001` pallets are inserted with the corrected weights, and 3 new `110826-003` pallets
+are inserted for the material that physically belongs there. Every one of the 9 touched/created
+rows has a paired `audit_log` entry (`actor = null`, `action = 'update_correction'` /
+`'insert_correction'`, a `reason` field inside `before`/`after` naming this reconciliation by
+name) — same convention used for the two prior SQL-only corrections this session (K6
+redate, `client_serial_ledger` note above).
+
+**Dating decision, per the user's direct instruction ("finish date of P8 is september 3rd and
+P9 is september 5th"):** the 3 new `110826-003` rows are dated `2026-09-03`; the 3 replacement
+`180826-001` rows are dated `2026-09-05` — each serial's own real physical finish date, not the
+`2026-09-07` SQL-registration date the now-voided rows carried. Same dating principle as the
+2026-09-02 K6/`110826-001` correction above: `received_date` carries the real event date,
+`created_at`/`audit_log.at` separately capture when the SQL correction itself was entered.
+
+### Verification (dry-run in `BEGIN...ROLLBACK` first, matched exactly, then applied for real)
+
+| | Sent | K1 | K2 | K4 | K6 | K8 | KN | Output | Loss(+danak) | Loss % |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 110826-003 (P8) | 7,190 | 800 | 830 | 3,400 | 60 | 60 | 1,440 | 6,590 | 600 | 8.34% |
+| 180826-001 (P9) | 7,960 | 0 | 320 | 4,640 | 520 | 40 | 1,770 | 7,290 | 670 | 8.42% |
+| Combined | 15,150 | | | | | | | 13,880 | 1,270 | 8.38% |
+
+Every figure matches the user's stated target exactly. One trivial rounding-convention note:
+P8's loss % computes to 8.34% (600/7,190×100 = 8.3449...%) against the user's stated 8.35% —
+a rounding difference, not a data discrepancy; P9 (8.42%) and the combined mass-balance
+identity (15,150 = 13,880 + 1,270, no kg created or destroyed) both match exactly.
+
+Also verified: `moyka_sends` unchanged on both serials; `kirim_line_state` returns the correct
+derived balances for both serials; Hisobot's `report_query_page(['moyka_output'])` shows the
+corrected per-serial rows; exactly 9 new `audit_log` rows; and `get_serial_passport('180826-001')`
+spot-check shows `returnedKg = 7290`, `byCalibre` matching target, `voidedKg = 5620` (exactly
+the 3 voided pallets' combined weight), and the raw `cycles[0].pallets` array still returns all
+10 pallets (3 correctly labeled `bekor_qilingan`) — confirming the new frontend filter has real
+rows to act on and behaves as intended once rendered.

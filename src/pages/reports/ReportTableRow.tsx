@@ -130,15 +130,21 @@ export function ReportTableRow({
       case 'type':
         return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">{typeName(row.typeId)}</span>
       case 'calibre':
+        // moyka_output rows are a per-serial aggregate (2026-09-03) — a
+        // serial can produce several calibres, so there is no single value
+        // to show here any more; see MoykaOutputRowDetail/serial passport
+        // for the per-pallet breakdown.
         return (
           <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">
-            {row.kind === 'chiqim' || row.kind === 'moyka_output' ? calibreLabel(row.calibreId) : '—'}
+            {row.kind === 'chiqim' ? calibreLabel(row.calibreId) : '—'}
           </span>
         )
       case 'barcode2':
+        // Same reasoning as 'calibre' above — a moyka_output row now spans
+        // several pallets/barcodes.
         return (
           <span className="whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">
-            {row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.barcode2 : '—'}
+            {row.kind === 'chiqim' ? row.barcode2 : '—'}
           </span>
         )
       case 'netto':
@@ -223,6 +229,12 @@ export function ReportTableRow({
               <span className="text-slate-400">Eski KN</span>
             ) : row.kind === 'moyka_send' ? (
               <span className="text-slate-400">Moykaga</span>
+            ) : row.kind === 'moyka_output' ? (
+              // Per-serial aggregate row (2026-09-03) — a serial's pallets
+              // can carry mixed statuses, so there's no single status to
+              // show; "received" kg already reflects the exclusion set
+              // (voided/storage-loss/mint-consumed pallets counted as 0).
+              <span className="text-slate-400">—</span>
             ) : row.palletStatus === 'bekor_qilingan' ? (
               <span className="font-medium text-red-600 dark:text-red-400">Bekor qilingan</span>
             ) : row.palletStatus !== 'jonatilgan' ? (
@@ -321,7 +333,7 @@ export function ReportTableRow({
             ) : row.kind === 'moyka_send' ? (
               <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />
             ) : row.kind === 'moyka_output' ? (
-              <MoykaOutputRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
+              <MoykaOutputRowDetail row={row} typeName={typeName} onOpenPassport={onOpenPassport} />
             ) : (
               <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
             )}

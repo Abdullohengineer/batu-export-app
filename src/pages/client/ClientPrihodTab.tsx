@@ -4,7 +4,7 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { FilterField } from '../../components/report/ReportFilterBar'
 import { useReportQuery, ExportTooLargeError } from '../../lib/useReportQuery'
-import { downloadReportExcel } from '../../lib/reportExport'
+import { downloadReportExcel, type ExportTextOverrides } from '../../lib/reportExport'
 import { defaultReportFilters, type KirimReportRow, type ReportFilters, type ReportTotals } from '../../lib/reportQuery'
 import { REPORT_COLUMNS } from '../../lib/reportColumns'
 import { formatDate } from '../../lib/formatDate'
@@ -18,18 +18,19 @@ import { StatusNote } from '../../components/ui/StatusNote'
 // MIRROR of Rahbar/Menejer's own Hisobot: same data-fetching layer
 // (useReportQuery -> report_query_page/report_totals, unchanged — NOT a
 // parallel RPC, per explicit instruction) and the same Excel export function
-// (downloadReportExcel), unchanged. Row/totals rendering is bespoke (not
+// (downloadReportExcel), unchanged in its own logic — it now takes an
+// optional ExportTextOverrides (reportExport.ts), which this file uses to
+// route its header/summary/direction text through clientLabel() so the
+// downloaded file matches the on-screen Russian labels; Hisobot's own call
+// site (HisobotTab.tsx) never passes it, so its export stays byte-for-byte
+// Uzbek/unchanged. Row/totals rendering is bespoke (not
 // ReportTableRow/TotalsStrip) for the same reason ClientRashodTab.tsx already
 // established (see that file): this view fixes `directions` to ['kirim']
 // permanently, drops several columns/filters/row-detail fields Rahbar's own
 // row/detail components don't know how to hide, and needs Russian labels
 // where those components hardcode Uzbek — forking the presentation (rather
 // than threading override props through a shared Hisobot file Menejer/Rahbar
-// also use) keeps this change entirely inside the client portal. NOTE: the
-// reused downloadReportExcel still emits Uzbek column headers/summary labels
-// inside the .xlsx file itself (REPORT_COLUMNS' own `label`, not translated)
-// — flagging this rather than silently forking that too, since the task
-// asked to reuse Rahbar's export, not to translate it.
+// also use) keeps this change entirely inside the client portal.
 //
 // Owner scoping: NO p_owner_id is ever sent (filters.ownerId stays '' always,
 // no Buyurtmachi UI). report_query_page/report_totals are plain (non-
@@ -190,6 +191,30 @@ function ClientTotalsStrip({ totals }: { totals: ReportTotals }) {
   )
 }
 
+// Excel export overrides — routes reportExport.ts's header/summary/direction
+// text through the exact same clientLabel() calls ClientTotalsStrip/the
+// on-screen table use, so the downloaded file reads Russian end-to-end, same
+// as the screen. 'kind' is always 'kirim' here (direction is permanently
+// locked), so directionLabel/statusText need no row-kind branching — they'd
+// still be correct if a non-kirim row somehow slipped through, since
+// clientLabel() falls back to the untranslated key for anything unmapped.
+const CLIENT_PRIHOD_EXPORT_OVERRIDES: ExportTextOverrides = {
+  title: `BATU EXPORT — ${clientLabel('Kirim')}`,
+  dateBasisText: 'Дата: по прибытию (дата заказа)',
+  weightBasisText: 'Вес: нетто по факту (взвешивание на воротах)',
+  periodLabel: (from, to) => `Период: ${from} — ${to}`,
+  columnLabel: (col) => clientLabel(`col.${col.key}`),
+  directionLabel: () => clientLabel('Kirim'),
+  statusText: () => '',
+  summaryLabels: {
+    kgIn: clientLabel('Kirim'),
+    kgOut: clientLabel('total.chiqim'),
+    net: clientLabel('total.neto'),
+    taraIn: `${clientLabel('col.tara')} (${clientLabel('Kirim').toLowerCase()})`,
+    taraOut: `${clientLabel('col.tara')} (${clientLabel('total.chiqim').toLowerCase()})`,
+  },
+}
+
 export function ClientPrihodTab() {
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
@@ -216,7 +241,7 @@ export function ClientPrihodTab() {
       // (Buyurtmachi is scope-locked, never shown/exported), so
       // buildReportWorkbook's 'owner' branch can never actually call this —
       // ExportLookups just requires the shape.
-      await downloadReportExcel(filters, { ownerName: () => '', typeName, calibreLabel }, totals, CLIENT_PRIHOD_COLUMN_KEY_SET)
+      await downloadReportExcel(filters, { ownerName: () => '', typeName, calibreLabel }, totals, CLIENT_PRIHOD_COLUMN_KEY_SET, CLIENT_PRIHOD_EXPORT_OVERRIDES)
     } catch (err) {
       setExportError(err instanceof ExportTooLargeError ? err.message : 'Ошибка при выгрузке Excel.')
     } finally {

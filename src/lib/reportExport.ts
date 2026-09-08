@@ -21,6 +21,30 @@ export interface ExportLookups {
   calibreLabel: (id: string) => string
 }
 
+// Optional text overrides (2026-09-08, client Приход export fix) — every
+// field defaults to this file's own existing Uzbek text when omitted, so
+// Hisobot's own export (HisobotTab.tsx, never passes this) is byte-for-byte
+// unchanged. The client portal is the one caller that needs different text:
+// it passes clientLabel()-backed values here rather than this file learning
+// about clientLabels.ts directly, keeping the shared export function
+// caller-agnostic about which glossary (if any) is in play.
+export interface ExportTextOverrides {
+  title?: string
+  dateBasisText?: string
+  weightBasisText?: string
+  periodLabel?: (from: string, to: string) => string
+  columnLabel?: (col: ReportColumnDef) => string
+  directionLabel?: (row: ReportRow) => string
+  statusText?: (row: ReportRow) => string
+  summaryLabels?: {
+    kgIn: string
+    kgOut: string
+    net: string
+    taraIn: string
+    taraOut: string
+  }
+}
+
 // Same label text ReportTableRow.tsx's 'direction' cell renders — kept as
 // its own function (not re-imported from there) because that file returns
 // JSX, this needs a plain string.
@@ -82,7 +106,7 @@ function statusText(row: ReportRow): string {
 // ReportTableRow.tsx to actually render on screen — there is no way for a
 // column to silently stay picker-only forever, but there also isn't a way
 // to share the two switches directly (one returns JSX, this returns values).
-function columnValue(row: ReportRow, key: string, lookups: ExportLookups): string | number | Date {
+function columnValue(row: ReportRow, key: string, lookups: ExportLookups, overrides?: ExportTextOverrides): string | number | Date {
   const qty = row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg
   const declared = row.kind === 'kirim' ? row.declaredQty : null
   const hisobiy = row.kind === 'kirim' ? row.hisobiyKg : null
@@ -91,7 +115,7 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups): strin
 
   switch (key) {
     case 'direction':
-      return directionLabel(row)
+      return overrides?.directionLabel ? overrides.directionLabel(row) : directionLabel(row)
     case 'date':
       return row.dateBasis ? toExcelDate(row.dateBasis) : ''
     case 'serial':
@@ -124,7 +148,7 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups): strin
     case 'so2':
       return so2 ?? ''
     case 'status':
-      return statusText(row)
+      return overrides?.statusText ? overrides.statusText(row) : statusText(row)
     case 'qabul_qilingan':
       return row.state?.qabulQilingan ?? ''
     case 'omborda_qoldi':
@@ -174,6 +198,7 @@ export async function buildReportWorkbook(
   lookups: ExportLookups,
   totals: ReportTotals,
   visibleColumnKeys: Set<string>,
+  overrides?: ExportTextOverrides,
 ): Promise<ExcelJS.Workbook> {
   const columns: ReportColumnDef[] = REPORT_COLUMNS.filter((c) => visibleColumnKeys.has(c.key))
   const dateColIndex = columns.findIndex((c) => c.key === 'date') // 0-based; +1 for exceljs' 1-based cells
@@ -181,26 +206,33 @@ export async function buildReportWorkbook(
   const wb = new ExcelJS.Workbook()
   const sheet = wb.addWorksheet('Hisobot')
 
-  sheet.addRow(['BATU EXPORT — Hisobot']).font = { bold: true }
-  sheet.addRow([dateBasisLabel(filters.directions)])
-  sheet.addRow([WEIGHT_BASIS_LABEL])
-  sheet.addRow([`Davr: ${filters.from} — ${filters.to}`])
+  sheet.addRow([overrides?.title ?? 'BATU EXPORT — Hisobot']).font = { bold: true }
+  sheet.addRow([overrides?.dateBasisText ?? dateBasisLabel(filters.directions)])
+  sheet.addRow([overrides?.weightBasisText ?? WEIGHT_BASIS_LABEL])
+  sheet.addRow([overrides?.periodLabel ? overrides.periodLabel(filters.from, filters.to) : `Davr: ${filters.from} — ${filters.to}`])
   sheet.addRow([])
 
-  const headerRow = sheet.addRow(columns.map((c) => c.label))
+  const headerRow = sheet.addRow(columns.map((c) => (overrides?.columnLabel ? overrides.columnLabel(c) : c.label)))
   headerRow.font = { bold: true }
 
   for (const row of rows) {
-    const excelRow = sheet.addRow(columns.map((c) => columnValue(row, c.key, lookups)))
+    const excelRow = sheet.addRow(columns.map((c) => columnValue(row, c.key, lookups, overrides)))
     if (dateColIndex >= 0) excelRow.getCell(dateColIndex + 1).numFmt = EXCEL_DATE_FORMAT
   }
 
+  const summary = overrides?.summaryLabels ?? {
+    kgIn: 'Jami kirim (kg)',
+    kgOut: 'Jami chiqim (kg)',
+    net: 'Neto (kg)',
+    taraIn: 'Jami tara — kirim (kg)',
+    taraOut: 'Jami tara — chiqim (kg)',
+  }
   sheet.addRow([])
-  sheet.addRow(['Jami kirim (kg)', totals.kgIn])
-  sheet.addRow(['Jami chiqim (kg)', totals.kgOut])
-  sheet.addRow(['Neto (kg)', totals.net])
-  sheet.addRow(['Jami tara — kirim (kg)', totals.taraIn])
-  sheet.addRow(['Jami tara — chiqim (kg)', totals.taraOut])
+  sheet.addRow([summary.kgIn, totals.kgIn])
+  sheet.addRow([summary.kgOut, totals.kgOut])
+  sheet.addRow([summary.net, totals.net])
+  sheet.addRow([summary.taraIn, totals.taraIn])
+  sheet.addRow([summary.taraOut, totals.taraOut])
 
   sheet.columns.forEach((col) => {
     col.width = 18
@@ -227,9 +259,10 @@ export async function downloadReportExcel(
   lookups: ExportLookups,
   totals: ReportTotals,
   visibleColumnKeys: Set<string>,
+  overrides?: ExportTextOverrides,
 ): Promise<void> {
   const rows = await fetchAllReportRowsForExport(filters)
-  const wb = await buildReportWorkbook(rows, filters, lookups, totals, visibleColumnKeys)
+  const wb = await buildReportWorkbook(rows, filters, lookups, totals, visibleColumnKeys, overrides)
   const buffer = await wb.xlsx.writeBuffer()
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(blob)

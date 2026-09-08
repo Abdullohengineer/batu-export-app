@@ -25,7 +25,7 @@
 --     qty_kg = effective_qty, date_basis, provisional, origin, partiya_no)
 --     and get_client_report's own subqueries for vozvrat (dispatched_as_of_to_kg)
 --     and moyka-sent (sent_actual_kg).
---   - H/I/J (Готовый продукт/Кондерка) use rahbar_dashboard_ledger's
+--   - H/I/J (Готовый продукт/Кондитерка) use rahbar_dashboard_ledger's
 --     pallet_base (Ledger C) exclusion set verbatim: excludes bekor_qilindi,
 --     storage_loss and re-minted (serial_mint_sources) pallets, but does
 --     NOT exclude 'consumed' -- a dispatched pallet's production still

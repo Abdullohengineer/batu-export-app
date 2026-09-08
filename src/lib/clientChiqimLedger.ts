@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 // Расход sub-tab (Отчёт), per-serial CHIQIM ledger for the Global Export
 // client portal. Reads client_chiqim_ledger() (self-scoped via
 // my_owner_id()), pivoted to one row per serial with a nested `dispatches`
-// array — supabase/migrations/0114_client_chiqim_ledger_per_serial_pivot.sql,
+// array — supabase/migrations/0115_client_chiqim_ledger_per_serial_pivot.sql,
 // rewriting 0109's original flat per-dispatch-event shape (CLAUDE.md task
 // "Rebuild the client portal..." Part B.3/D).
 

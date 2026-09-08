@@ -281,7 +281,12 @@ export function ClientRashodTab() {
                         </svg>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">
-                        {row.isPool ? <span className="text-slate-400">— (склад KN)</span> : row.serial}
+                        {/* Bare dash, no annotation — matches the internal Hisobot's own
+                            convention for a chiqim_old_kn row exactly (ReportTableRow.tsx's
+                            Серия cell: `row.kind === 'chiqim_old_kn' ? '—' : row.serial`).
+                            The Тип badge in the next column already says "Старый склад
+                            Кондитерка", so the row isn't ambiguous without extra text here. */}
+                        {row.isPool ? <span className="text-slate-400">—</span> : row.serial}
                       </td>
                       <td className="px-3 py-2">{typeName(row.typeId)}</td>
                       <td className="px-3 py-2">

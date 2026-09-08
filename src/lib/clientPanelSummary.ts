@@ -4,7 +4,7 @@ import type { OldStockSection } from '../components/OldStockDrilldown'
 // Панель tab (CLAUDE.md task "Rebuild the client portal..." Part B.1) —
 // current stock by state + dispatched total (client_panel_summary) and the
 // Эски drill-down data (client_old_stock_breakdown), both self-scoped via
-// my_owner_id(). supabase/migrations/0112_client_old_stock_and_panel_summary.sql.
+// my_owner_id(). supabase/migrations/0113_client_old_stock_and_panel_summary.sql.
 
 export interface ClientPanelStock {
   rawKg: number

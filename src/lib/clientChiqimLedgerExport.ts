@@ -49,7 +49,7 @@ export async function buildClientChiqimLedgerWorkbook(
       return [toExcelDate(d.date), d.plate, d.driver, d.kg, calibreString(d.calibres)]
     }).flat()
     const excelRow = sheet.addRow([
-      row.isPool ? `— (склад KN)` : row.serial,
+      row.isPool ? '—' : row.serial, // bare dash, matching the internal Hisobot's own chiqim_old_kn convention exactly
       typeName(row.typeId),
       row.tips.map((t) => tipLabel(t)).join(', '),
       row.totalKg,

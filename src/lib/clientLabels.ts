@@ -11,7 +11,6 @@
 export const CLIENT_LABELS: Record<string, string> = {
   'Тайёр': 'Готовая продукция',
   'Konditerka': 'Кондитерка',
-  'Кондерка': 'Кондитерка', // historical typo -- see docs/DECISIONS.md Кондерка sweep
   'Хом': 'Возврат',
   'Возврат': 'Возврат',
   'Эски (ювилган)': 'Старый склад (ювилган)',

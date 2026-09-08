@@ -7534,11 +7534,13 @@ migrations, not assumed:**
    Старый склад Кондитерка (pool-based, no serial).
 
 **Decisions, confirmed with the user via `AskUserQuestion` before any code was written:**
-- **Part A scope:** old KN becomes visible on Rahbar's dashboard again, but **only** inside the
-  existing Zaxira scope toggle's **Eski** setting — never at Yangi (the main/default dashboard,
-  where v1.43's exclusion stands untouched) or in the headline `totalKg`. This is additive to
-  the toggle that already exists (`ZaxiraScope: 'yangi'|'eski'|'hammasi'`), not a new tile on
-  the main dashboard. See SPEC.md v1.46.
+- **Part A scope:** old KN gets a graph inside the existing Zaxira scope toggle's **Eski**
+  setting — an old-stock-only view, where old KN belongs. **This does not reverse v1.43**:
+  v1.43's removal of old KN from the new-products headline/Yangi scope was correct (old KN is
+  old stock, not new stock) and stands completely unchanged here — Yangi, Hammasi, and the
+  headline `totalKg` are byte-identical to before this task. Additive to the toggle that already
+  exists (`ZaxiraScope: 'yangi'|'eski'|'hammasi'`), not a new tile on the main dashboard. See
+  SPEC.md v1.46.
 - **Charting:** `recharts` added as a dependency (first chart library in this app) — the user's
   explicit choice over reusing the hand-rolled CSS-bar style, for both this drill-down and its
   reuse in the client Панель tab.
@@ -7556,7 +7558,7 @@ pre-flight question 3):** of the four functions named as orphaned leftovers
 (`client_report_rows`, `client_report_totals`, `client_serial_summary`, `client_calibre_split`),
 three are genuinely dead (confirmed via `pg_get_functiondef` regex search over every live
 `public` function — nothing else in the database calls them, and the frontend grep already
-showed zero call sites) and are dropped in `0115_drop_orphan_client_report_functions.sql`.
+showed zero call sites) and are dropped in `0116_drop_orphan_client_report_functions.sql`.
 **`client_calibre_split` is NOT dropped** — it is a live dependency of `client_serial_loss_kg`
 (`supabase/migrations/0101`, used by the *internal staff* Hisobot's `Yo'qotish, kg` column,
 v1.44/`0107`) and of `client_serial_moyka_kg`, both confirmed via the same function-body search.
@@ -7564,19 +7566,19 @@ Dropping it would have broken an unrelated, currently-shipped feature — exactl
 "confirm before assuming" this task's own pre-flight question asked for, so the recommendation
 to "drop now" is followed for 3 of the 4 named functions, not all 4.
 
-**Build log (Part A and Part B–E), migrations 0111–0116, all applied and verified against
+**Build log (Part A and Part B–E), migrations 0112–0117, all applied and verified against
 production before commit.**
 
-Part A: `0111_rahbar_old_kn_by_type.sql` adds `oldKnByType` to `rahbar_stock_snapshot` (additive,
+Part A: `0112_rahbar_old_kn_by_type.sql` adds `oldKnByType` to `rahbar_stock_snapshot` (additive,
 no signature change) — verified live: at `p_scope='eski'`, `oldKnByType` sums exactly to
 `oldKnKg` (81,915 kg across 4 types); at `p_scope='yangi'` it's empty, matching "old KN never
 shows for new stock" with no separate condition needed (old_kn rows are always
 `is_old_stock=true` in `stock_on_hand_rows`, so the existing scope filter already excludes them
 at `yangi`).
 
-Part D: `0112` (`client_old_stock_breakdown`/`client_panel_summary`), `0113`
-(`client_production_ledger`), `0114` (`client_chiqim_ledger` flat→per-serial pivot), `0115`
-(orphan-function drop, see above), `0116` (adds `p_type_id` to `client_chiqim_ledger`, appended
+Part D: `0113` (`client_old_stock_breakdown`/`client_panel_summary`), `0114`
+(`client_production_ledger`), `0115` (`client_chiqim_ledger` flat→per-serial pivot), `0116`
+(orphan-function drop, see above), `0117` (adds `p_type_id` to `client_chiqim_ledger`, appended
 with a default so no existing caller breaks). All verified against the real "Global Export
 Company" owner by temporarily setting `request.jwt.claim.sub` to that client account's real
 `profiles.id` in a raw SQL session (`my_owner_id()` reads `auth.uid()` via that same JWT claim,

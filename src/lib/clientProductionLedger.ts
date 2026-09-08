@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 
 // Производство sub-tab (Отчёт) — per-serial pack-output ledger for the
 // Global Export client portal. Reads client_production_ledger()
-// (supabase/migrations/0113_client_production_ledger.sql), self-scoped via
+// (supabase/migrations/0114_client_production_ledger.sql), self-scoped via
 // my_owner_id(). CLAUDE.md task "Rebuild the client portal..." Part B.4/D.
 
 export interface ClientProductionCalibre {

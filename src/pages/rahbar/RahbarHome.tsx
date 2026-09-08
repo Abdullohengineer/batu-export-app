@@ -8,6 +8,7 @@ import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { OldStockDrilldown } from '../../components/OldStockDrilldown'
+import { HorizontalBar } from '../../components/ui/HorizontalBar'
 import { todayInTashkent, firstOfMonthInTashkent, previousMonthRangeInTashkent } from '../../lib/dateRange'
 
 // Rahbar "Bosh sahifa" -- stock-reconciliation dashboard, rebuilt against
@@ -72,22 +73,6 @@ function Tile({ label, value, unit, caption, tone }: { label: string; value: num
       <div className="mt-1.5 text-xs opacity-70" style={{ color: fg }}>
         {caption}
       </div>
-    </div>
-  )
-}
-
-function Bar({ label, value, max, color, pctOfLabel }: { label: string; value: number; max: number; color: string; pctOfLabel?: string }) {
-  const widthPct = max > 0 ? Math.max((value / max) * 100, value > 0 ? 1.5 : 0) : 0
-  return (
-    <div className="grid grid-cols-[100px_1fr_92px] items-center gap-3 text-sm">
-      <span className="text-slate-500 dark:text-slate-400">{label}</span>
-      <div className="h-6 overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
-        <div className="h-full rounded-md" style={{ width: `${widthPct}%`, background: color }} />
-      </div>
-      <span className="text-right font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-        {fmt(value)}
-        {pctOfLabel && <small className="ml-1 font-normal text-slate-400">{pctOfLabel}</small>}
-      </span>
     </div>
   )
 }
@@ -226,7 +211,7 @@ export function RahbarHome() {
       {snapLoading || !snapshot ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <Tile label="Jami yuvilgan va yuvilmagan mahsulot" value={grandTotal} unit="kg" caption="Hozirgi holat — xom, moykada va tayyor" tone="neutral" />
           <Tile label="Xom · yuvilmagan" value={snapshot.rawKg} unit="kg" caption="Hozirgi holat — yuvishga tayyor" tone="raw" />
           <Tile label="Moykada" value={snapshot.moykadaKg} unit="kg" caption="Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan" tone="moyka" />
@@ -259,6 +244,25 @@ export function RahbarHome() {
                 : `Hozirgi qoldiq · kalibrlidan alohida · bu davrda ${fmt(dispatchedKnPeriod)} kg olib ketilgan`
             }
             tone="kn"
+          />
+          {/* 6th tile (2026-09-08) — Старый склад Кондитерка, the old-KN pool
+              balance. Deliberately NOT gated by `scope` (unlike the drill-
+              down section below it): this is real client stock, always
+              relevant, not something that should vanish/read 0 just because
+              Yangi is selected — snapshot.oldKnKg is now scope-independent
+              (migration 0120) specifically so this tile reads the same
+              81,915 kg regardless of the Zaxira toggle. Reuses the `oldKn`
+              tone already defined in Tile's own tone union (stone-gray,
+              matching OldStockDrilldown.tsx's existing old-KN color) —
+              deliberately distinct from Konditerka (KN)'s purple beside it,
+              since the two are genuinely different things (new production
+              vs. an old-stock pool) that happen to share the "KN" name. */}
+          <Tile
+            label="Старый склад Кондитерка"
+            value={snapshot.oldKnKg}
+            unit="kg"
+            caption="Hozirgi qoldiq · havzadan"
+            tone="oldKn"
           />
         </div>
       )}
@@ -321,12 +325,12 @@ export function RahbarHome() {
           <>
             <div className="space-y-2.5">
               {stockByCalibre.map((r) => (
-                <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={stockMax} color={C.calibre} pctOfLabel={stockTotal > 0 ? `${Math.round((r.kg / stockTotal) * 100)}%` : undefined} />
+                <HorizontalBar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={stockMax} color={C.calibre} pctOfLabel={stockTotal > 0 ? `${Math.round((r.kg / stockTotal) * 100)}%` : undefined} />
               ))}
               {stockByCalibre.length === 0 && <p className="text-sm text-slate-400">Omborda kalibrlangan mahsulot yo'q.</p>}
               {stockKn.length > 0 && <div className="my-1 border-t border-slate-100 dark:border-slate-800" />}
               {stockKn.map((r) => (
-                <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={stockMax} color={C.kn} pctOfLabel={stockTotal > 0 ? `${Math.round((r.kg / stockTotal) * 100)}%` : undefined} />
+                <HorizontalBar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={stockMax} color={C.kn} pctOfLabel={stockTotal > 0 ? `${Math.round((r.kg / stockTotal) * 100)}%` : undefined} />
               ))}
             </div>
             <p className="mt-3 text-xs text-slate-400">
@@ -345,12 +349,12 @@ export function RahbarHome() {
             </div>
             <div className="space-y-2.5">
               {dispatchedByCalibre.map((r) => (
-                <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={dispatchedMax} color={C.departed} pctOfLabel={ledger.finished.dispatchedKg > 0 ? `${Math.round((r.kg / ledger.finished.dispatchedKg) * 100)}%` : undefined} />
+                <HorizontalBar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={dispatchedMax} color={C.departed} pctOfLabel={ledger.finished.dispatchedKg > 0 ? `${Math.round((r.kg / ledger.finished.dispatchedKg) * 100)}%` : undefined} />
               ))}
               {dispatchedByCalibre.length === 0 && dispatchedKnRows.length === 0 && <p className="text-sm text-slate-400">Bu davrda olib ketilgan yo'q.</p>}
               {dispatchedKnRows.length > 0 && <div className="my-1 border-t border-slate-100 dark:border-slate-800" />}
               {dispatchedKnRows.map((r) => (
-                <Bar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={dispatchedMax} color={C.departed} pctOfLabel={ledger.finished.dispatchedKg > 0 ? `${Math.round((r.kg / ledger.finished.dispatchedKg) * 100)}%` : undefined} />
+                <HorizontalBar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={dispatchedMax} color={C.departed} pctOfLabel={ledger.finished.dispatchedKg > 0 ? `${Math.round((r.kg / ledger.finished.dispatchedKg) * 100)}%` : undefined} />
               ))}
             </div>
             <p className="mt-3 text-xs text-slate-400">

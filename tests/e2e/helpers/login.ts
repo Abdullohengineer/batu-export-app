@@ -5,7 +5,11 @@ import type { Page } from '@playwright/test'
 // — phoneToAuthEmail (src/lib/phoneAuth.ts) converts it under the hood, so
 // tests type the same "phone" value stored in .env.test, not the derived
 // @batu.local address.
-export type TestRole = 'RAHBAR' | 'MENEJER' | 'QOROVUL' | 'OMBOR' | 'LABORATOR'
+// CLIENT added 2026-09-08 for the client-portal smoke test — see
+// docs/DECISIONS.md "Client portal rebuild + Rahbar Eski drill-down" for
+// why this was previously missing (flagged as a gap, not an oversight
+// carried silently) and TEST_CLIENT_PHONE/PASSWORD's required .env.test entry.
+export type TestRole = 'RAHBAR' | 'MENEJER' | 'QOROVUL' | 'OMBOR' | 'LABORATOR' | 'CLIENT'
 
 export function testCredentials(role: TestRole): { phone: string; password: string } {
   const phone = process.env[`TEST_${role}_PHONE`]

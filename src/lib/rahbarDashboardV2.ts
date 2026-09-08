@@ -33,11 +33,21 @@ export interface StockByCalibre {
   kg: number
 }
 
+export interface OldKnByType {
+  typeId: string
+  typeName: string
+  kg: number
+}
+
 export interface RahbarStockSnapshot {
   rawKg: number
   finishedCalibredKg: number
   konditirskiyKg: number
   oldKnKg: number
+  /** oldKnKg split by Vid syrya (product_types.name) -- feeds the Eski
+   *  drill-down's "Старый склад Кондитерка" graph (RahbarHome.tsx, only
+   *  rendered at p_scope = 'eski'). See migration 0111. */
+  oldKnByType: OldKnByType[]
   // Material already sent to Moyka but not yet returned as finished output
   // (2026-08-22) -- deducted from rawKg the moment it's sent, not yet
   // counted in finishedCalibredKg/konditirskiyKg until Moyka actually

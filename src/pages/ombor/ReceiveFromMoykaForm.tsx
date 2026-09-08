@@ -5,6 +5,7 @@ import { FinishedReceiptForm, type ReceiptValues } from './FinishedReceiptForm'
 import { Barcode2Display } from './Barcode2Display'
 import { Card } from '../../components/ui/Card'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { todayInTashkent } from '../../lib/dateRange'
 
 // §5.3 single-tile receive picker (2026-08-28 — see DECISIONS.md "Section 3
 // single-tile receive picker"). Chip-picks ONE in-Moyka serial (serial +
@@ -71,7 +72,7 @@ export function ReceiveFromMoykaForm({
                 barcode2: values.barcode2,
                 calibre_id: values.calibreId,
                 weight_kg: values.weightKg,
-                received_date: new Date().toISOString().slice(0, 10),
+                received_date: todayInTashkent(),
                 created_at: new Date().toISOString(),
               },
             ],

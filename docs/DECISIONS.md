@@ -7490,6 +7490,154 @@ to the live project by their respective sessions before either saw the other's m
 renumbering here is pure repo hygiene (keeping `supabase/migrations/` monotonic for a future
 clean replay) — nothing about the live database changed as part of the rename.
 
+## 2026-09-08 — Client portal rebuild + Rahbar Eski drill-down: task-brief corrections and scope decisions
+
+**Context:** Task brief ("Rebuild the client portal to reuse Rahbar's dashboard + Hisobot
+patterns...") assumed several things about the current codebase that inspection (CLAUDE.md
+"Inspect live/migration schema before assuming table/column names or shape") found to be
+stale or incorrect. Logged here before any code was written, per CLAUDE.md "if ambiguous
+after inspection: stop, report, do not invent a design."
+
+**Findings, all confirmed against the live Supabase project (`qohoqbapevrcjqxbstxi`) and repo
+migrations, not assumed:**
+1. The brief's "migrations 0107/0108" (client Hisobot rebuild) are actually **0109/0110**
+   (`client_serial_and_chiqim_ledger` / `client_serial_ledger_fix_ostatok_syrya`) — real
+   0107/0108 are unrelated (Hisobot `Yo'qotish` column; Rahbar open-wash-cycle-loss fix). See
+   the entry immediately above this one ("client_serial_ledger's Остаток сырья formula...")
+   for the renumbering's own history. Migration head going into this task is **0110** — new
+   migrations here start at 0111.
+2. **No "Эски tile drill-down" exists on Rahbar's dashboard, and no charting library is
+   installed anywhere in this app.** The brief's Part A ("currently shows one graph for Эски
+   (ювилган)... change to two graphs") does not match `RahbarHome.tsx`: there is no Eski tile,
+   no modal/route/expanding section for old stock, and `package.json` has no
+   recharts/chart.js/d3/etc. — the dashboard's existing "graphs" are hand-rolled CSS
+   width-`<div>` bars. Old KN (Старый склад Кондитерка / old_kn_pools) was **deliberately
+   removed** from this dashboard in v1.43 (2026-08-30, `0106_rahbar_dashboard_corrections.sql`)
+   — SPEC.md's own words: "old KN is no longer visible anywhere on this dashboard (81,915 kg,
+   reachable via Ombor qoldig'i and Hisobot only), a recorded choice that reverses the
+   reasoning which gave it a tile." The brief also cites "SPEC v1.10" for this removal; the
+   real changelog version is **v1.43** — v1.10 is the unrelated weight-authority (§2.16) entry.
+3. **`docs/SPEC.md` §3.6 (Client portal) is itself stale.** It still describes the pre-rebuild
+   single-screen `ClientHisobotTab.tsx` design (migrations 0082-0085) with no changelog row or
+   rewritten text for the 2026-09-02 rebuild into `ClientPrihodTab.tsx`/`ClientRashodTab.tsx`
+   (commit "Rebuild client Hisobot as per-serial (Приход) + per-dispatch (Расход) ledger") —
+   confirmed via `grep -n "client_serial_ledger\|client_chiqim_ledger" docs/SPEC.md` → zero
+   hits before this task. §3.6 is being rewritten as part of this task's own migration/frontend
+   work (see the Part B–E entry below), per this project's own convention that a build
+   revealing stale spec text updates SPEC.md in the same pass rather than leaving it to drift
+   further.
+4. `chiqim_lines.line_kind` only has 3 live values (`finished`, `raw`, `old_kn`) — the brief's
+   5 "Тип" labels for Расход are derived, not stored: `finished` + calibre `KN` (Konditerka) =
+   Кондитерка, `finished` + `is_old_stock` = Эски (ювилган), `finished` otherwise = Готовая
+   продукция, `raw`/`old_raw` = Возврат (Хом has zero rows — no field distinguishes a raw sale
+   from a return, a known, previously-logged gap, not something this task closes), `old_kn` =
+   Старый склад Кондитерка (pool-based, no serial).
+
+**Decisions, confirmed with the user via `AskUserQuestion` before any code was written:**
+- **Part A scope:** old KN gets a graph inside the existing Zaxira scope toggle's **Eski**
+  setting — an old-stock-only view, where old KN belongs. **This does not reverse v1.43**:
+  v1.43's removal of old KN from the new-products headline/Yangi scope was correct (old KN is
+  old stock, not new stock) and stands completely unchanged here — Yangi, Hammasi, and the
+  headline `totalKg` are byte-identical to before this task. Additive to the toggle that already
+  exists (`ZaxiraScope: 'yangi'|'eski'|'hammasi'`), not a new tile on the main dashboard. See
+  SPEC.md v1.46.
+- **Charting:** `recharts` added as a dependency (first chart library in this app) — the user's
+  explicit choice over reusing the hand-rolled CSS-bar style, for both this drill-down and its
+  reuse in the client Панель tab.
+- **Old-KN rows in the client Расход per-serial table (Part B.3):** shown as a synthetic
+  per-type row (no real serial exists for a pool draw) rather than a separate summary block —
+  keeps all 5 Тип values in one table, clearly marked as pool-based.
+
+**Verification so far:** live-schema inspection only (via Supabase MCP `execute_sql`/
+`list_tables`/`list_migrations` against the production project) — no code had been written at
+the time of this entry. Frontend/migration work for Part A and Part B–E follows in subsequent
+commits; see this file for their own entries.
+
+**Correction found while writing the Part D migration (orphan-function drop, task's own
+pre-flight question 3):** of the four functions named as orphaned leftovers
+(`client_report_rows`, `client_report_totals`, `client_serial_summary`, `client_calibre_split`),
+three are genuinely dead (confirmed via `pg_get_functiondef` regex search over every live
+`public` function — nothing else in the database calls them, and the frontend grep already
+showed zero call sites) and are dropped in `0116_drop_orphan_client_report_functions.sql`.
+**`client_calibre_split` is NOT dropped** — it is a live dependency of `client_serial_loss_kg`
+(`supabase/migrations/0101`, used by the *internal staff* Hisobot's `Yo'qotish, kg` column,
+v1.44/`0107`) and of `client_serial_moyka_kg`, both confirmed via the same function-body search.
+Dropping it would have broken an unrelated, currently-shipped feature — exactly the kind of
+"confirm before assuming" this task's own pre-flight question asked for, so the recommendation
+to "drop now" is followed for 3 of the 4 named functions, not all 4.
+
+**Build log (Part A and Part B–E), migrations 0112–0117, all applied and verified against
+production before commit.**
+
+Part A: `0112_rahbar_old_kn_by_type.sql` adds `oldKnByType` to `rahbar_stock_snapshot` (additive,
+no signature change) — verified live: at `p_scope='eski'`, `oldKnByType` sums exactly to
+`oldKnKg` (81,915 kg across 4 types); at `p_scope='yangi'` it's empty, matching "old KN never
+shows for new stock" with no separate condition needed (old_kn rows are always
+`is_old_stock=true` in `stock_on_hand_rows`, so the existing scope filter already excludes them
+at `yangi`).
+
+Part D: `0113` (`client_old_stock_breakdown`/`client_panel_summary`), `0114`
+(`client_production_ledger`), `0115` (`client_chiqim_ledger` flat→per-serial pivot), `0116`
+(orphan-function drop, see above), `0117` (adds `p_type_id` to `client_chiqim_ledger`, appended
+with a default so no existing caller breaks). All verified against the real "Global Export
+Company" owner by temporarily setting `request.jwt.claim.sub` to that client account's real
+`profiles.id` in a raw SQL session (`my_owner_id()` reads `auth.uid()` via that same JWT claim,
+so this exercises the exact self-scoping path a real client session would) — not against
+disposable TEST- fixtures, since every one of these RPCs is read-only (no INSERT/UPDATE/DELETE
+anywhere in Part A/B–E), so CLAUDE.md's "Testing workflow" TEST- fixture rule (which governs
+irreversible/destructive operations) doesn't apply; nothing was written to the database outside
+the migrations themselves. Cross-checks that came back consistent: `client_panel_summary().stock.
+oldStockKg` (126,535) = `client_old_stock_breakdown` oldWashed.totalKg (44,620) + oldKn.totalKg
+(81,915); `client_panel_summary().dispatchedKg` (69,151) = `client_chiqim_ledger`'s own
+`totals.totalKg` for the same all-time range; `client_chiqim_ledger` with a type filter (59,414)
+< without (69,151), confirming `p_type_id` actually narrows the result.
+
+Two real bugs caught during this verification, both before anything reached the live database
+uncorrected: (1) a Postgres comma-join/explicit-JOIN precedence mistake in `client_old_stock_
+breakdown`'s first draft (`from t s, me join other o on ...` parses as `t s` and `me join
+other o` as two separate FROM items, so `o`'s ON clause can't see `s`) — fixed by keeping every
+explicit JOIN chain as one FROM item and cross-joining `me` after it, not before; (2) a
+mismatched-paren bug in the `'rows'` JSON construction shared by `client_production_ledger` and
+the `client_chiqim_ledger` pivot, caught by test-running the query body standalone via
+`execute_sql` before ever calling `apply_migration` — a `coalesce((select agg(...) ...), default)`
+nested inside another `jsonb_build_object`/`jsonb_agg` needs one more closing paren than it looks
+like at a glance; rewritten throughout to the already-proven `(select coalesce(agg(...) order by
+..., default) from ...)` shape this codebase's other RPCs already use, rather than reintroducing
+the same risk in a different spot.
+
+**Хом/Возврат merge made permanent, not just "still zero rows":** `src/lib/clientLabels.ts`'s
+`Хом → Возврат` entry and `client_chiqim_ledger`'s own `kind` derivation (`raw`/`old_raw` →
+`vozvrat`, unconditionally) already meant Хом never actually appeared; Part B.3's fixed 5-Tип
+list makes that permanent on the client side rather than leaving a 6th always-empty filter value
+around as before. The underlying schema gap (no field distinguishes a raw sale from a return) is
+unchanged and still open — flagged again here, not solved, since closing it needs a real schema
+change out of this task's scope.
+
+**`rezka_kn` (Резка KN) folded into the Кондитерка Тип bucket**, not given a 6th column: the
+task's Расход spec names exactly 5 Тип values, and Rezka processing has zero live rows in this
+project (`calibres.is_rezka_output`, confirmed via the earlier live-schema inspection) — closest
+semantic fit, and if Rezka output ever starts flowing, it will show up inside the Кондитерка
+total rather than being silently dropped by the `p_kinds` filter.
+
+**Old-raw stock (`old_stock_closeouts.kind = 'old_raw'`, ~2,880 kg for this owner) is not a third
+Эски drill-down graph.** The task named exactly two categories (Эски ювилган + Старый склад
+Кондитерка); old-raw material is folded into the Панель's plain "Сырьё" bucket rather than into
+"Старый склад", so the four Панель buckets still sum to the true total without inventing a
+bucket or a graph the task never asked for. Flagged, not solved — a future task naming old-raw
+explicitly would need its own decision on where it belongs.
+
+**Verified:** `npx tsc --noEmit`, `npm run build`, and `npm run lint` all clean after every part.
+No Playwright run was possible in this environment — no `.env.test` (gitignored, per CLAUDE.md,
+and not present in this session's fresh clone) and no `TEST_CLIENT_PHONE`/`PASSWORD` account
+exists yet in `tests/e2e/helpers/login.ts`'s `TestRole` union (`RAHBAR | MENEJER | QOROVUL |
+OMBOR | LABORATOR` — no `CLIENT`), so authenticated browser verification of either the Rahbar
+Eski drill-down or any client-portal screen was not possible here; live-data correctness was
+established via direct RPC calls against the production database instead (see above), which is
+as far as this session could go without a real browser session. Flagged for whoever verifies
+this live: a `TEST CLIENT` account (phone `900000006`, matching the existing `900000001`-`5`
+convention) and a `CLIENT` entry in `TestRole` would be needed before an e2e spec for this screen
+family could be written at all.
+
 ---
 
 ## 2026-09-03 — Hisobot: MOYKADAN per-serial rows (migration 0111)
@@ -7769,3 +7917,75 @@ branches ever edit the *same* existing entry, it will silently keep both variant
 back-to-back instead of flagging a conflict. Safe only while entries stay
 append-only and are never revised in place — which is the convention this file's
 own header already states. If that ever changes, remove the rule.
+
+## 2026-09-08 — Systemic fix: all client-side date stamps now use Asia/Tashkent, not UTC
+
+**Context:** While verifying `finished_pallets.received_date` for `client_production_ledger`
+(Производство tab), traced its write site to `OmborTayyorTab.tsx`'s
+`received_date: new Date().toISOString().slice(0, 10)`. `Date.prototype.toISOString()` always
+renders in UTC regardless of the device's own timezone setting. Tashkent is UTC+5 with no DST, so
+the UTC calendar day and the Tashkent calendar day disagree for any local time between 00:00 and
+04:59 — a pack entry logged in that window would be silently dated to the previous day.
+
+**This was not an isolated bug.** Grepped the whole frontend for the same idiom and found it at
+~20 call sites, all following one of three shapes:
+
+1. **"Today"** — `new Date().toISOString().slice(0, 10)`. Wrong only in the 00:00–04:59 Tashkent
+   window (confirmed empirically: an instant of `2026-09-08T20:00:00Z`, i.e. 01:00 Sept 9
+   Tashkent, sliced to `"2026-09-08"` — one day behind).
+2. **"First of month"** — `new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)`.
+   **Worse than (1): wrong every single time**, not just in a narrow window. The 3-arg `Date`
+   constructor builds *local* midnight of the 1st; converting local midnight to UTC for a
+   positive-offset zone always lands on the previous UTC calendar day. Confirmed empirically:
+   for a Tashkent "now" of Sept 8, this produced `"2026-08-31"` instead of `"2026-09-01"` — every
+   "Bu oy"/"Этот месяц" default across this entire app (Rahbar's dashboard, all three client
+   portal report tabs, and — via `ReportFilterBar.tsx` — Hisobot/Stock-on-hand's own date
+   presets) has been starting one day early, always, not as an edge case.
+3. **"N days ago"** (`dateRange.ts`'s `defaultDateRange`, used by 7 history screens) — same
+   window-dependent risk as (1), applied to the `from` end of a rolling lookback.
+
+**Fix:** `src/lib/dateRange.ts` (already the established home for these YYYY-MM-DD helpers per
+`formatDate.ts`'s own header comment) gained `tashkentDateString`, `todayInTashkent`,
+`firstOfMonthInTashkent`, `daysAgoInTashkent`, and `previousMonthRangeInTashkent`, all computed
+via `Intl.DateTimeFormat` with an explicit `timeZone: 'Asia/Tashkent'` rather than the device's
+own local `Date` accessors — correct even if a device's system timezone is itself misconfigured,
+which local accessors would not be. `defaultDateRange` keeps its existing signature, now backed
+by the Tashkent-correct helpers. Every one of the ~20 call sites (plus each file's own duplicated
+private `isoToday`/`isoFirstOfMonth`/`lastMonthRange`-style wrapper functions, several near-
+identical copies of which existed across `RahbarHome.tsx`, `ReportFilterBar.tsx`, and all three
+client portal tabs — consolidated into the shared helpers rather than re-duplicated) now imports
+from `dateRange.ts`:
+
+- `KirimForm.tsx`/`ChiqimForm.tsx` (Menejer) — `sana` initial default.
+- `OmborTayyorTab.tsx`/`ReceiveFromMoykaForm.tsx` — `received_date` (the original finding).
+- `OmborMoykaTab.tsx` — `sent_date`.
+- `KirimTahlilForm.tsx`/`ChiqimTahlilForm.tsx` (Laborator) — `sampleDate` initial default.
+- `RahbarHome.tsx` — `Boshidan`/`Bu oy`/`O'tgan oy` period presets.
+- `ReportFilterBar.tsx` — Hisobot/Stock-on-hand's own `Bugun`/`7 kun`/`Bu oy` presets.
+- `ClientPrihodTab.tsx`/`ClientRashodTab.tsx`/`ClientProizvodstvoTab.tsx` — the client portal's
+  own default period + `Сегодня`/`Этот месяц` buttons (this task's original three call sites).
+
+**Deliberately NOT touched, verified correct as-is, not merely left alone:**
+`useLaboratorHistory.ts`/`useIntakeHistory.ts`'s `toExclusive` (`new Date(to); setDate(+1);
+toISOString().slice(0,10)`) looks like the same idiom but isn't — it shifts an *already-known*
+date string by exactly one calendar day, never asks "what day is it now," and (confirmed
+empirically both directions) round-trips correctly for any fixed-offset timezone because the
+UTC-parse-then-local-setDate-then-UTC-format cancel out to a true +1-day shift regardless of
+which offset you started from. Tashkent has no DST, so this holds without exception here. Left
+as-is rather than forced into the new helpers, which would have been a no-op at best.
+
+Also deliberately not touched: every `new Date().toISOString()` call producing a **full**
+timestamp for a `timestamptz` column (`ombor_finished_at`, `voided_at`, `stage1_completed_at`,
+`completed_at`, `created_at` on the Moyka-receipt optimistic-UI mirror) — UTC is the correct,
+unambiguous choice for an actual instant; only the date-only `.slice(0, 10)` truncation loses the
+timezone context that made it wrong.
+
+**Verification:** `npx tsc --noEmit`, `npm run build`, `npm run lint` all clean. Each new helper
+verified against hand-computed expected values via a standalone Node script — including at the
+exact danger-window boundary (an instant 01:00 Tashkent time, where the old code and the new code
+diverge by exactly one day) and confirming `firstOfMonthInTashkent`/`previousMonthRangeInTashkent`
+agree with the old code outside their respective bug conditions. No live browser run was possible
+in this environment (same constraint as the client-portal smoke test above) — recommend a manual
+click-through of at least one "Bu oy" default (Rahbar or any client tab) before/after this change
+in a running dev server, since the first-of-month finding changes an on-screen default date users
+will notice immediately.

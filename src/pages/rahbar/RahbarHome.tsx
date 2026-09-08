@@ -7,6 +7,8 @@ import { SCOPE_LABEL, type ZaxiraScope, type ByCalibreTypeRow } from '../../lib/
 import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { OldStockDrilldown } from '../../components/OldStockDrilldown'
+import { todayInTashkent, firstOfMonthInTashkent, previousMonthRangeInTashkent } from '../../lib/dateRange'
 
 // Rahbar "Bosh sahifa" -- stock-reconciliation dashboard, rebuilt against
 // docs/mockups/BATU-Rahbar-dashboard-v3.html (2026-08-14). Replaces this
@@ -21,22 +23,6 @@ import { StatusNote } from '../../components/ui/StatusNote'
 // side regroup of server totals, not a new sum.
 
 const BOSHIDAN = '2026-07-15'
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-function isoOf(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-function firstOfMonth(d: Date): string {
-  return isoOf(new Date(d.getFullYear(), d.getMonth(), 1))
-}
-function lastMonthRange(): { from: string; to: string } {
-  const now = new Date()
-  const firstThis = new Date(now.getFullYear(), now.getMonth(), 1)
-  const lastPrev = new Date(firstThis.getTime() - 86400000)
-  return { from: firstOfMonth(lastPrev), to: isoOf(lastPrev) }
-}
 
 type PeriodPreset = 'boshidan' | 'bu_oy' | 'otgan_oy' | 'custom'
 
@@ -110,16 +96,16 @@ export function RahbarHome() {
   const [scope, setScope] = usePersistentState<ZaxiraScope>('rahbar.scope', 'yangi')
   const [preset, setPreset] = usePersistentState<PeriodPreset>('rahbar.preset', 'boshidan')
   const [customFrom, setCustomFrom] = usePersistentState('rahbar.customFrom', BOSHIDAN)
-  const [customTo, setCustomTo] = usePersistentState('rahbar.customTo', () => todayIso())
+  const [customTo, setCustomTo] = usePersistentState('rahbar.customTo', () => todayInTashkent())
   const [selectedTypeIds, setSelectedTypeIds] = usePersistentState<string[] | null>('rahbar.types', null) // null = hammasi
 
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
 
   const { from, to } = useMemo(() => {
-    if (preset === 'boshidan') return { from: BOSHIDAN, to: todayIso() }
-    if (preset === 'bu_oy') return { from: firstOfMonth(new Date()), to: todayIso() }
-    if (preset === 'otgan_oy') return lastMonthRange()
+    if (preset === 'boshidan') return { from: BOSHIDAN, to: todayInTashkent() }
+    if (preset === 'bu_oy') return { from: firstOfMonthInTashkent(), to: todayInTashkent() }
+    if (preset === 'otgan_oy') return previousMonthRangeInTashkent()
     return { from: customFrom, to: customTo }
   }, [preset, customFrom, customTo])
 
@@ -167,6 +153,17 @@ export function RahbarHome() {
   const stockKnTotal = stockKn.reduce((sum, r) => sum + r.kg, 0)
   const stockTotal = stockCalibredTotal + stockKnTotal
   const dispatchedMax = Math.max(1, ...dispatchedByCalibre.map((r) => r.kg), ...dispatchedKnRows.map((r) => r.kg))
+
+  // Eski drill-down (2026-09-08): two separate graphs, only at scope='eski'
+  // -- see docs/DECISIONS.md "Rahbar Eski drill-down: old KN reintroduced,
+  // scoped to Eski toggle only". oldWashed reuses the SAME stockByCalibre/
+  // stockKn arrays the "Omborda hozir" bars already compute (already
+  // is_old_stock-scoped by rahbar_stock_snapshot at scope='eski' -- no new
+  // arithmetic). oldKn is new: snapshot.oldKnByType (migration 0111),
+  // naturally empty at scope != 'eski' since old_kn rows never pass the
+  // 'yangi' scope filter -- never re-added to the main/Yangi dashboard.
+  const oldWashedSeries = [...stockByCalibre, ...stockKn].map((r) => ({ label: calibreLabel(r.calibreId), kg: r.kg }))
+  const oldKnSeries = snapshot ? snapshot.oldKnByType.map((t) => ({ label: t.typeName, kg: t.kg })) : []
 
   // 2026-08-30: oldKnKg deliberately EXCLUDED from the headline. Its tile was
   // removed in the same pass, so leaving it in would put 81,915 kg of real
@@ -263,6 +260,17 @@ export function RahbarHome() {
             }
             tone="kn"
           />
+        </div>
+      )}
+
+      {/* Eski drill-down -- only at scope='eski', two separate graphs:
+          Эски (ювилган) + Старый склад Кондитерка. Never shown at
+          scope='yangi' (the main dashboard) -- see DECISIONS.md. */}
+      {scope === 'eski' && snapshot && !snapLoading && (
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+          <SectionHeading>Эски zaxira</SectionHeading>
+          <p className="mb-4 text-xs text-slate-400">Jonli qoldiq — ювилган mahsulot va Старый склад Кондитерка havzasi alohida</p>
+          <OldStockDrilldown oldWashed={{ totalKg: stockTotal, series: oldWashedSeries }} oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }} />
         </div>
       )}
 

@@ -2,15 +2,18 @@ import { Outlet } from 'react-router-dom'
 import { AppNavShell, type NavItem } from '../../components/AppNavShell'
 
 // Global Export client portal shell — Russian-only throughout, reusing
-// AppNavShell (the same shell Menejer/Rahbar already use). Two sub-tabs
-// now (Приход/Расход), replacing the single "Отчёт" destination — each is
-// its own <Route> (see App.tsx), which is what makes filter state need
-// usePersistentState keyed per sub-tab (ClientPrihodTab/ClientRashodTab):
-// switching sub-tabs unmounts the outgoing route exactly like every other
-// role's top-tab bar (see FilterState.tsx's own header comment).
+// AppNavShell (the same shell Menejer/Rahbar already use).
+//
+// Restructured (2026-09-08, CLAUDE.md task "Rebuild the client portal...")
+// from two flat top-level tabs (Приход/Расход) to two top-level
+// destinations: Панель (the dashboard, ClientPanelTab) and Отчёт (a
+// nested layout of its own, ClientOtchetLayout, with three sub-tabs
+// Приход/Расход/Производство). `end: true` on Панель only -- Отчёт must
+// stay highlighted for every /client/otchet/* sub-route, matching how
+// every other AppNavShell caller treats a non-leaf destination.
 const NAV_ITEMS: NavItem[] = [
-  { to: '/client/prihod', label: 'Приход', end: true },
-  { to: '/client/rashod', label: 'Расход', end: true },
+  { to: '/client', label: 'Панель', end: true },
+  { to: '/client/otchet', label: 'Отчёт' },
 ]
 
 export function ClientLayout() {

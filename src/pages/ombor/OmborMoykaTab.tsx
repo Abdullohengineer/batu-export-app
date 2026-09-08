@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { todayInTashkent } from '../../lib/dateRange'
 
 // §5.2 Moykaga Chiqarish. Two windows — section mirroring (SPEC.md §5 intro;
 // DECISIONS.md "Section mirroring / derived stage membership"), NOT two
@@ -74,7 +75,7 @@ export function OmborMoykaTab() {
 
     const { error } = await supabase.from('moyka_sends').insert({
       serial: serial.serial,
-      sent_date: new Date().toISOString().slice(0, 10),
+      sent_date: todayInTashkent(),
       qty_kg: qtyKg,
       created_by: profile?.id,
     })

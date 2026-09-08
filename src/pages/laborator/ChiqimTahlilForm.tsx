@@ -8,6 +8,7 @@ import { FormField, TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { todayInTashkent } from '../../lib/dateRange'
 
 export interface ChiqimTahlilValues {
   sampleDate: string
@@ -60,7 +61,7 @@ export function ChiqimTahlilForm({
   onCancel: () => void
   onSubmit: (values: ChiqimTahlilValues) => Promise<void>
 }) {
-  const [sampleDate, setSampleDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [sampleDate, setSampleDate] = useState(() => todayInTashkent())
   const [sampledPallet, setSampledPallet] = useState('')
   const [moisture, setMoisture] = useState('')
   const [classification, setClassification] = useState<SulfurChoice>(sulfurChoiceFromFlag(item.is_sulfured))

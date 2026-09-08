@@ -11,6 +11,7 @@ import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
+import { todayInTashkent } from '../../lib/dateRange'
 
 interface TypeRow {
   key: string
@@ -33,7 +34,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
   const { owners } = useOwners()
   const { productTypes } = useProductTypes()
 
-  const [sana, setSana] = useState(() => new Date().toISOString().slice(0, 10))
+  const [sana, setSana] = useState(() => todayInTashkent())
   const [plate, setPlate] = useState('')
   const [driver, setDriver] = useState('')
   const [ownerId, setOwnerId] = useState('')

@@ -13,6 +13,7 @@ import { formatDate } from '../../lib/formatDate'
 import { formatLossKg } from '../../lib/formatLoss'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { downloadClientSerialLedgerExcel } from '../../lib/clientSerialLedgerExport'
+import { todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 
 const pillClass =
   'rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
@@ -21,13 +22,6 @@ function kg(v: number): string {
   return `${Math.round(v).toLocaleString()} кг`
 }
 
-function isoToday(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-function isoFirstOfMonth(): string {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
-}
 
 // Gap sign convention matches formatLossKg's own documented rule (see
 // formatLoss.ts) exactly: positive = real loss (bare, red), negative =
@@ -75,7 +69,7 @@ function ExpandedPanel({ row }: { row: ClientSerialLedgerRow }) {
             <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
               <th className="py-1 pr-2">№</th>
               <th className="py-1 text-right">Готовый продукт (кг)</th>
-              <th className="py-1 text-right">Кондерка</th>
+              <th className="py-1 text-right">Кондитерка</th>
             </tr>
           </thead>
           <tbody>
@@ -133,9 +127,15 @@ function ExpandedPanel({ row }: { row: ClientSerialLedgerRow }) {
 // filtered view of what the totals object covers, and the task's own
 // requirement is explicit: totals must come from the same RPC call as the
 // rows, not be re-derived in JS).
+//
+// Moved to the top of the page (2026-09-08, CLAUDE.md task Part B.2) --
+// was a sticky-bottom bar; the task asked for a top-of-page totals block
+// "in addition to the existing sticky-bottom totals bar, or replace it --
+// pick one, don't show twice," recommending replace. One totals view,
+// same values, now the first thing visible instead of requiring a scroll.
 function TotalsBar({ totals }: { totals: ClientSerialLedger['totals'] }) {
   return (
-    <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm backdrop-blur dark:border-sky-900 dark:bg-sky-950">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm dark:border-sky-900 dark:bg-sky-950">
       <span className="text-slate-700 dark:text-slate-300">
         Приход нетто: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.nettoKg)}</span>
       </span>
@@ -169,7 +169,7 @@ function TotalsBar({ totals }: { totals: ClientSerialLedger['totals'] }) {
 
 export function ClientPrihodTab() {
   const { productTypes } = useProductTypes(true)
-  const defaultRange = { from: isoFirstOfMonth(), to: isoToday() } // "Default period: current month"
+  const defaultRange = { from: firstOfMonthInTashkent(), to: todayInTashkent() } // "Default period: current month"
   const [filters, setFilters] = usePersistentState<ClientSerialLedgerFilters>(
     'clientHisobot.prihod.filters',
     defaultClientSerialLedgerFilters(defaultRange.from, defaultRange.to),
@@ -225,10 +225,11 @@ export function ClientPrihodTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: isoToday(), to: isoToday() }))} className={pillClass}>
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Период</span>
+        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: todayInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Сегодня
         </button>
-        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: isoFirstOfMonth(), to: isoToday() }))} className={pillClass}>
+        <button type="button" onClick={() => setFilters((f) => ({ ...f, from: firstOfMonthInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Этот месяц
         </button>
         <label className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">
@@ -264,6 +265,8 @@ export function ClientPrihodTab() {
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
+
+      {!loading && !error && ledger && <TotalsBar totals={ledger.totals} />}
 
       {!loading && !error && ledger && (
         <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
@@ -352,8 +355,6 @@ export function ClientPrihodTab() {
           </table>
         </div>
       )}
-
-      {!loading && !error && ledger && <TotalsBar totals={ledger.totals} />}
     </div>
   )
 }

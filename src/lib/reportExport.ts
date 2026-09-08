@@ -65,6 +65,8 @@ function statusText(row: ReportRow): string {
   if (row.kind === 'chiqim_raw') return 'Xom'
   if (row.kind === 'chiqim_old_kn') return 'Eski KN'
   if (row.kind === 'moyka_send') return 'Moykaga'
+  // Per-serial aggregate row (2026-09-03) — no single pallet status applies.
+  if (row.kind === 'moyka_output') return ''
   if (row.palletStatus === 'bekor_qilingan') return 'Bekor qilingan'
   if (row.palletStatus !== 'jonatilgan') return STATUS_LABEL[row.palletStatus]
   if (row.labVerdict === 'qayta_yuvish') return 'Qayta yuvish'
@@ -98,10 +100,13 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups): strin
       return lookups.ownerName(row.ownerId)
     case 'type':
       return lookups.typeName(row.typeId)
+    // moyka_output rows are a per-serial aggregate (2026-09-03) — no single
+    // calibre/barcode2 applies any more, see reportQuery.ts's
+    // MoykaOutputReportRow comment.
     case 'calibre':
-      return row.kind === 'chiqim' || row.kind === 'moyka_output' ? lookups.calibreLabel(row.calibreId) : ''
+      return row.kind === 'chiqim' ? lookups.calibreLabel(row.calibreId) : ''
     case 'barcode2':
-      return row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.barcode2 : ''
+      return row.kind === 'chiqim' ? row.barcode2 : ''
     case 'netto':
       return row.kind === 'kirim' && row.provisional ? 'tarozi kutilmoqda' : qty
     case 'declared':

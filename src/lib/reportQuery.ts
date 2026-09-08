@@ -281,35 +281,39 @@ export interface MoykaSendReportRow {
   state: SerialState
 }
 
-// MOYKADAN (2026-08-15) — one finished_pallets entry, dated by
-// received_date. Carries a real pallet_status/lab verdict (same pallet a
-// later CHIQIM row for the same barcode2 would show) — this is the
-// PRODUCTION event; a later dispatch of the same pallet is a separate row.
-// Deliberately unfiltered by status at the row level (voided/consumed/
-// storage-loss pallets still get a row here, matching report_chiqim_rows'
-// own philosophy) — see DECISIONS.md for why this can make
-// weightKg-summed-across-rows and state.moykadanChiqgan diverge once a
-// real excluded pallet exists.
+// MOYKADAN (2026-08-15; collapsed to one row per serial per period,
+// 2026-09-03 — see DECISIONS.md "Hisobot: MOYKADAN per-serial rows").
+// Reverses the original "one finished_pallets entry per row" grain
+// (deliberately, on explicit instruction, against v1.34's own 🔒 decision —
+// see the migration 0111 header for the full tradeoff): a row is now one
+// SERIAL's Moyka-output activity for the filtered period, weightKg is the
+// 0106-exclusion-filtered ("received from Moyka, final production output
+// only") sum across that serial's pallets in the period. barcode2/calibreId
+// are structurally inapplicable at this grain (a serial can own several
+// pallets across several calibres) — always blank, not a missing value; use
+// the serial passport (§3.2.5) for the per-pallet breakdown. Same for
+// palletStatus/labVerdict/moisturePct/so2MgKg — a serial's pallets can carry
+// mixed statuses/verdicts, so there is no single value to show here.
 export interface MoykaOutputReportRow {
   kind: 'moyka_output'
-  key: string // 'moyka-output-' || barcode2 — NOT bare barcode2, see migration 0073's own comment (collides with report_chiqim_rows' row_key otherwise)
+  key: string // 'moyka-output-serial-<serial>-<from>-<to>' — period-scoped, not bare barcode2 any more
   serial: string
-  barcode2: string
+  barcode2: '' // always empty — genuinely inapplicable at serial grain, not a missing value
   orderId: string
   requestId: string
   typeId: string
   partiyaNo: number | null
-  calibreId: string
+  calibreId: '' // always empty — see barcode2 above
   ownerId: string
   plate: null
   driver: null
-  weightKg: number // finished_pallets.weight_kg
+  weightKg: number // sum of finished_pallets.weight_kg for this serial+period, 0106-exclusion-filtered
   boxMassKg: null
-  dateBasis: string | null // §3.2.3 extended: received_date
-  palletStatus: Exclude<PalletStatusFilter, ''>
-  labVerdict: 'o_tdi' | 'qayta_yuvish' | null
-  moisturePct: number | null
-  so2MgKg: number | null
+  dateBasis: string | null // §3.2.3 extended: most recent received_date in the period
+  palletStatus: null // always null — a serial's pallets can carry mixed statuses, no single value applies
+  labVerdict: null // always null — same reason
+  moisturePct: null
+  so2MgKg: null
   state: SerialState
 }
 
@@ -619,26 +623,31 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
   }
 
   if (row.kind === 'moyka_output') {
+    // Per-serial aggregate (2026-09-03) — the SQL side (migration 0111)
+    // always returns barcode2/calibre_id/pallet_status/lab_verdict/
+    // moisture_pct/so2_mg_kg as null for this kind now, so these fields are
+    // literal, not defensively coalesced — see MoykaOutputReportRow's own
+    // comment for why.
     return {
       kind: 'moyka_output',
       key: row.row_key,
       serial: row.serial ?? '',
-      barcode2: row.barcode2 ?? '',
+      barcode2: '',
       orderId: row.order_id ?? '',
       requestId: row.request_id ?? '',
       typeId: row.type_id,
       partiyaNo: num(row.partiya_no),
-      calibreId: row.calibre_id ?? '',
+      calibreId: '',
       ownerId: row.owner_id,
       plate: null,
       driver: null,
       weightKg: Number(row.qty_kg),
       boxMassKg: null,
       dateBasis: row.date_basis,
-      palletStatus: row.pallet_status ?? 'omborda',
-      labVerdict: row.lab_verdict,
-      moisturePct: num(row.moisture_pct),
-      so2MgKg: num(row.so2_mg_kg),
+      palletStatus: null,
+      labVerdict: null,
+      moisturePct: null,
+      so2MgKg: null,
       state: mapState(row) ?? zeroState(),
     }
   }

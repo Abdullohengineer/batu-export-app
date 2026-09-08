@@ -33,8 +33,11 @@ import { LaboratorKirimTab } from './pages/laborator/LaboratorKirimTab'
 import { LaboratorChiqimTab } from './pages/laborator/LaboratorChiqimTab'
 import { LaboratorTarixTab } from './pages/laborator/LaboratorTarixTab'
 import { ClientLayout } from './pages/client/ClientLayout'
+import { ClientPanelTab } from './pages/client/ClientPanelTab'
+import { ClientOtchetLayout } from './pages/client/ClientOtchetLayout'
 import { ClientPrihodTab } from './pages/client/ClientPrihodTab'
 import { ClientRashodTab } from './pages/client/ClientRashodTab'
+import { ClientProizvodstvoTab } from './pages/client/ClientProizvodstvoTab'
 
 function App() {
   return (
@@ -144,9 +147,13 @@ function AppRoutes() {
           </RoleRoute>
         }
       >
-        <Route index element={<Navigate to="/client/prihod" replace />} />
-        <Route path="prihod" element={<ClientPrihodTab />} />
-        <Route path="rashod" element={<ClientRashodTab />} />
+        <Route index element={<ClientPanelTab />} />
+        <Route path="otchet" element={<ClientOtchetLayout />}>
+          <Route index element={<Navigate to="/client/otchet/prihod" replace />} />
+          <Route path="prihod" element={<ClientPrihodTab />} />
+          <Route path="rashod" element={<ClientRashodTab />} />
+          <Route path="proizvodstvo" element={<ClientProizvodstvoTab />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate to={homePath} replace />} />

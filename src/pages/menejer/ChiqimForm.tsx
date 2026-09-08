@@ -15,6 +15,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { todayInTashkent } from '../../lib/dateRange'
 
 // Opening stock, Stage 2 (2026-08-02, see DECISIONS.md "Opening stock"):
 // line_kind widened from finished|raw to five values. old_kn has no
@@ -106,7 +107,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   // balance a serial has left.
   const { serials: rawSerials } = useMoykaSerials()
 
-  const [sana, setSana] = useState(() => new Date().toISOString().slice(0, 10))
+  const [sana, setSana] = useState(() => todayInTashkent())
   const [plate, setPlate] = useState('')
   const [driver, setDriver] = useState('')
   const [ownerId, setOwnerId] = useState('')

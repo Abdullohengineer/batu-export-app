@@ -3,7 +3,7 @@ import type { Owner } from '../../lib/useOwners'
 import type { ProductType } from '../../lib/useProductTypes'
 import type { Calibre } from '../../lib/useCalibres'
 import { type ReportRowKind, type LabVerdictFilter } from '../../lib/reportQuery'
-import { defaultDateRange } from '../../lib/dateRange'
+import { defaultDateRange, todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 
 const inputClass =
   'mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
@@ -36,14 +36,6 @@ const VERDICT_LABEL: Record<Exclude<LabVerdictFilter, ''>, string> = {
   o_tdi: "O'tdi",
   qayta_yuvish: 'Qayta yuvish',
   tekshirilmagan: 'Tekshirilmagan',
-}
-
-function isoToday(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-function isoFirstOfMonth(): string {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
 }
 
 export interface FilterOption {
@@ -273,13 +265,13 @@ export function ReportFilterBar({
           />
         )}
 
-        <button type="button" onClick={() => onDateRangeChange(isoToday(), isoToday())} className={pillSelectClass}>
+        <button type="button" onClick={() => onDateRangeChange(todayInTashkent(), todayInTashkent())} className={pillSelectClass}>
           Bugun
         </button>
-        <button type="button" onClick={() => onDateRangeChange(defaultDateRange(7).from, isoToday())} className={pillSelectClass}>
+        <button type="button" onClick={() => onDateRangeChange(defaultDateRange(7).from, todayInTashkent())} className={pillSelectClass}>
           7 kun
         </button>
-        <button type="button" onClick={() => onDateRangeChange(isoFirstOfMonth(), isoToday())} className={pillSelectClass}>
+        <button type="button" onClick={() => onDateRangeChange(firstOfMonthInTashkent(), todayInTashkent())} className={pillSelectClass}>
           Bu oy
         </button>
         <label className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">

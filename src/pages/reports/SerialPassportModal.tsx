@@ -663,20 +663,25 @@ function PassportBody({
                     </tr>
                   </thead>
                   <tbody>
-                    {cycle.pallets.map((p) => (
-                      <tr key={p.barcode2} className="border-t border-slate-100 dark:border-slate-800">
-                        <td className="px-1 py-1 font-mono text-slate-900 dark:text-slate-100">{p.barcode2}</td>
-                        <td className="px-1 py-1 text-slate-700 dark:text-slate-300">{calibreLabel(p.calibreId)}</td>
-                        <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{p.weightKg.toLocaleString()}</td>
-                        <td className="px-1 py-1">
-                          {p.palletStatus === 'bekor_qilingan' ? (
-                            <span className="font-medium text-red-600 dark:text-red-400">
-                              Bekor qilindi
-                              {p.voidSuccessorBarcodes && p.voidSuccessorBarcodes.length > 0
-                                ? ` → ${p.voidSuccessorBarcodes.join(', ')}`
-                                : ' → hali yangi barkod chiqarilmagan'}
-                            </span>
-                          ) : (
+                    {/* Voided pallets excluded from this list (2026-09-08 --
+                        DECISIONS.md "P8/P9 moyka batch reconciliation: passport
+                        clean-view rule"). Void history stays in the DB
+                        (finished_pallets.status/voided_at, audit_log) and in
+                        the serial's own aggregate totals above (Yo'qotish
+                        already excludes bekor_qilindi at the SQL source,
+                        get_serial_passport's finished_returned_total) -- this
+                        is a display-only filter, no calculation changes.
+                        `p.palletStatus === 'bekor_qilingan'` can therefore
+                        never occur below; that branch is removed rather than
+                        left as unreachable dead code. */}
+                    {cycle.pallets
+                      .filter((p) => p.palletStatus !== 'bekor_qilingan')
+                      .map((p) => (
+                        <tr key={p.barcode2} className="border-t border-slate-100 dark:border-slate-800">
+                          <td className="px-1 py-1 font-mono text-slate-900 dark:text-slate-100">{p.barcode2}</td>
+                          <td className="px-1 py-1 text-slate-700 dark:text-slate-300">{calibreLabel(p.calibreId)}</td>
+                          <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{p.weightKg.toLocaleString()}</td>
+                          <td className="px-1 py-1">
                             <span className="text-slate-500 dark:text-slate-400">
                               {p.palletStatus === 'omborda'
                                 ? 'Omborda'
@@ -688,10 +693,9 @@ function PassportBody({
                                       ? 'Qayta ishlashga ishlatilgan'
                                       : "Jo'natilgan"}
                             </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>

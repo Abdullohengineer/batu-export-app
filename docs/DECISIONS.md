@@ -7635,3 +7635,283 @@ as far as this session could go without a real browser session. Flagged for whoe
 this live: a `TEST CLIENT` account (phone `900000006`, matching the existing `900000001`-`5`
 convention) and a `CLIENT` entry in `TestRole` would be needed before an e2e spec for this screen
 family could be written at all.
+
+---
+
+## 2026-09-03 — Hisobot: MOYKADAN per-serial rows (migration 0111)
+
+**Task brief cited migration "0073" for `report_rows_v2`/Moykadan direction; corrected to
+migration 0074.** `docs/DECISIONS.md:4031-4038` ("migration-history audit") records a same-day
+renumbering that shifted this file `0073 → 0074`; current `0073` is the unrelated Ombor tara
+correction. Used 0074 throughout the diagnosis and this entry.
+
+**Diagnosis first, findings before any code, per instruction.** Feeding chain confirmed:
+`report_query_page(text[],...)`/`report_totals(text[],...)` → `report_filtered_rows(text[],...)`
+→ view `report_rows_v2` (6-way `UNION ALL`) → `report_moyka_output_rows` for the `moyka_output`
+kind — one row per `finished_pallets` entry (one row per pallet; calibre lives on the pallet, so
+distinct calibres were already distinct rows, not a separate fan-out layer). Confirmed SQL grain,
+not a frontend `flatMap` — zero `.flatMap` in `src/pages/reports`, `ReportResultsTable.tsx` does a
+bare `rows.map(...)`.
+
+**The task's headline figures (43,380 kg buggy / 40,200 kg true / ~3,180 kg delta) did not
+reproduce against live data via any query path tried**, and are flagged rather than forced to
+match: raw per-pallet sum for August 2026 = 64,650 kg; the pre-migration
+`report_totals.total_kg_from_moyka` (excludes only `bekor_qilingan`) = 40,190 kg for the same
+period (coincidentally already correct — August 2026 has zero `storage_loss`/mint-consumed rows).
+Four independent paths converge on **40,190 kg**, not 40,200: `rahbar_dashboard_ledger`'s
+`finished.producedKg` and `moyka.calibreKg + moyka.konditirskiyKg` (both 40,190), a hand-written
+query applying 0106's exclusion set directly (40,190), and SPEC.md v1.44's own verified identity
+("65,652 = 40,190 + 24,030 + 1,432"). Treated 40,190 as the reconciliation target — the 10 kg gap
+from the brief's "40,200" is an unexplained approximation in the brief, not a residual found in
+the data.
+
+**Exclusion-set gap, confirmed real and in-scope:** `report_totals`'s pre-migration
+`total_kg_from_moyka` excluded only `bekor_qilingan` (voided) — not `storage_loss` or
+serial_mint_sources-consumed pallets, migration 0106's other two categories
+(`rahbar_dashboard_ledger.processed_output`). It happened not to matter for August 2026 (both
+categories are empty that period) — exactly the "exclusion that only works because the data
+happens not to overlap" pattern this file already named unacceptable for `lab_turnaround_avg`
+(2026-08-04 entry). `kirim_line_state`'s `base_pallets` CTE (the *state*/"joriy" chip) already had
+the full 3-category exclusion, confirmed by reading its live body — only the *movement*/"davrda"
+chip was incomplete.
+
+### The row-grain conflict, raised for explicit approval, resolved by explicit instruction
+
+MOYKADAN's per-pallet row grain is not an oversight — it is a 🔒-locked v1.34 decision
+(SPEC.md §3.2.2), deliberately mirroring CHIQIM's own pallet grain ("Barcode #2, wash cycle, and
+kalibr are each independent filter dimensions... and only make sense at pallet granularity") and
+its own explicit "an event log, not a current-state snapshot" philosophy — confirmed in this
+project's own DECISIONS.md 2026-08-15 entry ("Hisobot: Moyka rows, direction split, serial-state
+columns"), item 2. The task's "exactly one row per serial per period" requirement reverses that
+decision. Presented to the user as three options (keep event rows and fix totals only / add an
+additive per-serial summary alongside the existing rows / collapse the row grain as asked,
+accepting the tradeoff) — **the user chose the third: collapse the row grain**, explicitly
+accepting that Barcode #2/kalibr no longer identify a single MOYKADAN row.
+
+One mitigating finding that made this less costly than first assessed: `report_filtered_rows`'s
+pre-existing WHERE clause already gated `moyka_output` rows on calibre_id/barcode2/wash_cycle
+being **entirely unset** (`r.kind = 'moyka_output' and p_calibre_id is null and ...`) — setting any
+of those three filters already made every `moyka_output` row disappear, not narrow. So those three
+filters never meaningfully operated on MOYKADAN at pallet grain either; collapsing to serial grain
+does not remove a working filter, it leaves an already-nonfunctional one exactly as
+nonfunctional. Also: SPEC.md's own "voided Barcode #2 must remain findable" 🔒 rule (§3.2.2) is
+itself struck through and marked SUPERSEDED 2026-07-28 — the re-wash-void mechanism it protected
+no longer exists in the current UI, so this collapse does not reopen that specific finding.
+`status`/`lab_verdict` **were** real per-pallet narrowing filters (unlike the three above) — these
+are preserved by applying them *inside* the new aggregation function, before the `GROUP BY`, not
+by the caller's generic post-aggregation clause (which would otherwise silently exclude every row
+under a status filter, or silently admit every row under `lab_verdict='tekshirilmagan'`, since
+both fields are structurally null on an aggregate row).
+
+### `report_moyka_output_rows_by_serial()` — sync-twin declaration
+
+New function (migration 0111), a thin `GROUP BY serial` wrapper over the existing
+`report_moyka_output_rows` view, date-filtered first (so "per period" holds — a static view can't
+take `p_from`/`p_to`). Its `qty_kg` ("received from Moyka, final production output only") applies
+this exact predicate:
+
+```sql
+sum(qty_kg) filter (
+  where pallet_status not in ('bekor_qilingan', 'saqlashda_yoqolgan')
+    and not exists (select 1 from serial_mint_sources sms where sms.source_barcode2 = barcode2)
+)
+```
+
+**Sync-twin: `rahbar_dashboard_ledger.processed_output` (migration 0106).** Same three
+categories (voided / storage_loss / serial_mint_sources-consumed), same predicate shape 0106's own
+header insisted on copying verbatim rather than abstracting ("Exclusion set is `pallet_base`'s,
+verbatim, so both ledgers count one set"). If either exclusion set ever gains a category, the
+other must gain the identical one in the same commit — the same rule 0106 established for itself,
+extended to this new consumer. `report_totals`'s `total_kg_from_moyka` no longer has its own
+exclusion logic at all — it sums `qty_kg` straight off the (now pre-filtered) `filtered` CTE, so
+there is exactly one place implementing this predicate for Hisobot, not two that could drift.
+
+Not a new balance calculation: a filtered `SUM`/`GROUP BY` over a view that already existed and a
+predicate that already existed. `report_moyka_output_rows`, `rahbar_dashboard_ledger`, and
+`yield_rows` are all untouched — confirmed unchanged in the applied migration.
+
+### Verified live (not a dry-run figure) — August 2026, `moyka_output` direction only
+
+| Check | Result |
+|---|---:|
+| Row count / distinct serials | 11 / 11 |
+| Row-summed kg | 40,190 |
+| `report_totals.total_kg_from_moyka` | 40,190 |
+| Serials appearing more than once | 0 |
+| MOYKAGA (`moyka_send`) totals, same period | 65,652 kg / 16 rows — unchanged |
+| KIRIM totals, same period | 109,257 kg / 14 rows — unchanged |
+| `moyka_output` rows with a calibre filter set | 0 (all-or-nothing gate preserved, unchanged) |
+| `moyka_output` rows filtered `status='bekor_qilingan'` | 8 serial-rows surface (had a voided pallet that period), kg = 0 each — voided pallets are still findable via the status filter, never counted as received |
+
+First run inside `BEGIN...ROLLBACK` (nothing committed) reproduced the same six figures; applied
+for real afterward and re-verified with the same queries against the live (non-rolled-back)
+result — identical numbers both times.
+
+### Frontend
+
+`reportColumns.ts`: `moykaga_yuborilgan`/`moykadan_chiqgan` → `defaultVisible: true` (global flag,
+this registry has no per-direction notion of default visibility — no other column's default
+touched). `reportQuery.ts`: `MoykaOutputReportRow.barcode2`/`calibreId`/`palletStatus`/
+`labVerdict`/`moisturePct`/`so2MgKg` are now literal `''`/`null` types, not defensively-coalesced
+unions — every `moyka_output` row is an aggregate now, never a single real pallet's data.
+`ReportTableRow.tsx`/`ReportRowCard.tsx`/`reportExport.ts`: calibre/barcode2/status cells render a
+dash for `moyka_output` instead of attempting a now-nonexistent single-pallet value.
+`MoykaOutputRowDetail.tsx` rewritten: shows the period's total received kg instead of one pallet's
+lab reading; the per-pallet breakdown (Barcode #2, kalibr, lab result) stays reachable through the
+existing "Seriya pasportini ko'rish" button — SPEC.md §3.2.5's serial passport already lists it,
+reused rather than rebuilt. `tsc -b --noEmit` and `oxlint` both clean.
+
+**Branch:** `claude/hisobot-moykadan-row-grain-9hwx8o`.
+
+## 2026-09-08 — P8/P9 moyka batch reconciliation (110826-003 / 180826-001)
+
+**Context:** On 2026-09-05, ~590 kg of serial `110826-003`'s (Partiya 8) moyka output was
+physically mixed into serial `180826-001`'s (Partiya 9) processing run and the entire mixed
+batch was registered under `180826-001` on 2026-09-07. Every kg physically produced by P8
+that day was therefore booked to P9's calibre totals instead. Full SQL archived at
+`docs/data-corrections/2026-09-08_p8-p9-moyka-batch-reconciliation.sql`.
+
+### Booked state before correction vs. target
+
+| Serial | K1 | K2 | K4 | K6 | K8 | KN | Output total | Sent | Loss(+danak) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 110826-003 (P8) — before | 800 | 830 | 3,020 | 0 | 60 | 1,290 | 6,000 | 7,190 | 1,190 |
+| 110826-003 (P8) — target | 800 | 830 | 3,400 | 60 | 60 | 1,440 | 6,590 | 7,190 | 600 |
+| 180826-001 (P9) — before | 0 | 320 | 5,020 | 580 | 40 | 1,920 | 7,880 | 7,960 | 80 |
+| 180826-001 (P9) — target | 0 | 320 | 4,640 | 520 | 40 | 1,770 | 7,290 | 7,960 | 670 (incl. 10 danak) |
+
+The delta is exactly K4 −380/+380, K6 −60/+60, KN −150/+150 (590 kg total), confirmed against
+the user's stated ~590 kg before writing anything. `moyka_sends` (7,190 / 7,960 kg) was already
+correct for both serials on both sides and needed no change — only `finished_pallets`
+(the calibre breakdown) was wrong. The mixed batch traced to exactly 3 pallets on
+`180826-001`, all registered in one ~20-second session on 2026-09-07:
+`PLT-180826-001-04-2` (3,610 kg), `PLT-180826-001-06-1` (580 kg), `PLT-180826-001-KN-2`
+(1,430 kg) — their corrected weights are 3,230 / 520 / 1,280 kg respectively, with the
+380/60/150 kg difference belonging to P8.
+
+**Confirmed no downstream entanglement before writing:** zero `chiqim_pallet_consumption`
+rows, zero `serial_mint_sources` rows, and zero pallet-keyed `lab_results` (`sampled_pallet`)
+reference any of the 3 touched pallets — nothing needed unwinding first.
+
+### Aggregation audit (per CLAUDE.md's origin-filtering discipline, applied to void status here)
+
+Every consumer of `finished_pallets` was read via `pg_get_functiondef`/source, not assumed,
+and checked against the 3-category exclusion (`status = 'bekor_qilindi'` OR
+`status = 'storage_loss'` OR referenced by `serial_mint_sources.source_barcode2`) that this
+correction relies on to make voided rows disappear from every total:
+
+- `kirim_line_calibre_output(p_serial)` — full 3-category exclusion via its own `base_pallets`
+  CTE. Correct.
+- `get_client_report`'s `client_pallet_base` CTE — full 3-category exclusion (with the
+  as-of-`p_to` date guards this function already carries). Correct.
+- `kirim_line_state(p_serial)` — `moyka_out`/`moykadan_chiqgan` uses the same 3-category
+  exclusion. Correct.
+- Hisobot MOYKADAN (`report_query_page(['moyka_output'], ...)`, migration 0111's
+  `report_moyka_output_rows_by_serial`) — excludes voided pallets from `qty_kg`. Correct.
+- `useMoykaOutput.ts` (Ombor's live "Moykadan qabul qilish" screen) — `if (p.status ===
+  'bekor_qilindi') continue`. Correct.
+- **Flagged, not fixed (pre-existing, out of scope for this correction):**
+  `get_serial_passport`'s `finished_returned_total` CTE excludes only `status <>
+  'bekor_qilindi'` — missing `storage_loss` and mint-consumed exclusion, unlike the
+  3-category pattern everywhere else. Doesn't affect this correction's numbers (neither
+  touched pallet is `storage_loss` or mint-consumed) but is a genuine latent gap in that
+  function, left as a flag for a future task.
+- **Fixed as part of this task, on explicit confirmation (see below):**
+  `get_serial_passport`'s raw `cycles[].pallets` array (backing `SerialPassportModal.tsx`) is
+  an unfiltered event log by longstanding design — it rendered voided pallets alongside active
+  ones with a "Bekor qilindi" status label. That's in direct tension with this task's rule
+  that voided rows stay off-screen by default. Asked the user whether to change this app-wide
+  display behavior (it affects every serial, not just P8/P9); they said yes. Fixed in
+  `SerialPassportModal.tsx` with a `.filter((p) => p.palletStatus !== 'bekor_qilingan')` before
+  the `.map()` — display-only, no calculation touched. Void history stays fully queryable in
+  `finished_pallets.status`/`voided_at` and `audit_log`; the aggregate totals above the pallet
+  list already excluded these rows before this change (`get_serial_passport`'s summary fields
+  read from `kirim_line_calibre_output`/`kirim_line_state`, not from the raw pallet array).
+
+### Mechanism: void + replace, not in-place UPDATE
+
+Per SPEC.md's "never DELETE — void" invariant, the wrong-weight pallets are not corrected by
+overwriting `weight_kg` in place — that would erase the fact a correction happened at that
+granularity with no audit trail of what the number used to be. Instead: the 3 wrong-weight
+`180826-001` pallets are voided (`status = 'bekor_qilindi'`, `voided_at = now()`), 3 new
+`180826-001` pallets are inserted with the corrected weights, and 3 new `110826-003` pallets
+are inserted for the material that physically belongs there. Every one of the 9 touched/created
+rows has a paired `audit_log` entry (`actor = null`, `action = 'update_correction'` /
+`'insert_correction'`, a `reason` field inside `before`/`after` naming this reconciliation by
+name) — same convention used for the two prior SQL-only corrections this session (K6
+redate, `client_serial_ledger` note above).
+
+**Dating decision, per the user's direct instruction ("finish date of P8 is september 3rd and
+P9 is september 5th"):** the 3 new `110826-003` rows are dated `2026-09-03`; the 3 replacement
+`180826-001` rows are dated `2026-09-05` — each serial's own real physical finish date, not the
+`2026-09-07` SQL-registration date the now-voided rows carried. Same dating principle as the
+2026-09-02 K6/`110826-001` correction above: `received_date` carries the real event date,
+`created_at`/`audit_log.at` separately capture when the SQL correction itself was entered.
+
+### Verification (dry-run in `BEGIN...ROLLBACK` first, matched exactly, then applied for real)
+
+| | Sent | K1 | K2 | K4 | K6 | K8 | KN | Output | Loss(+danak) | Loss % |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 110826-003 (P8) | 7,190 | 800 | 830 | 3,400 | 60 | 60 | 1,440 | 6,590 | 600 | 8.34% |
+| 180826-001 (P9) | 7,960 | 0 | 320 | 4,640 | 520 | 40 | 1,770 | 7,290 | 670 | 8.42% |
+| Combined | 15,150 | | | | | | | 13,880 | 1,270 | 8.38% |
+
+Every figure matches the user's stated target exactly. One trivial rounding-convention note:
+P8's loss % computes to 8.34% (600/7,190×100 = 8.3449...%) against the user's stated 8.35% —
+a rounding difference, not a data discrepancy; P9 (8.42%) and the combined mass-balance
+identity (15,150 = 13,880 + 1,270, no kg created or destroyed) both match exactly.
+
+Also verified: `moyka_sends` unchanged on both serials; `kirim_line_state` returns the correct
+derived balances for both serials; Hisobot's `report_query_page(['moyka_output'])` shows the
+corrected per-serial rows; exactly 9 new `audit_log` rows; and `get_serial_passport('180826-001')`
+spot-check shows `returnedKg = 7290`, `byCalibre` matching target, `voidedKg = 5620` (exactly
+the 3 voided pallets' combined weight), and the raw `cycles[0].pallets` array still returns all
+10 pallets (3 correctly labeled `bekor_qilingan`) — confirming the new frontend filter has real
+rows to act on and behaves as intended once rendered.
+
+## 2026-09-08 — docs/DECISIONS.md append collisions: union merge driver (partial fix)
+**Context:** This log is append-only and every task appends its entry at the end
+of the file, so any two branches developed in parallel collide there. Git stops
+with a conflict it cannot resolve, even though the entries are unrelated and the
+answer is always "keep both". Not hypothetical: it blocked PRs #131 and #132 at
+the same time, and both resolutions were purely mechanical (keep both sides, in
+date order). Nothing about either PR's actual content was in dispute.
+
+**Decision:** Added `.gitattributes` with `docs/DECISIONS.md merge=union`. Union
+is git's built-in driver for this shape — on a conflicting hunk it keeps the
+lines from both sides (base branch's first, then the incoming branch's) instead
+of raising a conflict. Verified against a reproduction of the real collision:
+two branches each appending an entry conflict without the rule and merge cleanly
+with it, both entries preserved in chronological order.
+
+**Important limitation — measured, not assumed. This does NOT unblock GitHub's
+merge button.** GitHub's server-side merge does not honor `.gitattributes` merge
+drivers. Verified empirically rather than reasoned about: a throwaway PR was
+opened between two branches that both carried the union rule and differed only
+by an appended entry (the exact collision shape), and GitHub still reported
+`mergeable_state: "dirty"`. So the rule helps only where a real git client does
+the merging.
+
+**What it therefore buys:** when a PR goes stale, the fix drops from "open the
+file, find the markers, hand-splice two entries, verify nothing was lost" to
+`git merge origin/main && git push` with no editing at all. That is the whole
+benefit, and it is worth the one line — but the conflict will still *appear* on
+GitHub and still needs someone to run that merge locally.
+
+**Alternatives considered, not taken (both need a decision that is not this
+task's to make):**
+- *One file per entry* (`docs/decisions/YYYY-MM-DD-slug.md`). This is the only
+  option that eliminates the collision server-side too, because two branches
+  adding different files never conflict. It is the structurally correct fix, but
+  it means restructuring a ~7,700-line file and changing where every future
+  entry goes.
+- *A GitHub Action that merges main into open PRs on every push to main.* With
+  the union rule present in the workspace, the Action's own `git merge` would
+  auto-resolve and push, keeping PRs continuously mergeable. Rejected for now as
+  new write-permissioned automation that should be opted into deliberately.
+
+**Risk accepted:** union resolves by concatenation, not by understanding. If two
+branches ever edit the *same* existing entry, it will silently keep both variants
+back-to-back instead of flagging a conflict. Safe only while entries stay
+append-only and are never revised in place — which is the convention this file's
+own header already states. If that ever changes, remove the rule.

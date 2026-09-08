@@ -7,6 +7,7 @@ import { SCOPE_LABEL, type ZaxiraScope, type ByCalibreTypeRow } from '../../lib/
 import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { OldStockDrilldown } from '../../components/OldStockDrilldown'
 
 // Rahbar "Bosh sahifa" -- stock-reconciliation dashboard, rebuilt against
 // docs/mockups/BATU-Rahbar-dashboard-v3.html (2026-08-14). Replaces this
@@ -168,6 +169,17 @@ export function RahbarHome() {
   const stockTotal = stockCalibredTotal + stockKnTotal
   const dispatchedMax = Math.max(1, ...dispatchedByCalibre.map((r) => r.kg), ...dispatchedKnRows.map((r) => r.kg))
 
+  // Eski drill-down (2026-09-08): two separate graphs, only at scope='eski'
+  // -- see docs/DECISIONS.md "Rahbar Eski drill-down: old KN reintroduced,
+  // scoped to Eski toggle only". oldWashed reuses the SAME stockByCalibre/
+  // stockKn arrays the "Omborda hozir" bars already compute (already
+  // is_old_stock-scoped by rahbar_stock_snapshot at scope='eski' -- no new
+  // arithmetic). oldKn is new: snapshot.oldKnByType (migration 0111),
+  // naturally empty at scope != 'eski' since old_kn rows never pass the
+  // 'yangi' scope filter -- never re-added to the main/Yangi dashboard.
+  const oldWashedSeries = [...stockByCalibre, ...stockKn].map((r) => ({ label: calibreLabel(r.calibreId), kg: r.kg }))
+  const oldKnSeries = snapshot ? snapshot.oldKnByType.map((t) => ({ label: t.typeName, kg: t.kg })) : []
+
   // 2026-08-30: oldKnKg deliberately EXCLUDED from the headline. Its tile was
   // removed in the same pass, so leaving it in would put 81,915 kg of real
   // client stock inside a number with nothing on screen accounting for it.
@@ -263,6 +275,17 @@ export function RahbarHome() {
             }
             tone="kn"
           />
+        </div>
+      )}
+
+      {/* Eski drill-down -- only at scope='eski', two separate graphs:
+          Эски (ювилган) + Старый склад Кондитерка. Never shown at
+          scope='yangi' (the main dashboard) -- see DECISIONS.md. */}
+      {scope === 'eski' && snapshot && !snapLoading && (
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+          <SectionHeading>Эски zaxira</SectionHeading>
+          <p className="mb-4 text-xs text-slate-400">Jonli qoldiq — ювилган mahsulot va Старый склад Кондитерка havzasi alohida</p>
+          <OldStockDrilldown oldWashed={{ totalKg: stockTotal, series: oldWashedSeries }} oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }} />
         </div>
       )}
 

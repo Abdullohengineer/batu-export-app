@@ -7489,3 +7489,64 @@ collision — main independently added its own `0107_hisobot_yoqotish_column.sql
 to the live project by their respective sessions before either saw the other's migration, so
 renumbering here is pure repo hygiene (keeping `supabase/migrations/` monotonic for a future
 clean replay) — nothing about the live database changed as part of the rename.
+
+## 2026-09-08 — Client portal rebuild + Rahbar Eski drill-down: task-brief corrections and scope decisions
+
+**Context:** Task brief ("Rebuild the client portal to reuse Rahbar's dashboard + Hisobot
+patterns...") assumed several things about the current codebase that inspection (CLAUDE.md
+"Inspect live/migration schema before assuming table/column names or shape") found to be
+stale or incorrect. Logged here before any code was written, per CLAUDE.md "if ambiguous
+after inspection: stop, report, do not invent a design."
+
+**Findings, all confirmed against the live Supabase project (`qohoqbapevrcjqxbstxi`) and repo
+migrations, not assumed:**
+1. The brief's "migrations 0107/0108" (client Hisobot rebuild) are actually **0109/0110**
+   (`client_serial_and_chiqim_ledger` / `client_serial_ledger_fix_ostatok_syrya`) — real
+   0107/0108 are unrelated (Hisobot `Yo'qotish` column; Rahbar open-wash-cycle-loss fix). See
+   the entry immediately above this one ("client_serial_ledger's Остаток сырья formula...")
+   for the renumbering's own history. Migration head going into this task is **0110** — new
+   migrations here start at 0111.
+2. **No "Эски tile drill-down" exists on Rahbar's dashboard, and no charting library is
+   installed anywhere in this app.** The brief's Part A ("currently shows one graph for Эски
+   (ювилган)... change to two graphs") does not match `RahbarHome.tsx`: there is no Eski tile,
+   no modal/route/expanding section for old stock, and `package.json` has no
+   recharts/chart.js/d3/etc. — the dashboard's existing "graphs" are hand-rolled CSS
+   width-`<div>` bars. Old KN (Старый склад Кондитерка / old_kn_pools) was **deliberately
+   removed** from this dashboard in v1.43 (2026-08-30, `0106_rahbar_dashboard_corrections.sql`)
+   — SPEC.md's own words: "old KN is no longer visible anywhere on this dashboard (81,915 kg,
+   reachable via Ombor qoldig'i and Hisobot only), a recorded choice that reverses the
+   reasoning which gave it a tile." The brief also cites "SPEC v1.10" for this removal; the
+   real changelog version is **v1.43** — v1.10 is the unrelated weight-authority (§2.16) entry.
+3. **`docs/SPEC.md` §3.6 (Client portal) is itself stale.** It still describes the pre-rebuild
+   single-screen `ClientHisobotTab.tsx` design (migrations 0082-0085) with no changelog row or
+   rewritten text for the 2026-09-02 rebuild into `ClientPrihodTab.tsx`/`ClientRashodTab.tsx`
+   (commit "Rebuild client Hisobot as per-serial (Приход) + per-dispatch (Расход) ledger") —
+   confirmed via `grep -n "client_serial_ledger\|client_chiqim_ledger" docs/SPEC.md` → zero
+   hits before this task. §3.6 is being rewritten as part of this task's own migration/frontend
+   work (see the Part B–E entry below), per this project's own convention that a build
+   revealing stale spec text updates SPEC.md in the same pass rather than leaving it to drift
+   further.
+4. `chiqim_lines.line_kind` only has 3 live values (`finished`, `raw`, `old_kn`) — the brief's
+   5 "Тип" labels for Расход are derived, not stored: `finished` + calibre `KN` (Konditerka) =
+   Кондитерка, `finished` + `is_old_stock` = Эски (ювилган), `finished` otherwise = Готовая
+   продукция, `raw`/`old_raw` = Возврат (Хом has zero rows — no field distinguishes a raw sale
+   from a return, a known, previously-logged gap, not something this task closes), `old_kn` =
+   Старый склад Кондитерка (pool-based, no serial).
+
+**Decisions, confirmed with the user via `AskUserQuestion` before any code was written:**
+- **Part A scope:** old KN becomes visible on Rahbar's dashboard again, but **only** inside the
+  existing Zaxira scope toggle's **Eski** setting — never at Yangi (the main/default dashboard,
+  where v1.43's exclusion stands untouched) or in the headline `totalKg`. This is additive to
+  the toggle that already exists (`ZaxiraScope: 'yangi'|'eski'|'hammasi'`), not a new tile on
+  the main dashboard. See SPEC.md v1.46.
+- **Charting:** `recharts` added as a dependency (first chart library in this app) — the user's
+  explicit choice over reusing the hand-rolled CSS-bar style, for both this drill-down and its
+  reuse in the client Панель tab.
+- **Old-KN rows in the client Расход per-serial table (Part B.3):** shown as a synthetic
+  per-type row (no real serial exists for a pool draw) rather than a separate summary block —
+  keeps all 5 Тип values in one table, clearly marked as pool-based.
+
+**Verification so far:** live-schema inspection only (via Supabase MCP `execute_sql`/
+`list_tables`/`list_migrations` against the production project) — no code had been written at
+the time of this entry. Frontend/migration work for Part A and Part B–E follows in subsequent
+commits; see this file for their own entries.

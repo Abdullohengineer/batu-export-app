@@ -38,7 +38,7 @@ export function ReportResultsTable({
   calibreLabel,
   truckType,
   onOpenPassport,
-  onOpenOldKnRequest,
+  onOpenChiqimRequest,
 }: {
   rows: ReportRow[]
   visibleColumnKeys: Set<string>
@@ -49,7 +49,7 @@ export function ReportResultsTable({
   calibreLabel: (id: string) => string
   truckType: (requestId: string) => string
   onOpenPassport: (serial: string) => void
-  onOpenOldKnRequest: (requestId: string) => void
+  onOpenChiqimRequest: (requestId: string) => void
 }) {
   const visibleColumns = REPORT_COLUMNS.filter((c) => visibleColumnKeys.has(c.key))
 
@@ -80,7 +80,7 @@ export function ReportResultsTable({
                 calibreLabel={calibreLabel}
                 truckType={truckType}
                 onOpenPassport={onOpenPassport}
-                onOpenOldKnRequest={onOpenOldKnRequest}
+                onOpenChiqimRequest={onOpenChiqimRequest}
               />
             ))}
           </tbody>
@@ -99,7 +99,7 @@ export function ReportResultsTable({
             calibreLabel={calibreLabel}
             truckType={truckType}
             onOpenPassport={onOpenPassport}
-            onOpenOldKnRequest={onOpenOldKnRequest}
+            onOpenChiqimRequest={onOpenChiqimRequest}
           />
         ))}
       </div>

@@ -174,6 +174,27 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups, overri
       return row.state?.k8 ?? ''
     case 'kn':
       return row.state?.kn ?? ''
+    // Dispatch-grain kalibr breakdown (2026-09-15) — chiqim_dispatch only,
+    // see reportColumns.ts's own comment for why these are separate from
+    // k1-kn above rather than reusing them.
+    case 'dispatch_k1':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchK1 ?? '') : ''
+    case 'dispatch_k2':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchK2 ?? '') : ''
+    case 'dispatch_k3':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchK3 ?? '') : ''
+    case 'dispatch_k4':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchK4 ?? '') : ''
+    case 'dispatch_k5':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchK5 ?? '') : ''
+    case 'dispatch_k6':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchK6 ?? '') : ''
+    case 'dispatch_k7':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchK7 ?? '') : ''
+    case 'dispatch_k8':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchK8 ?? '') : ''
+    case 'dispatch_kn':
+      return row.kind === 'chiqim_dispatch' ? (row.dispatchKn ?? '') : ''
     default:
       return ''
   }

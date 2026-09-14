@@ -7,10 +7,11 @@ import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 // Raw-dispatch/old-KN totals for this one request (2026-09-14) — the
 // pallet breakdown below comes from useDispatchManifestLines; these two
 // non-pallet component kinds have no per-line "seriya/kalibr" identity the
-// way a pallet does, so they're shown as plain totals, not a table. Old-KN
-// keeps its pre-existing drill-down (OldKnRequestPassportModal, via
-// onOpenOldKnRequest) rather than losing it now that chiqim_old_kn rows no
-// longer appear at the top level.
+// way a pallet does, so they're shown as plain totals, not a table. Both
+// (and the pallet table above) sit under the one general "So'rov
+// tafsilotlarini ko'rish" button (ChiqimRequestPassportModal, see this
+// file's own header comment) rather than old-KN keeping a private
+// drill-down of its own.
 function useDispatchRawAndOldKn(requestId: string) {
   const [rawKg, setRawKg] = useState(0)
   const [oldKnKg, setOldKnKg] = useState(0)
@@ -54,25 +55,39 @@ function useDispatchRawAndOldKn(requestId: string) {
 // reimplemented here, just given a `serial` on top of the fields it always
 // returned.
 //
-// Only the pallet (`chiqim`) component kind is listed — chiqim_raw/
-// chiqim_old_kn components (raw exits, old-KN collections) don't have a
-// pallet/barcode2 to show at this same grain; a request combining pallet
-// AND raw/old-KN cargo will show its full summed total up top (all
-// components) but only the pallet portion broken out below. Flagged, not
-// silently incomplete: this is what "pallet barcode, serial, kalibr,
-// consumed qty" as specified actually describes.
+// Only the pallet (`chiqim`) component kind is listed in the table below —
+// chiqim_raw/chiqim_old_kn components (raw exits, old-KN collections)
+// don't have a pallet/barcode2 to show at this same grain; shown as plain
+// totals instead. A request combining pallet AND raw/old-KN cargo will
+// show its full summed total up top (all components) but only the pallet
+// portion broken out in the table. Flagged, not silently incomplete: this
+// is what "pallet barcode, serial, kalibr, consumed qty" as specified
+// actually describes.
+//
+// Full request detail (2026-09-15, see docs/decisions/0189-...-chiqim-
+// dispatch-full-detail-and-kalibr-breakdown.md) — "So'rov tafsilotlarini
+// ko'rish →" always opens ChiqimRequestPassportModal (renamed from
+// OldKnRequestPassportModal, reused here unchanged in mechanism): Menejer/
+// Ombor/Qorovul actors+times, gate photos, and the full cargo composition.
+// Was gated behind `oldKnKg > 0` at ship time (2026-09-14) — a leftover of
+// the button's original narrower purpose (only old-KN's own drill-down
+// existed before the rollup) — which meant a pure-pallet or pure-raw
+// dispatch (the common case) had no way to see its own photos/actor
+// timestamps at all. Regression, not a design choice; fixed by making the
+// button unconditional, next to the row's own "Jami" total rather than
+// nested under the old-KN line specifically.
 export function ChiqimDispatchRowDetail({
   row,
   typeName,
   calibreLabel,
   onOpenPassport,
-  onOpenOldKnRequest,
+  onOpenChiqimRequest,
 }: {
   row: ChiqimDispatchReportRow
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
   onOpenPassport: (serial: string) => void
-  onOpenOldKnRequest: (requestId: string) => void
+  onOpenChiqimRequest: (requestId: string) => void
 }) {
   const { lines, loading } = useDispatchManifestLines(row.requestId)
   const { rawKg, oldKnKg, loading: loadingOther } = useDispatchRawAndOldKn(row.requestId)
@@ -80,9 +95,21 @@ export function ChiqimDispatchRowDetail({
 
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
-      <div>
-        Jami: <span className="font-medium text-slate-700 dark:text-slate-300">{row.weightKg.toLocaleString()} kg</span> ·{' '}
-        {row.plate || '—'} {row.driver ? `(${row.driver})` : ''}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          Jami: <span className="font-medium text-slate-700 dark:text-slate-300">{row.weightKg.toLocaleString()} kg</span> ·{' '}
+          {row.plate || '—'} {row.driver ? `(${row.driver})` : ''}
+        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenChiqimRequest(row.requestId)
+          }}
+          className="whitespace-nowrap text-sm font-medium text-slate-700 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+        >
+          So'rov tafsilotlarini ko'rish →
+        </button>
       </div>
       {loading && <div className="text-xs">Yuklanmoqda…</div>}
       {!loading && lines.length > 0 && (
@@ -121,21 +148,7 @@ export function ChiqimDispatchRowDetail({
       )}
       {!loading && lines.length === 0 && <div className="text-xs">Bu jo'natmada pallet komponenti yo'q.</div>}
       {!loadingOther && rawKg > 0 && <div className="text-xs">Xom holda: {rawKg.toLocaleString()} kg</div>}
-      {!loadingOther && oldKnKg > 0 && (
-        <div className="text-xs">
-          Eski Konditerka: {oldKnKg.toLocaleString()} kg{' '}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenOldKnRequest(row.requestId)
-            }}
-            className="font-medium text-slate-700 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
-          >
-            So'rov tafsilotlarini ko'rish →
-          </button>
-        </div>
-      )}
+      {!loadingOther && oldKnKg > 0 && <div className="text-xs">Eski Konditerka: {oldKnKg.toLocaleString()} kg</div>}
       {!loading && !loadingOther && palletTotal + rawKg + oldKnKg !== row.weightKg && (
         <div className="text-xs text-amber-600 dark:text-amber-400">
           Diqqat: komponentlar yig'indisi ({(palletTotal + rawKg + oldKnKg).toLocaleString()} kg) jami bilan mos kelmadi

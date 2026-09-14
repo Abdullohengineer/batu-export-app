@@ -217,6 +217,19 @@ test('mapDbRowToReportRow: CHIQIM_DISPATCH row maps field-for-field, weightKg ho
   assert.equal(row.dateBasis, '2026-08-28')
   assert.equal(row.palletStatus, null)
   assert.equal(row.state, null)
+  assert.equal(row.dispatchK1, null)
+  assert.equal(row.dispatchKn, null)
+})
+
+test('mapDbRowToReportRow: CHIQIM_DISPATCH dispatch_k* map field-for-field, missing ones stay null (blank, not zero)', () => {
+  const row = mapDbRowToReportRow(chiqimDispatchDbRow({ dispatch_k1: 2550, dispatch_k4: '12020', dispatch_k2: null }))
+  if (row.kind !== 'chiqim_dispatch') throw new Error('expected chiqim_dispatch')
+  assert.equal(row.dispatchK1, 2550)
+  assert.equal(row.dispatchK4, 12020)
+  assert.equal(typeof row.dispatchK4, 'number')
+  assert.equal(row.dispatchK2, null)
+  assert.equal(row.dispatchK3, null)
+  assert.equal(row.dispatchKn, null)
 })
 
 test('mapDbRowToReportRow: CHIQIM_DISPATCH missing request_id/plate/driver fall back to empty string, not null', () => {

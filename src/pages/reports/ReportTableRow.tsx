@@ -13,7 +13,7 @@ const td = 'px-3 py-2 align-top'
 
 // Serial-state column cell (2026-08-15) — blank, not zero, when `state` is
 // null (chiqim_old_kn — genuinely inapplicable, see reportQuery.ts).
-function StateCell({ value }: { value: number | undefined }) {
+function StateCell({ value }: { value: number | null | undefined }) {
   return (
     <span className="whitespace-nowrap tabular-nums text-slate-700 dark:text-slate-300">
       {value != null ? `${value.toLocaleString()} kg` : '—'}
@@ -42,7 +42,7 @@ export function ReportTableRow({
   typeName,
   calibreLabel,
   onOpenPassport,
-  onOpenOldKnRequest,
+  onOpenChiqimRequest,
   truckType,
 }: {
   row: ReportRow
@@ -53,7 +53,7 @@ export function ReportTableRow({
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
   onOpenPassport: (serial: string) => void
-  onOpenOldKnRequest: (requestId: string) => void
+  onOpenChiqimRequest: (requestId: string) => void
   // CHIQIM truck type resolver (2026-08-30) — see useChiqimTruckTypes.ts.
   truckType: (requestId: string) => string
 }) {
@@ -255,6 +255,27 @@ export function ReportTableRow({
         return <StateCell value={state?.k8} />
       case 'kn':
         return <StateCell value={state?.kn} />
+      // Dispatch-grain kalibr breakdown (2026-09-15) — chiqim_dispatch only,
+      // see reportColumns.ts's own comment for why these are separate from
+      // k1-kn above rather than reusing them.
+      case 'dispatch_k1':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchK1 : null} />
+      case 'dispatch_k2':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchK2 : null} />
+      case 'dispatch_k3':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchK3 : null} />
+      case 'dispatch_k4':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchK4 : null} />
+      case 'dispatch_k5':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchK5 : null} />
+      case 'dispatch_k6':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchK6 : null} />
+      case 'dispatch_k7':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchK7 : null} />
+      case 'dispatch_k8':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchK8 : null} />
+      case 'dispatch_kn':
+        return <StateCell value={row.kind === 'chiqim_dispatch' ? row.dispatchKn : null} />
       default:
         return null
     }
@@ -301,7 +322,7 @@ export function ReportTableRow({
                 typeName={typeName}
                 calibreLabel={calibreLabel}
                 onOpenPassport={onOpenPassport}
-                onOpenOldKnRequest={onOpenOldKnRequest}
+                onOpenChiqimRequest={onOpenChiqimRequest}
               />
             )}
           </td>

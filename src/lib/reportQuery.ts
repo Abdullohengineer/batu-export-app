@@ -107,16 +107,23 @@ export function defaultReportFilters(from: string, to: string): ReportFilters {
 
 export type DateBasisSource = 'gate_stage1' | 'order_date' | 'gate_stage2' | 'sent_date' | 'received_date' | null
 
-// A serial's own as-of-now standing balance (2026-08-15) — repeated
-// identically on every row belonging to that serial, regardless of row
-// kind. Never clipped to the report's date filter (see DECISIONS.md —
-// clipping would break the Qabul qilingan = Omborda qoldi + Moykaga
-// yuborilgan + Xom holda jo'natilgan identity).
+// A serial's own standing balance (2026-08-15). qabulQilingan/ombordaQoldi/
+// moykada/xomJonatilgan/olibKetilgan are genuinely as-of-now, never clipped
+// to the report's date filter — clipping those would break the identity
+// Qabul qilingan = Omborda qoldi + Moykaga yuborilgan + Xom holda jo'natilgan.
+//
+// moykagaYuborilgan/moykadanChiqgan/k1..kn (2026-09-14, range-scoped moyka
+// flow columns, re-applying 97f5444 — see docs/decisions/0185-...) ARE
+// clipped to the report's date filter. Their lifetime twins (used to check
+// the identity above, and the sibling identity "Moykaga yuborilgan =
+// Moykadan chiqgan + Moykada + Yo'qotish") are carried separately as
+// moykagaYuborilganLifetime/moykadanChiqganLifetime.
 //
 // "Yo'qotish" was excluded here from 2026-08-15 to 2026-08-31 on the
 // grounds that "no canonical per-serial loss-in-kg figure exists yet."
 // Migration 0101 (Yakunlash, 2026-08-29) created one — client_serial_loss_kg
-// — so the field is now carried; see `yoqotish` below.
+// — so the field is now carried; see `yoqotish` below. Still lifetime-only
+// (no range-scoped twin) as of 2026-09-14 — a separate, later task.
 export interface SerialState {
   qabulQilingan: number
   ombordaQoldi: number
@@ -125,6 +132,12 @@ export interface SerialState {
   moykadanChiqgan: number
   xomJonatilgan: number
   olibKetilgan: number
+  // Lifetime twins (2026-09-14) of the two range-scoped fields above — for
+  // reconciling the Qabul qilingan identity and the Moyka-internal identity
+  // now that moykagaYuborilgan/moykadanChiqgan are period-scoped. Surfaced
+  // via the "(jami)" columns in reportColumns.ts.
+  moykagaYuborilganLifetime: number
+  moykadanChiqganLifetime: number
   // Realized wash loss for this serial (2026-08-31), from
   // client_serial_loss_kg via report_query_page.state_yoqotish. null while
   // the serial's wash cycle is still open — nothing is booked yet and the
@@ -133,11 +146,13 @@ export interface SerialState {
   // in this app: positive = loss, negative = surplus (render via
   // formatLoss.ts, never bare).
   yoqotish: number | null
-  // Output-by-kalibr (2026-08-29, Prompt 6) -- total EVER produced under
-  // that kalibr for this serial (available + already-dispatched, i.e. gross
-  // production — see migration 0098's own header for the formula
-  // reconciliation). k1..k8 in numeric order, kn (Konditirskiy) separate,
-  // matching the calibre picker's own K1-K8/KN convention.
+  // Output-by-kalibr (2026-08-29, Prompt 6; range-scoped 2026-09-14) --
+  // total produced under that kalibr for this serial WITHIN THE REPORT'S
+  // DATE FILTER (available + already-dispatched pallets received in range).
+  // k1..k8 in numeric order, kn (Konditirskiy) separate, matching the
+  // calibre picker's own K1-K8/KN convention. No lifetime twin (not needed
+  // -- the Moykadan chiqgan (jami) twin already covers the aggregate check
+  // across all kalibrs combined).
   k1: number
   k2: number
   k3: number
@@ -371,16 +386,27 @@ export interface ReportTotals {
   // this is "the trap" the column design explicitly guards against).
   // stateSerialCount is how many distinct serials that is — shown in the
   // "Seriyalar bo'yicha (N ta seriya)" group label so a reader can never
-  // mistake it for a row count. totalToMoyka/totalFromMoyka above have a
-  // "(joriy)"-labelled twin here (stateMoykagaYuborilgan/
-  // stateMoykadanChiqgan) that can legitimately read a different number —
-  // see DECISIONS.md "Hisobot: Moyka rows...".
+  // mistake it for a row count.
+  //
+  // stateMoykagaYuborilgan/stateMoykadanChiqgan (2026-09-14, re-applying
+  // 97f5444) are now RANGE-SCOPED, same basis as totalToMoyka/
+  // totalFromMoyka above -- deliberately NOT exposed as a strip chip any
+  // more (see reportColumns.ts's ReportColumnTotalBasis): confirmed live to
+  // be either identical to the movement chip or, under a KIRIM-only filter,
+  // a real but coincidental number unrelated to why those serials are even
+  // in the report. Their pre-fix LIFETIME values are carried separately
+  // below as stateMoykagaYuborilganLifetime/stateMoykadanChiqganLifetime,
+  // for checking the Qabul qilingan identity and the Moyka-internal
+  // identity.
   stateSerialCount: number
   stateQabulQilingan: number
   stateOmbordaQoldi: number
   stateMoykagaYuborilgan: number
   stateMoykada: number
   stateMoykadanChiqgan: number
+  // Lifetime twins (2026-09-14) of the two above, now that they're range-scoped.
+  stateMoykagaYuborilganLifetime: number
+  stateMoykadanChiqganLifetime: number
   stateXomJonatilgan: number
   stateOlibKetilgan: number
   // Realized wash loss (2026-08-31) — summed once per distinct serial on the
@@ -481,6 +507,11 @@ export interface ReportDbRow {
   state_moykaga_yuborilgan?: number | string | null
   state_moykada?: number | string | null
   state_moykadan_chiqgan?: number | string | null
+  // Lifetime twins (2026-09-14) of state_moykaga_yuborilgan/
+  // state_moykadan_chiqgan above, now that those two are range-scoped —
+  // see SerialState's own comment.
+  state_moykaga_yuborilgan_lifetime?: number | string | null
+  state_moykadan_chiqgan_lifetime?: number | string | null
   state_xom_jonatilgan?: number | string | null
   state_olib_ketilgan?: number | string | null
   // Yo'qotish (2026-08-31). Unlike every other state_* column this one is
@@ -514,6 +545,8 @@ function mapState(row: ReportDbRow): SerialState | null {
     moykagaYuborilgan: Number(row.state_moykaga_yuborilgan),
     moykada: Number(row.state_moykada),
     moykadanChiqgan: Number(row.state_moykadan_chiqgan),
+    moykagaYuborilganLifetime: Number(row.state_moykaga_yuborilgan_lifetime),
+    moykadanChiqganLifetime: Number(row.state_moykadan_chiqgan_lifetime),
     xomJonatilgan: Number(row.state_xom_jonatilgan),
     olibKetilgan: Number(row.state_olib_ketilgan),
     // num(), not Number(): a null here means "not booked yet", which must
@@ -700,6 +733,8 @@ function zeroState(): SerialState {
     moykagaYuborilgan: 0,
     moykada: 0,
     moykadanChiqgan: 0,
+    moykagaYuborilganLifetime: 0,
+    moykadanChiqganLifetime: 0,
     xomJonatilgan: 0,
     olibKetilgan: 0,
     // null, not 0: this fallback stands in for "the state row is missing",

@@ -22,44 +22,75 @@ export type ReportColumnKind = 'context' | 'volume' | 'measurement'
 // Moyka rows + serial-state columns). Only meaningful when kind==='volume';
 // defaults to 'movement' when omitted (every pre-existing volume column).
 //   - movement: the row's own kg, summed across ROWS in the filtered set —
-//     "Harakatlar bo'yicha". This is what every volume column did before
-//     today. Always additive across periods (each physical event counted
-//     exactly once, in its own period) — safe to stack monthly reports.
-//   - state: a serial's own standing balance, summed once per DISTINCT
-//     serial (never per row — a serial can own several rows) — "Seriyalar
-//     bo'yicha (N ta seriya)". As-of-now, never clipped to the date filter.
-//     Only used for genuinely as-of-now balance columns (Qabul qilingan/
-//     Omborda qoldi/Moykada/Xom jo'natilgan/Olib ketilgan) — see 2026-09-14
-//     note below for why the flow columns don't use this any more.
-//   - both: the column name legitimately means two different numbers —
-//     a real *activity* total (how much moved during this window,
-//     movement-basis) AND a real *standing* total (how much of that
-//     serial's total ever/still exists, state-basis).
-//   - none: a lifetime per-row figure with no safe strip aggregate at all
-//     (2026-09-14) — see that note.
+//     "Harakatlar bo'yicha". Always additive across periods (each physical
+//     event counted exactly once, in its own period) — safe to stack
+//     monthly reports.
+//   - state: summed once per DISTINCT serial in the filtered set (never per
+//     row — a serial can own several rows) — "Seriyalar bo'yicha (N ta
+//     seriya)". Two different kinds of column use this basis, for two
+//     different reasons:
+//       - the 5 genuinely as-of-now balance columns (Qabul qilingan/Omborda
+//         qoldi/Moykada/Xom jo'natilgan/Olib ketilgan) and the two "(jami)"
+//         lifetime-twin columns below — these are LIFETIME figures, and
+//         summing once per distinct serial is correct for them because they
+//         are never meant to be stacked across periods in the first place
+//         (an as-of-now balance has no "Jan + Feb" meaning to preserve).
+//       - moykaga_yuborilgan/moykadan_chiqgan/k1-kn — these are RANGE-SCOPED
+//         (2026-09-14, see note below), so "once per distinct serial in the
+//         filtered set" sums exactly the rows in range, same total the
+//         movement basis would give; additive across stacked periods.
+//   - none: a per-row figure whose only source is a LIFETIME function
+//     (kirim_line_state's own yoqotish field, via client_serial_loss_kg) —
+//     summing it once per distinct serial would double-count any serial
+//     recurring across periods, and there is no range-scoped source for it
+//     yet (2026-09-14) to fix that the way the flow/kalibr columns were
+//     fixed. See that note.
 //
-// 2026-09-14 (see DECISIONS.md "Hisobot row/column model correction"):
-// moykaga_yuborilgan/moykadan_chiqgan went from 'both' to plain 'movement',
-// and k1-k8/kn/yoqotish went from 'state' to 'none'. Root cause and the
-// general rule this codifies: a strip chip is only valid when its
-// arithmetic is additive across the periods a user might stack (e.g. run
-// this report for Jan, Feb, Mar and add the three numbers together). A
-// state-basis chip on a LIFETIME column fails that test whenever the same
-// serial can appear as a row in more than one period's report — which,
-// for the moyka/kalibr columns, event kinds like moyka_output/chiqim make
-// routine (a serial's output can span several months). A range-scoped
-// alternative was evaluated and rejected: it collides exactly with the
-// movement chip under every direction where it's well-defined (both sum
-// the same underlying rows, just grouped differently), and produces a
-// coincidental, meaningless number under a KIRIM-only filter (moyka
-// activity happening to fall in the same window as an unrelated arrival
-// date). No chip is the only option that's both correct under every
-// filter and doesn't just relabel the same collision. The balance columns
-// (qabul_qilingan/omborda_qoldi/moykada/xom_jonatilgan/olib_ketilgan) keep
-// 'state' — they're irreducibly as-of-now, summing them across stacked
-// periods was never a meaningful operation to begin with, so this rule
-// doesn't apply to them.
-export type ReportColumnTotalBasis = 'movement' | 'state' | 'both' | 'none'
+// 2026-09-14 (see docs/decisions/0185-...-hisobot-row-column-model-
+// correction-ii.md): moykaga_yuborilgan/moykadan_chiqgan/k1-k8/kn are
+// RANGE-SCOPED — both the table cell and (for k1-kn) the strip chip clip to
+// the report's date filter, via kirim_line_moyka_range/
+// kirim_line_calibre_output_range. This re-applies commit 97f5444, which an
+// intervening decision (0184) reverted on a misreading of "should be able
+// to see their incoming number" as a request for LIFETIME figures — it
+// meant the incoming figure FOR THAT PERIOD. The rule, restated plainly:
+// the selected date range governs both row selection AND column values,
+// for every direction. The one deliberate exception is the 5 as-of-now
+// balance columns above (and their two "(jami)" twins) — genuinely
+// timeless figures with no period meaning, so range-scoping them is not
+// just difficult, it's a category error.
+//
+// Because moykaga_yuborilgan/moykadan_chiqgan's PLAIN column is
+// range-scoped, the Qabul qilingan identity (Qabul qilingan = Omborda
+// qoldi + Moykaga yuborilgan + Xom jo'natilgan) and the Moyka-internal
+// identity (Moykaga yuborilgan = Moykadan chiqgan + Moykada + Yo'qotish)
+// can no longer be checked against it under a date filter — both identities
+// are inherently lifetime statements. Two new lifetime-TWIN columns
+// (moykaga_yuborilgan_jami/moykadan_chiqgan_jami, sourced from the
+// unchanged kirim_line_state, default-hidden like every other
+// reconciliation-only column) exist for exactly that check; the plain
+// columns carry a `headerNote` pointing at them. No per-kalibr twin — the
+// Moykadan chiqgan (jami) twin already covers the aggregate check across
+// all kalibrs combined, same as before.
+//
+// The strip chip for the plain moykaga_yuborilgan/moykadan_chiqgan pair
+// stays REMOVED (totalBasis 'movement', not 'state' or 'both') even though
+// range-scoping fixes its additivity — confirmed live it is either exactly
+// redundant with the existing movement chip (identical number under any
+// filter that includes moyka rows) or actively misleading (a real but
+// coincidental number under a KIRIM-only filter, where the movement chip
+// correctly reads 0 because no moyka row is in that filtered set — verified
+// live: KIRIM-only/September/Global showed movement=0, a naive range-scoped
+// state chip would have shown 8,292). k1-k8/kn have no movement-chip
+// counterpart to collide with (kalibr output isn't a report_rows `kind`),
+// so restoring their state chip is a genuinely new, non-duplicate, now-safe
+// number — 'state' restored for those nine.
+//
+// Yo'qotish is explicitly OUT of scope for this range-scoping pass (same as
+// when 97f5444 first deferred it) — its column stays sourced from
+// kirim_line_state/client_serial_loss_kg, still lifetime, so its
+// double-counting risk is unchanged and its chip stays removed ('none').
+export type ReportColumnTotalBasis = 'movement' | 'state' | 'none'
 
 export interface ReportColumnDef {
   key: string
@@ -68,6 +99,9 @@ export interface ReportColumnDef {
   defaultVisible: boolean
   align?: 'right'
   totalBasis?: ReportColumnTotalBasis
+  // Hover tooltip on the <th> (ReportResultsTable.tsx) — used to flag a
+  // meaning change a reader might not expect from the label alone.
+  headerNote?: string
 }
 
 // Order here is display order, left to right. Defaults per the task spec:
@@ -119,54 +153,72 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // direction notion of "visible"), same as every other column here — every
   // OTHER column's defaultVisible is unchanged by this migration.
   //
-  // 2026-09-14: totalBasis 'both' → 'movement'. The table cell itself stays
-  // LIFETIME (kirim_line_state, unchanged) — only the strip chip changed.
-  // See ReportColumnTotalBasis above for why the state-basis chip on this
-  // column was removed rather than range-scoped.
-  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement' },
+  // 2026-09-14: RANGE-SCOPED (re-applies 97f5444; see ReportColumnTotalBasis
+  // above) — clipped to the report's date filter, not lifetime any more.
+  // totalBasis 'movement': the strip chip stays the existing "(davrda)"
+  // movement chip only — a state-basis chip here would now be additive but
+  // redundant/misleading, see ReportColumnTotalBasis. Use "Moykaga
+  // yuborilgan (jami)" below to check the Qabul qilingan identity.
+  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement',
+    headerNote: "Davr bo'yicha. Balans tenglamasi (Qabul qilingan = Omborda qoldi + Moykaga yuborilgan + Xom jo'natilgan) uchun \"Moykaga yuborilgan (jami)\" ustunidan foydalaning." },
+  // Lifetime twin (2026-09-14, re-applies 97f5444) of the column above —
+  // default-hidden, like every other reconciliation-only column in this
+  // family; sourced from unchanged kirim_line_state. Enable via the column
+  // picker to check the Qabul qilingan identity and the Moyka-internal
+  // identity now that the plain column is range-scoped.
+  { key: 'moykaga_yuborilgan_jami', label: 'Moykaga yuborilgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  // 2026-09-14: totalBasis 'both' → 'movement', same reasoning as moykaga_yuborilgan above.
-  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement' },
+  // 2026-09-14: RANGE-SCOPED, same treatment and same caveat as moykaga_yuborilgan above.
+  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement',
+    headerNote: "Davr bo'yicha. \"Moykaga yuborilgan = Moykadan chiqgan + Moykada + Yo'qotish\" tenglamasi uchun \"Moykadan chiqgan (jami)\" ustunidan foydalaning." },
+  { key: 'moykadan_chiqgan_jami', label: 'Moykadan chiqgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // Yo'qotish (2026-08-31) — the per-serial REALIZED wash loss, booked only
   // once the serial is closed via Yakunlash (migration 0101's split; NULL,
   // rendered "—", while it is still open, because that gap is still
-  // in-process and already shows under Moykada). Sits directly after
-  // Moykadan chiqgan because that is the subtraction it is: the four
-  // columns close as Moykaga yuborilgan = Moykadan chiqgan + Moykada +
-  // Yo'qotish, and its value is sourced from the same basis those two are
-  // (see migration 0107) so the row can never fail that arithmetic on
-  // screen.
+  // in-process and already shows under Moykada). Sits directly after the
+  // Moykadan chiqgan (jami) twin because that is the subtraction it is: the
+  // identity is Moykaga yuborilgan (jami) = Moykadan chiqgan (jami) +
+  // Moykada + Yo'qotish (2026-09-14: the plain Moyka columns are
+  // range-scoped now, so the (jami) twins are the ones this identity
+  // actually closes against), and its value is sourced from the same basis
+  // those two are (see migration 0107) so the row can never fail that
+  // arithmetic on screen.
   //
   // 🚩 Default-VISIBLE, deliberately, against this family's own "expandable
   // via the column picker" precedent — the loss figure was asked for on
-  // every row without hunting through Ustunlar first. 2026-09-14: totalBasis
-  // 'state' → 'none' — the strip chip was removed (same LIFETIME-summed-
-  // per-serial problem as the moyka pair above; see ReportColumnTotalBasis).
-  // The column itself is untouched, still visible, still per-row lifetime.
+  // every row without hunting through Ustunlar first. Still LIFETIME-only,
+  // no range-scoped twin (2026-09-14) — explicitly out of scope for this
+  // pass, same as when 97f5444 first deferred it; its strip chip therefore
+  // stays removed ('none') — see ReportColumnTotalBasis.
   { key: 'yoqotish', label: "Yo'qotish, kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
   { key: 'xom_jonatilgan', label: "Xom holda jo'natilgan, kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'olib_ketilgan', label: 'Olib ketilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // Output-by-kalibr (2026-08-15 pattern, added 2026-08-29 -- Prompt 6, see
   // DECISIONS.md "Hisobot: output-by-kalibr columns"): a serial's own
-  // total-ever-produced-under-this-kalibr figure, repeated on every row that
-  // serial owns, one column per kalibr K1-K8 in numeric order, then a
-  // separate KN column -- never summed together (KN is a distinct product,
-  // not a 9th calibre). All default-hidden, same "expandable via the column
-  // picker" precedent as every other serial-state column in this family.
+  // kalibr-output figure, repeated on every row that serial owns, one
+  // column per kalibr K1-K8 in numeric order, then a separate KN column --
+  // never summed together (KN is a distinct product, not a 9th calibre).
+  // All default-hidden, same "expandable via the column picker" precedent
+  // as every other serial-state column in this family.
   //
-  // 2026-09-14: totalBasis 'state' → 'none' for all nine — same reasoning as
-  // Yo'qotish above (a serial's calibre output can span several months, so
-  // a LIFETIME state-basis chip isn't additive across stacked periods). The
-  // columns themselves are untouched, still lifetime per-row figures.
-  { key: 'k1', label: 'K1, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'k2', label: 'K2, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'k3', label: 'K3, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'k4', label: 'K4, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'k5', label: 'K5, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'k6', label: 'K6, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'k7', label: 'K7, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'k8', label: 'K8, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'kn', label: 'KN, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  // 2026-09-14: RANGE-SCOPED (re-applies 97f5444) -- was lifetime
+  // total-ever-produced, now clipped to the report's date filter via
+  // kirim_line_calibre_output_range. totalBasis back to 'state': unlike the
+  // moyka pair, there is no movement-chip counterpart for kalibr output (it
+  // isn't a report_rows `kind`), so a range-scoped state chip here is a
+  // genuinely new, non-duplicate, now-additive number, not a redundant
+  // second view of one already on the strip. No per-kalibr lifetime twin --
+  // not needed; the Moykadan chiqgan (jami) twin above already covers the
+  // aggregate check across all kalibrs combined.
+  { key: 'k1', label: 'K1, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k2', label: 'K2, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k3', label: 'K3, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k4', label: 'K4, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k5', label: 'K5, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k6', label: 'K6, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k7', label: 'K7, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k8', label: 'K8, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'kn', label: 'KN, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
 ]
 
 export function defaultVisibleColumnKeys(): Set<string> {

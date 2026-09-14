@@ -100,6 +100,8 @@ export function useReportQuery(filters: ReportFilters) {
     stateMoykagaYuborilgan: 0,
     stateMoykada: 0,
     stateMoykadanChiqgan: 0,
+    stateMoykagaYuborilganLifetime: 0,
+    stateMoykadanChiqganLifetime: 0,
     stateXomJonatilgan: 0,
     stateOlibKetilgan: 0,
     stateYoqotish: 0,
@@ -157,6 +159,8 @@ export function useReportQuery(filters: ReportFilters) {
               state_moykaga_yuborilgan: number | string
               state_moykada: number | string
               state_moykadan_chiqgan: number | string
+              state_moykaga_yuborilgan_lifetime: number | string
+              state_moykadan_chiqgan_lifetime: number | string
               state_xom_jonatilgan: number | string
               state_olib_ketilgan: number | string
               state_yoqotish: number | string
@@ -193,6 +197,8 @@ export function useReportQuery(filters: ReportFilters) {
           stateMoykagaYuborilgan: Number(t?.state_moykaga_yuborilgan ?? 0),
           stateMoykada: Number(t?.state_moykada ?? 0),
           stateMoykadanChiqgan: Number(t?.state_moykadan_chiqgan ?? 0),
+          stateMoykagaYuborilganLifetime: Number(t?.state_moykaga_yuborilgan_lifetime ?? 0),
+          stateMoykadanChiqganLifetime: Number(t?.state_moykadan_chiqgan_lifetime ?? 0),
           stateXomJonatilgan: Number(t?.state_xom_jonatilgan ?? 0),
           stateOlibKetilgan: Number(t?.state_olib_ketilgan ?? 0),
           // Already coalesced to 0 server-side (report_totals' realized_loss

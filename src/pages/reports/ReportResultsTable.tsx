@@ -60,7 +60,7 @@ export function ReportResultsTable({
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60">
               {visibleColumns.map((col) => (
-                <th key={col.key} className={col.align === 'right' ? `${th} text-right` : th}>
+                <th key={col.key} className={col.align === 'right' ? `${th} text-right` : th} title={col.headerNote}>
                   {col.label}
                 </th>
               ))}

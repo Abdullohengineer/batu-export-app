@@ -1,23 +1,13 @@
 import type { ReportRow, SerialState } from '../../lib/reportQuery'
 import type { ReportColumnDef } from '../../lib/reportColumns'
 import { KirimRowDetail } from './KirimRowDetail'
-import { ChiqimRowDetail } from './ChiqimRowDetail'
-import { RawDispatchRowDetail } from './RawDispatchRowDetail'
-import { OldKnRowDetail } from './OldKnRowDetail'
+import { ChiqimDispatchRowDetail } from './ChiqimDispatchRowDetail'
 import { MoykaSendRowDetail } from './MoykaSendRowDetail'
 import { MoykaOutputRowDetail } from './MoykaOutputRowDetail'
 import { formatDate } from '../../lib/formatDate'
 import { formatLossKg } from '../../lib/formatLoss'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { FuraBadge } from '../../components/ui/FuraBadge'
-
-const STATUS_LABEL: Record<string, string> = {
-  omborda: 'Omborda',
-  band_qilingan: 'Band qilingan',
-  jonatilgan: "Jo'natilgan",
-  bekor_qilingan: 'Bekor qilingan',
-  ishlatilgan: 'Ishlatilgan',
-}
 
 const td = 'px-3 py-2 align-top'
 
@@ -75,21 +65,12 @@ export function ReportTableRow({
   // measurement columns).
   const declared = row.kind === 'kirim' ? row.declaredQty : null
   const hisobiy = row.kind === 'kirim' ? row.hisobiyKg : null
-  const moisture =
-    row.kind === 'kirim'
-      ? row.kirimMoisturePct
-      : row.kind === 'chiqim' || row.kind === 'moyka_output'
-        ? row.moisturePct
-        : null
-  const so2 =
-    row.kind === 'kirim'
-      ? row.kirimSo2MgKg
-      : row.kind === 'chiqim' || row.kind === 'moyka_output'
-        ? row.so2MgKg
-        : null
+  const moisture = row.kind === 'kirim' ? row.kirimMoisturePct : row.kind === 'moyka_output' ? row.moisturePct : null
+  const so2 = row.kind === 'kirim' ? row.kirimSo2MgKg : row.kind === 'moyka_output' ? row.so2MgKg : null
   // Serial-state columns (2026-08-15) — every row shows its PARENT SERIAL's
   // own standing breakdown, blank (not zero) when genuinely inapplicable
-  // (chiqim_old_kn has no serial — see reportQuery.ts's OldKnReportRow).
+  // (chiqim_dispatch has no single serial — see reportQuery.ts's
+  // ChiqimDispatchReportRow).
   const state: SerialState | null = row.state
 
   function cellContent(key: string): React.ReactNode {
@@ -99,15 +80,11 @@ export function ReportTableRow({
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             {row.kind === 'kirim'
               ? 'KIRIM'
-              : row.kind === 'chiqim_raw'
-                ? 'CHIQIM (xom)'
-                : row.kind === 'chiqim_old_kn'
-                  ? 'CHIQIM (eski KN)'
-                  : row.kind === 'moyka_send'
-                    ? 'MOYKAGA'
-                    : row.kind === 'moyka_output'
-                      ? 'MOYKADAN'
-                      : 'CHIQIM'}
+              : row.kind === 'moyka_send'
+                ? 'MOYKAGA'
+                : row.kind === 'moyka_output'
+                  ? 'MOYKADAN'
+                  : 'CHIQIM'}
           </span>
         )
       case 'date':
@@ -115,12 +92,12 @@ export function ReportTableRow({
       case 'serial':
         return (
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">
-            {row.kind === 'chiqim_old_kn' ? '—' : row.serial}
-            {row.kind !== 'chiqim_old_kn' && <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />}
+            {row.kind === 'chiqim_dispatch' ? '—' : row.serial}
+            {row.kind !== 'chiqim_dispatch' && <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />}
           </span>
         )
       case 'partiya':
-        return row.kind === 'chiqim_old_kn' ? (
+        return row.kind === 'chiqim_dispatch' ? (
           <span className="text-slate-400">—</span>
         ) : (
           <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />
@@ -128,25 +105,23 @@ export function ReportTableRow({
       case 'owner':
         return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">{ownerName(row.ownerId)}</span>
       case 'type':
-        return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">{typeName(row.typeId)}</span>
-      case 'calibre':
-        // moyka_output rows are a per-serial aggregate (2026-09-03) — a
-        // serial can produce several calibres, so there is no single value
-        // to show here any more; see MoykaOutputRowDetail/serial passport
-        // for the per-pallet breakdown.
+        // A dispatch can combine pallets/raw/old-KN across several product
+        // types — no single value to show at this grain, see the expand
+        // panel for the per-component breakdown.
         return (
           <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">
-            {row.kind === 'chiqim' ? calibreLabel(row.calibreId) : '—'}
+            {row.kind === 'chiqim_dispatch' ? '—' : typeName(row.typeId)}
           </span>
         )
+      case 'calibre':
+        // Neither moyka_output (a serial can produce several calibres) nor
+        // chiqim_dispatch (a truck can carry several) has a single value —
+        // see MoykaOutputRowDetail/ChiqimDispatchRowDetail for the
+        // per-pallet breakdown.
+        return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">—</span>
       case 'barcode2':
-        // Same reasoning as 'calibre' above — a moyka_output row now spans
-        // several pallets/barcodes.
-        return (
-          <span className="whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">
-            {row.kind === 'chiqim' ? row.barcode2 : '—'}
-          </span>
-        )
+        // Same reasoning as 'calibre' above.
+        return <span className="whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">—</span>
       case 'netto':
         return (
           <span className="whitespace-nowrap tabular-nums font-medium text-slate-900 dark:text-slate-100">
@@ -176,17 +151,16 @@ export function ReportTableRow({
         // carries no gate net anywhere on this table (there is none), so the
         // marker belongs where the truck is identified.
         //
-        // Restricted to the three CHIQIM row kinds whose `plate` IS the
-        // dispatch truck. moyka_output also carries a requestId, but it is
-        // that pallet's LATEST dispatch, not this row's own event (the row
-        // renders plate: null for exactly that reason) — badging it would
-        // attach a truck fact to a production row.
+        // Restricted to chiqim_dispatch, whose `plate` IS the dispatch
+        // truck (it's a rolled-up dispatch line now, see reportQuery.ts).
+        // moyka_output also carries a requestId, but it is that pallet's
+        // LATEST dispatch, not this row's own event (the row renders
+        // plate: null for exactly that reason) — badging it would attach a
+        // truck fact to a production row.
         return (
           <span className="inline-flex items-center gap-1 whitespace-nowrap text-slate-700 dark:text-slate-300">
             {row.plate || '—'}
-            {(row.kind === 'chiqim' || row.kind === 'chiqim_raw' || row.kind === 'chiqim_old_kn') && row.requestId ? (
-              <FuraBadge truckType={truckType(row.requestId)} />
-            ) : null}
+            {row.kind === 'chiqim_dispatch' && row.requestId ? <FuraBadge truckType={truckType(row.requestId)} /> : null}
           </span>
         )
       case 'driver':
@@ -223,28 +197,15 @@ export function ReportTableRow({
                   <span className="text-slate-400">—</span>
                 )}
               </>
-            ) : row.kind === 'chiqim_raw' ? (
-              <span className="text-slate-400">Xom</span>
-            ) : row.kind === 'chiqim_old_kn' ? (
-              <span className="text-slate-400">Eski KN</span>
             ) : row.kind === 'moyka_send' ? (
               <span className="text-slate-400">Moykaga</span>
-            ) : row.kind === 'moyka_output' ? (
-              // Per-serial aggregate row (2026-09-03) — a serial's pallets
-              // can carry mixed statuses, so there's no single status to
-              // show; "received" kg already reflects the exclusion set
-              // (voided/storage-loss/mint-consumed pallets counted as 0).
-              <span className="text-slate-400">—</span>
-            ) : row.palletStatus === 'bekor_qilingan' ? (
-              <span className="font-medium text-red-600 dark:text-red-400">Bekor qilingan</span>
-            ) : row.palletStatus !== 'jonatilgan' ? (
-              <span className="text-slate-400">{STATUS_LABEL[row.palletStatus]}</span>
-            ) : row.labVerdict === 'qayta_yuvish' ? (
-              <span className="font-medium text-red-600 dark:text-red-400">Qayta yuvish</span>
-            ) : row.labVerdict === 'o_tdi' ? (
-              <span className="font-medium text-emerald-600 dark:text-emerald-400">O'tdi</span>
             ) : (
-              <span className="text-slate-400">Tekshirilmagan</span>
+              // moyka_output (per-serial aggregate, mixed statuses possible)
+              // and chiqim_dispatch (components can carry mixed statuses,
+              // see ChiqimDispatchRowDetail for the breakdown) both have no
+              // single status to show — "received"/dispatched kg already
+              // reflects the relevant exclusion set on each.
+              <span className="text-slate-400">—</span>
             )}
           </span>
         )
@@ -330,16 +291,18 @@ export function ReportTableRow({
           <td colSpan={visibleColumns.length + 1} className="bg-slate-50 px-3 py-3 dark:bg-slate-900/40">
             {row.kind === 'kirim' ? (
               <KirimRowDetail row={row} onOpenPassport={onOpenPassport} />
-            ) : row.kind === 'chiqim_raw' ? (
-              <RawDispatchRowDetail row={row} onOpenPassport={onOpenPassport} />
-            ) : row.kind === 'chiqim_old_kn' ? (
-              <OldKnRowDetail row={row} onOpenOldKnRequest={onOpenOldKnRequest} />
             ) : row.kind === 'moyka_send' ? (
               <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />
             ) : row.kind === 'moyka_output' ? (
               <MoykaOutputRowDetail row={row} typeName={typeName} onOpenPassport={onOpenPassport} />
             ) : (
-              <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
+              <ChiqimDispatchRowDetail
+                row={row}
+                typeName={typeName}
+                calibreLabel={calibreLabel}
+                onOpenPassport={onOpenPassport}
+                onOpenOldKnRequest={onOpenOldKnRequest}
+              />
             )}
           </td>
         </tr>

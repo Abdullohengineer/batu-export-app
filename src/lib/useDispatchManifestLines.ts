@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 export interface ManifestLine {
   id: string
   barcode2: string
+  serial: string
   type_id: string
   calibre_id: string
   // The portion of this pallet actually attributed to this request by FIFO
@@ -37,14 +38,15 @@ export function useDispatchManifestLines(requestId: string | null) {
     try {
       const { data } = await supabase
         .from('chiqim_pallet_consumption')
-        .select('id, barcode2, qty_kg, chiqim_lines!inner(request_id), finished_pallets(type_id, calibre_id)')
+        .select('id, barcode2, qty_kg, chiqim_lines!inner(request_id), finished_pallets(serial, type_id, calibre_id)')
         .eq('chiqim_lines.request_id', requestId)
       setLines(
         (data ?? []).map((row) => {
-          const pallet = row.finished_pallets as unknown as { type_id: string; calibre_id: string } | null
+          const pallet = row.finished_pallets as unknown as { serial: string; type_id: string; calibre_id: string } | null
           return {
             id: row.id,
             barcode2: row.barcode2,
+            serial: pallet?.serial ?? '',
             type_id: pallet?.type_id ?? '',
             calibre_id: pallet?.calibre_id ?? '',
             weight_kg: row.qty_kg,

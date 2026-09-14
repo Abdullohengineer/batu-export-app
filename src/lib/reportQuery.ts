@@ -13,13 +13,22 @@
 // Row model (decided during inspection, not stated literally in the source
 // revision — see DECISIONS.md "Reporting query engine" for the full
 // reasoning): a KIRIM row is one `kirim_lines` entry (one Barcode #1/serial),
-// matching "an arrival line" in the spec text exactly. A CHIQIM row is one
-// `finished_pallets` entry (one Barcode #2) — NOT one whole chiqim_request —
-// because Barcode #2, wash cycle, and kalibr are all listed as independent
-// filter dimensions (§3.2.2) and only make sense at pallet granularity; a
-// request-level row would leave those filters ambiguous (which pallet on the
-// truck do you mean?). This mirrors KIRIM's own row being at serial (not
-// truck) granularity for the identical reason.
+// matching "an arrival line" in the spec text exactly.
+//
+// A CHIQIM row was originally one `finished_pallets` entry (one Barcode #2)
+// — NOT one whole chiqim_request — reasoning that Barcode #2/wash cycle/
+// kalibr filters only make sense at pallet granularity. 2026-09-14 (see
+// docs/decisions/0188-...-chiqim-regrain-departure-date-dispatch-rollup.md)
+// reversed this: chiqim_requests IS the shipment entity, and per-pallet
+// filters now apply as "does this dispatch have a matching component,"
+// same semantics MOYKADAN's own per-serial rollup already established —
+// see ChiqimDispatchReportRow. Two independent bugs forced this: (a) the
+// old grain attributed a pallet's WHOLE book weight to whichever
+// chiqim_pallet_consumption touched it most recently, silently dropping
+// any earlier partial consumption from the report entirely; (b) date_basis
+// read chiqim_requests.request_date, not when the truck actually departed
+// — now chiqim_departed_at(request_id), already used elsewhere for
+// pallet_status.
 //
 // Moyka rows + serial-state columns (2026-08-15, see DECISIONS.md "Hisobot:
 // Moyka rows, direction split, serial-state columns"): two more row kinds,
@@ -211,6 +220,15 @@ export interface KirimReportRow {
   state: SerialState
 }
 
+// 2026-09-14: no longer part of the `ReportRow` union the main report
+// table renders -- see ChiqimDispatchReportRow above, which replaced it
+// there (regrained onto chiqim_pallet_consumption, departure-date basis,
+// rolled up to one row per dispatch). This type and its own per-pallet,
+// request-date shape survive as the return type of ONE caller only --
+// useReportQuery.ts's fetchVoidedBarcodeMatch, an exact-match identity
+// lookup against the pre-regrain report_chiqim_rows view. Deliberately
+// left there: that lookup finds a voided pallet's void info, not a
+// quantity to report, and doesn't need the grain/date fix.
 export interface ChiqimReportRow {
   kind: 'chiqim'
   key: string // barcode2 — stable row key
@@ -237,60 +255,48 @@ export interface ChiqimReportRow {
   state: SerialState
 }
 
-// Raw dispatch (2026-07-31) — one row per raw_dispatch_lines entry, the
-// third report_rows kind alongside kirim/chiqim (see DECISIONS.md "Raw
-// dispatch"). No calibre/barcode2/wash cycle/lab verdict — a raw exit was
-// never graded or lab-tested, it's a plain kg event like a KIRIM line, just
-// on the CHIQIM (out) side. weightKg deliberately named to match
-// ChiqimReportRow's own field (net_kg here) so the shared
-// `row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg` ternary used
-// across the report UI keeps working unchanged for both non-kirim kinds.
-export interface RawDispatchReportRow {
-  kind: 'chiqim_raw'
-  key: string // raw_dispatch_lines.id — stable row key
-  serial: string
-  typeId: string
-  partiyaNo: number | null
+// Chiqim dispatch rollup (2026-09-14, see docs/decisions/0188-...-chiqim-
+// regrain-departure-date-dispatch-rollup.md) -- replaces ChiqimReportRow/
+// RawDispatchReportRow/OldKnReportRow as the row the main report table
+// actually renders for these three outcome kinds. chiqim_requests IS the
+// shipment entity: one row per request_id, summed qty_kg across whichever
+// of its chiqim/chiqim_raw/chiqim_old_kn components pass the active
+// filters ("at least one component matches" -- same semantics
+// report_moyka_output_rows_by_serial already established for MOYKADAN).
+// dateBasis is the ACTUAL DEPARTURE date (chiqim_departed_at), not
+// request_date -- see reportQuery.ts's date-basis note on ChiqimReportRow
+// below, which this supersedes for the main table (ChiqimReportRow itself
+// stays, unchanged, as fetchVoidedBarcodeMatch's own return type -- a
+// voided-barcode identity lookup, not a quantity report, deliberately left
+// on the pre-regrain report_chiqim_rows view).
+//
+// No serial/barcode2/calibreId/washCycle/labVerdict/boxMassKg here --
+// genuinely inapplicable at dispatch grain (a truck can carry several
+// pallets across several serials/calibres), same "blank, not a missing
+// value" convention as MoykaOutputReportRow's own calibreId/palletStatus.
+// Component-level detail (pallet barcode, serial, kalibr, consumed qty)
+// lives in the expand panel, via useDispatchManifestLines.ts (already
+// existed for OmborChiqimTab's own manifest view -- reused here, not
+// reimplemented) -- see ChiqimDispatchRowDetail.tsx.
+export interface ChiqimDispatchReportRow {
+  kind: 'chiqim_dispatch'
+  key: string // 'dispatch-<request_id>' -- stable row key
+  requestId: string
   ownerId: string
-  requestId: string
   plate: string
   driver: string
-  weightKg: number // net_kg (weight − box mass), Ombor's own entry, authoritative immediately
-  boxMassKg: number | null
-  dateBasis: string | null // §3.2.3: chiqim_requests.request_date, same basis as pallet rows
-  palletStatus: 'jonatilgan' // raw_dispatch_lines only exists once committed at Ombor's finish click — always departed
-  state: SerialState
-}
-
-// Old-KN collections (2026-08-05) -- the fourth report_rows kind, mirroring
-// RawDispatchReportRow's shape exactly: no serial (old-KN has none), no
-// calibre/barcode2/wash cycle/lab verdict, no box mass. weightKg named to
-// match the other non-kirim kinds so the shared
-// `row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg` ternary keeps
-// working unchanged for all three.
-export interface OldKnReportRow {
-  kind: 'chiqim_old_kn'
-  key: string // old_kn_collections.id -- stable row key
-  typeId: string
-  partiyaNo: null // old-KN has no serial at all -- genuinely inapplicable, not just unassigned, same as state: null below
-  ownerId: string // sourced from old_kn_pools, not chiqim_requests -- see DECISIONS.md "Old-KN reporting"
-  requestId: string
-  plate: string
-  driver: string
-  weightKg: number // old_kn_collections.collected_kg
-  boxMassKg: null // old-KN has no box mass concept
-  dateBasis: string | null // §3.2.3: chiqim_requests.request_date, same basis as raw dispatch
-  palletStatus: 'jonatilgan' // a collection row only exists once committed -- always departed
-  // old-KN pool collections have no serial/order lineage at all (confirmed
-  // in report_old_kn_rows' own SQL: serial is a NULL literal) — state is
-  // genuinely inapplicable here, not just zero, matching "blank not zero."
-  state: null
+  weightKg: number // summed qty_kg across this request's matching components
+  boxMassKg: null
+  dateBasis: string | null // chiqim_departed_at -- null excluded upstream (report_dispatch_rows_v2 requires it), kept nullable for type safety
+  palletStatus: null // components can carry mixed statuses -- inapplicable at this grain
+  state: null // no single serial at dispatch grain -- genuinely inapplicable, not a missing value
 }
 
 // MOYKAGA (2026-08-15) — one moyka_sends entry, dated by sent_date.
 // Internal movement, no waybill/gate weighing at all — plate/driver are
 // structurally absent (always null), not just empty, matching
-// OldKnReportRow's own boxMassKg:null convention for the same reason.
+// ChiqimDispatchReportRow's own boxMassKg:null convention for the same
+// reason.
 export interface MoykaSendReportRow {
   kind: 'moyka_send'
   key: string // moyka_sends.id — stable row key
@@ -346,9 +352,7 @@ export interface MoykaOutputReportRow {
 
 export type ReportRow =
   | KirimReportRow
-  | ChiqimReportRow
-  | RawDispatchReportRow
-  | OldKnReportRow
+  | ChiqimDispatchReportRow
   | MoykaSendReportRow
   | MoykaOutputReportRow
 
@@ -448,14 +452,16 @@ export interface ReportTotals {
 
 // Which real-world date each kind is governed by (§3.2.3, extended
 // 2026-08-15 to the two Moyka kinds — same rule, not a new mechanism: each
-// row is dated by its own event). chiqim/chiqim_raw/chiqim_old_kn all read
-// the identical chiqim_requests.request_date column, so they share one
-// label here.
+// row is dated by its own event). chiqim/chiqim_raw/chiqim_old_kn all now
+// read chiqim_departed_at(request_id) (2026-09-14 regrain, Change 2 — see
+// docs/decisions/0188-...-chiqim-regrain-departure-date-dispatch-rollup.md),
+// not chiqim_requests.request_date any more, so they share one
+// departure-basis label here.
 const KIND_DATE_BASIS_LABEL: Record<ReportRowKind, string> = {
   kirim: 'kelish (buyurtma sanasi)',
-  chiqim: "so'rov sanasi",
-  chiqim_raw: "so'rov sanasi",
-  chiqim_old_kn: "so'rov sanasi",
+  chiqim: "jo'natilgan sana",
+  chiqim_raw: "jo'natilgan sana",
+  chiqim_old_kn: "jo'natilgan sana",
   moyka_send: 'Moykaga yuborilgan sana',
   moyka_output: 'Moykadan chiqqan sana',
 }
@@ -470,7 +476,7 @@ const KIND_DATE_BASIS_LABEL: Record<ReportRowKind, string> = {
 // or 6.
 export function dateBasisLabel(directions: ReportRowKind[]): string {
   if (directions.length === 0) {
-    return "Sana asosi: har bir qator o'zining hodisasi bo'yicha (kirim — kelish, chiqim — so'rov, moykaga/moykadan — o'z sanasi)"
+    return "Sana asosi: har bir qator o'zining hodisasi bo'yicha (kirim — kelish, chiqim — jo'natilgan sana, moykaga/moykadan — o'z sanasi)"
   }
   const distinctLabels = [...new Set(directions.map((d) => KIND_DATE_BASIS_LABEL[d]))]
   if (distinctLabels.length === 1) {
@@ -487,7 +493,11 @@ export const WEIGHT_BASIS_LABEL = "Og'irlik asosi: effective_qty (darvoza netto 
 // RPC/function results, and this avoids silently doing string concatenation
 // instead of arithmetic if a given code path happens to come back as text.
 export interface ReportDbRow {
-  kind: 'kirim' | 'chiqim' | 'chiqim_raw' | 'chiqim_old_kn' | 'moyka_send' | 'moyka_output'
+  // 'chiqim' only ever arrives via fetchVoidedBarcodeMatch's direct
+  // report_chiqim_rows read (2026-09-14) -- report_query_page/report_totals
+  // never emit it any more, 'chiqim_raw'/'chiqim_old_kn' not at all (rolled
+  // into 'chiqim_dispatch' server-side).
+  kind: 'kirim' | 'chiqim' | 'chiqim_dispatch' | 'moyka_send' | 'moyka_output'
   row_key: string
   serial: string | null
   barcode2: string | null
@@ -618,40 +628,19 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
     }
   }
 
-  if (row.kind === 'chiqim_raw') {
+  if (row.kind === 'chiqim_dispatch') {
     return {
-      kind: 'chiqim_raw',
+      kind: 'chiqim_dispatch',
       key: row.row_key,
-      serial: row.serial ?? '',
-      typeId: row.type_id,
-      partiyaNo: num(row.partiya_no),
-      ownerId: row.owner_id,
       requestId: row.request_id ?? '',
-      plate: row.plate ?? '',
-      driver: row.driver ?? '',
-      weightKg: Number(row.qty_kg),
-      boxMassKg: num(row.box_mass_kg),
-      dateBasis: row.date_basis,
-      palletStatus: 'jonatilgan',
-      state: mapState(row) ?? zeroState(),
-    }
-  }
-
-  if (row.kind === 'chiqim_old_kn') {
-    return {
-      kind: 'chiqim_old_kn',
-      key: row.row_key,
-      typeId: row.type_id,
-      partiyaNo: null,
       ownerId: row.owner_id,
-      requestId: row.request_id ?? '',
       plate: row.plate ?? '',
       driver: row.driver ?? '',
       weightKg: Number(row.qty_kg),
       boxMassKg: null,
       dateBasis: row.date_basis,
-      palletStatus: 'jonatilgan',
-      state: null, // no serial, genuinely inapplicable — see OldKnReportRow's own comment
+      palletStatus: null,
+      state: null, // no single serial at dispatch grain, genuinely inapplicable — see ChiqimDispatchReportRow's own comment
     }
   }
 

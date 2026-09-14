@@ -1,8 +1,6 @@
 import type { ReportRow } from '../../lib/reportQuery'
 import { KirimRowDetail } from './KirimRowDetail'
-import { ChiqimRowDetail } from './ChiqimRowDetail'
-import { RawDispatchRowDetail } from './RawDispatchRowDetail'
-import { OldKnRowDetail } from './OldKnRowDetail'
+import { ChiqimDispatchRowDetail } from './ChiqimDispatchRowDetail'
 import { MoykaSendRowDetail } from './MoykaSendRowDetail'
 import { MoykaOutputRowDetail } from './MoykaOutputRowDetail'
 import { formatDate } from '../../lib/formatDate'
@@ -12,14 +10,6 @@ import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { FuraBadge } from '../../components/ui/FuraBadge'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { type Tone } from '../../components/ui/tokens'
-
-const STATUS_LABEL: Record<string, string> = {
-  omborda: 'Omborda',
-  band_qilingan: 'Band qilingan',
-  jonatilgan: "Jo'natilgan",
-  bekor_qilingan: 'Bekor qilingan',
-  ishlatilgan: 'Ishlatilgan',
-}
 
 // Card rendering of a report row for narrow viewports (mockup's mobile
 // "Tarix" cards), alongside ReportTableRow's existing <table> row for wide
@@ -66,53 +56,32 @@ export function ReportRowCard({
       tone = 'ok'
       label = `${qty.toLocaleString()} kg`
     }
-  } else if (row.kind === 'chiqim_raw' || row.kind === 'chiqim_old_kn') {
-    tone = 'ok'
-    label = `${qty.toLocaleString()} kg`
   } else if (row.kind === 'moyka_send') {
     tone = 'neutral'
     label = `${qty.toLocaleString()} kg`
-  } else if (row.kind === 'moyka_output') {
-    // Per-serial aggregate row (2026-09-03) — no single pallet status
-    // applies any more; the row's own kg is already exclusion-filtered
-    // (see reportQuery.ts's MoykaOutputReportRow comment).
+  } else {
+    // moyka_output (per-serial aggregate, 2026-09-03) and chiqim_dispatch
+    // (rolled-up dispatch line, 2026-09-14) both have no single pallet
+    // status any more — each row's own kg is already the relevant
+    // exclusion-filtered/matched total (see reportQuery.ts's
+    // MoykaOutputReportRow / ChiqimDispatchReportRow comments).
     tone = 'neutral'
     label = `${qty.toLocaleString()} kg`
-  } else if (row.palletStatus === 'bekor_qilingan') {
-    tone = 'problem'
-    label = 'Bekor qilingan'
-  } else if (row.palletStatus !== 'jonatilgan') {
-    tone = 'neutral'
-    label = STATUS_LABEL[row.palletStatus]
-  } else if (row.labVerdict === 'qayta_yuvish') {
-    tone = 'problem'
-    label = 'Qayta yuvish'
-  } else if (row.labVerdict === 'o_tdi') {
-    tone = 'ok'
-    label = "O'tdi"
-  } else {
-    tone = 'neutral'
-    label = 'Tekshirilmagan'
   }
 
   return (
     <Card padding="compact">
       <button type="button" onClick={onToggle} className="flex min-h-12 w-full items-center gap-3 text-left">
-        <SerialChip>
-          {row.kind === 'chiqim' ? row.barcode2 : row.kind === 'chiqim_old_kn' ? '—' : row.serial}
-        </SerialChip>
-        <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />
-        {(row.kind === 'chiqim' || row.kind === 'chiqim_raw' || row.kind === 'chiqim_old_kn') && row.requestId ? (
-          <FuraBadge truckType={truckType(row.requestId)} />
-        ) : null}
+        <SerialChip>{row.kind === 'chiqim_dispatch' ? row.plate || '—' : row.serial}</SerialChip>
+        {row.kind !== 'chiqim_dispatch' && <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />}
+        {row.kind === 'chiqim_dispatch' && row.requestId ? <FuraBadge truckType={truckType(row.requestId)} /> : null}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-slate-900 dark:text-slate-100">
-            {ownerName(row.ownerId)} · {typeName(row.typeId)}
-            {row.kind === 'chiqim' && ` · ${calibreLabel(row.calibreId)}`}
+            {ownerName(row.ownerId)}
+            {row.kind !== 'chiqim_dispatch' && ` · ${typeName(row.typeId)}`}
           </span>
           <span className="block text-sm text-slate-500 dark:text-slate-400">
-            {formatDate(row.dateBasis)} · {row.plate || '—'} ·{' '}
-            {row.kind === 'kirim' ? `${qty.toLocaleString()} kg` : `${qty.toLocaleString()} kg`}
+            {formatDate(row.dateBasis)} · {row.plate || '—'} · {qty.toLocaleString()} kg
           </span>
         </span>
         <StatusPill tone={tone}>{label}</StatusPill>
@@ -121,16 +90,18 @@ export function ReportRowCard({
         <div className="mt-1">
           {row.kind === 'kirim' ? (
             <KirimRowDetail row={row} onOpenPassport={onOpenPassport} />
-          ) : row.kind === 'chiqim_raw' ? (
-            <RawDispatchRowDetail row={row} onOpenPassport={onOpenPassport} />
-          ) : row.kind === 'chiqim_old_kn' ? (
-            <OldKnRowDetail row={row} onOpenOldKnRequest={onOpenOldKnRequest} />
           ) : row.kind === 'moyka_send' ? (
             <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />
           ) : row.kind === 'moyka_output' ? (
             <MoykaOutputRowDetail row={row} typeName={typeName} onOpenPassport={onOpenPassport} />
           ) : (
-            <ChiqimRowDetail row={row} typeName={typeName} calibreLabel={calibreLabel} onOpenPassport={onOpenPassport} />
+            <ChiqimDispatchRowDetail
+              row={row}
+              typeName={typeName}
+              calibreLabel={calibreLabel}
+              onOpenPassport={onOpenPassport}
+              onOpenOldKnRequest={onOpenOldKnRequest}
+            />
           )}
         </div>
       )}

@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
-import { dateBasisLabel, WEIGHT_BASIS_LABEL, type ReportRow, type ReportFilters, type ReportTotals, type PalletStatusFilter } from './reportQuery'
+import { dateBasisLabel, WEIGHT_BASIS_LABEL, type ReportRow, type ReportFilters, type ReportTotals } from './reportQuery'
 import { fetchAllReportRowsForExport } from './useReportQuery'
+import { fetchChiqimDispatchDetailRows, type ChiqimDispatchDetailRow } from './chiqimDispatchDetail'
 import { REPORT_COLUMNS, type ReportColumnDef } from './reportColumns'
 import { toExcelDate, EXCEL_DATE_FORMAT } from './formatDate'
 
@@ -52,10 +53,6 @@ function directionLabel(row: ReportRow): string {
   switch (row.kind) {
     case 'kirim':
       return 'KIRIM'
-    case 'chiqim_raw':
-      return "CHIQIM (xom)"
-    case 'chiqim_old_kn':
-      return 'CHIQIM (eski KN)'
     case 'moyka_send':
       return 'MOYKAGA'
     case 'moyka_output':
@@ -65,19 +62,13 @@ function directionLabel(row: ReportRow): string {
   }
 }
 
-const STATUS_LABEL: Record<Exclude<PalletStatusFilter, ''>, string> = {
-  omborda: 'Omborda',
-  band_qilingan: 'Band qilingan',
-  jonatilgan: "Jo'natilgan",
-  bekor_qilingan: 'Bekor qilingan',
-  ishlatilgan: 'Ishlatilgan',
-}
-
-// Same text ReportTableRow.tsx's 'status' cell renders on screen (that file's
-// version returns styled JSX; this is the plain-text equivalent) — kept in
-// sync by hand since the two render from the same row shape but to
+// Same text ReportTableRow.tsx's 'status' cell renders on screen (that
+// file's version returns styled JSX; this is the plain-text equivalent) —
+// kept in sync by hand since the two render from the same row shape but to
 // different targets. Any change to the on-screen status logic should be
-// mirrored here.
+// mirrored here. 2026-09-14: chiqim_dispatch/moyka_output both have no
+// single pallet status any more (rolled-up/aggregate rows) — see
+// reportQuery.ts's ChiqimDispatchReportRow/MoykaOutputReportRow comments.
 function statusText(row: ReportRow): string {
   if (row.kind === 'kirim') {
     if (row.provisionalVarianceFlag) return 'Diqqat: tarozi farqi'
@@ -86,16 +77,8 @@ function statusText(row: ReportRow): string {
     }
     return ''
   }
-  if (row.kind === 'chiqim_raw') return 'Xom'
-  if (row.kind === 'chiqim_old_kn') return 'Eski KN'
   if (row.kind === 'moyka_send') return 'Moykaga'
-  // Per-serial aggregate row (2026-09-03) — no single pallet status applies.
-  if (row.kind === 'moyka_output') return ''
-  if (row.palletStatus === 'bekor_qilingan') return 'Bekor qilingan'
-  if (row.palletStatus !== 'jonatilgan') return STATUS_LABEL[row.palletStatus]
-  if (row.labVerdict === 'qayta_yuvish') return 'Qayta yuvish'
-  if (row.labVerdict === 'o_tdi') return "O'tdi"
-  return 'Tekshirilmagan'
+  return ''
 }
 
 // The one place a column key maps to a row's actual value for THIS row —
@@ -110,8 +93,8 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups, overri
   const qty = row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg
   const declared = row.kind === 'kirim' ? row.declaredQty : null
   const hisobiy = row.kind === 'kirim' ? row.hisobiyKg : null
-  const moisture = row.kind === 'kirim' ? row.kirimMoisturePct : row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.moisturePct : null
-  const so2 = row.kind === 'kirim' ? row.kirimSo2MgKg : row.kind === 'chiqim' || row.kind === 'moyka_output' ? row.so2MgKg : null
+  const moisture = row.kind === 'kirim' ? row.kirimMoisturePct : row.kind === 'moyka_output' ? row.moisturePct : null
+  const so2 = row.kind === 'kirim' ? row.kirimSo2MgKg : row.kind === 'moyka_output' ? row.so2MgKg : null
 
   switch (key) {
     case 'direction':
@@ -119,18 +102,18 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups, overri
     case 'date':
       return row.dateBasis ? toExcelDate(row.dateBasis) : ''
     case 'serial':
-      return row.kind === 'chiqim_old_kn' ? '' : row.serial
+      return row.kind === 'chiqim_dispatch' ? '' : row.serial
     case 'owner':
       return lookups.ownerName(row.ownerId)
     case 'type':
-      return lookups.typeName(row.typeId)
-    // moyka_output rows are a per-serial aggregate (2026-09-03) — no single
-    // calibre/barcode2 applies any more, see reportQuery.ts's
-    // MoykaOutputReportRow comment.
+      return row.kind === 'chiqim_dispatch' ? '' : lookups.typeName(row.typeId)
+    // moyka_output (per-serial aggregate) and chiqim_dispatch (rolled-up
+    // dispatch line, 2026-09-14) have no single calibre/barcode2 any more —
+    // see reportQuery.ts's MoykaOutputReportRow/ChiqimDispatchReportRow.
     case 'calibre':
-      return row.kind === 'chiqim' ? lookups.calibreLabel(row.calibreId) : ''
+      return ''
     case 'barcode2':
-      return row.kind === 'chiqim' ? row.barcode2 : ''
+      return ''
     case 'netto':
       return row.kind === 'kirim' && row.provisional ? 'tarozi kutilmoqda' : qty
     case 'declared':
@@ -241,6 +224,43 @@ export async function buildReportWorkbook(
   sheet.columns.forEach((col) => {
     col.width = 18
   })
+
+  // Detail sheet, component grain (2026-09-14, see docs/decisions/0188-...
+  // -chiqim-regrain-departure-date-dispatch-rollup.md) — the summary sheet
+  // above is now request grain for chiqim_dispatch rows (one line per
+  // dispatch); this second sheet breaks each dispatch present in the export
+  // back down to its pallet/raw/old-KN components, same basis the summary
+  // line's own total is summed from (not a parallel computation). Only
+  // added when the export actually contains a chiqim_dispatch row — a pure
+  // KIRIM/MOYKA export has nothing to detail.
+  const dispatchRequestIds = rows.filter((r) => r.kind === 'chiqim_dispatch').map((r) => r.requestId)
+  if (dispatchRequestIds.length > 0) {
+    const detailRows = await fetchChiqimDispatchDetailRows(dispatchRequestIds)
+    const detailSheet = wb.addWorksheet('Chiqim tafsilot')
+    const detailHeader = detailSheet.addRow(['Sana', 'Moshina', "Yo'nalish", 'Barcode #2', 'Seriya', 'Tur', 'Kalibr', 'Kg'])
+    detailHeader.font = { bold: true }
+    const kindLabel: Record<ChiqimDispatchDetailRow['kind'], string> = {
+      chiqim: 'Pallet',
+      chiqim_raw: 'Xom',
+      chiqim_old_kn: 'Eski KN',
+    }
+    for (const d of detailRows) {
+      const detailExcelRow = detailSheet.addRow([
+        d.dateBasis ? toExcelDate(d.dateBasis) : '',
+        d.plate,
+        kindLabel[d.kind],
+        d.barcode2 ?? '',
+        d.serial ?? '',
+        d.typeId ? lookups.typeName(d.typeId) : '',
+        d.calibreId ? lookups.calibreLabel(d.calibreId) : '',
+        d.qtyKg,
+      ])
+      detailExcelRow.getCell(1).numFmt = EXCEL_DATE_FORMAT
+    }
+    detailSheet.columns.forEach((col) => {
+      col.width = 16
+    })
+  }
 
   return wb
 }

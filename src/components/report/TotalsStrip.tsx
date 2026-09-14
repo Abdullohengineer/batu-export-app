@@ -61,35 +61,27 @@ const MOVEMENT_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = 
 
 // STATE_COLUMN_CHIPS (2026-08-15) — a serial's own as-of-now standing
 // balance, summed once per DISTINCT serial (never per row — "the trap").
-// Every one of these is genuinely a different question from its
-// MOVEMENT-group counterpart, not just a differently-scoped version of the
-// same number — see DECISIONS.md "Hisobot: Moyka rows, direction split,
-// serial-state columns" for why moykaga_yuborilgan/moykadan_chiqgan in
-// particular are EXPECTED to disagree with their movement chip once real
-// data exercises the difference.
+//
+// 2026-09-14 (see DECISIONS.md "Hisobot row/column model correction"):
+// moykaga_yuborilgan/moykadan_chiqgan/yoqotish/k1-k8/kn removed from this
+// map. Those columns are LIFETIME (never date-clipped, by design — see
+// ReportColumnTotalBasis in reportColumns.ts), and a lifetime figure summed
+// once per distinct serial IN THE FILTERED SET is only additive across
+// stacked periods when a serial can appear in at most one period's rows —
+// true for the balance columns left below (qabul_qilingan/omborda_qoldi/
+// moykada/xom_jonatilgan/olib_ketilgan are irreducibly as-of-now anyway,
+// so stacking them was never meaningful) but false for moyka/kalibr flow,
+// where event kinds like moyka_output/chiqim routinely put one serial's
+// activity across several months. Their totalBasis is now 'none' —
+// REPORT_COLUMNS filters them out of stateColumns before this map is ever
+// consulted, so no entry is needed here for them; the table cells still
+// show the correct lifetime figure per row.
 const STATE_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = {
   qabul_qilingan: (t) => [{ label: 'Qabul qilingan', value: t.stateQabulQilingan }],
   omborda_qoldi: (t) => [{ label: 'Omborda qoldi', value: t.stateOmbordaQoldi }],
-  moykaga_yuborilgan: (t) => [{ label: 'Moykaga yuborilgan (joriy)', value: t.stateMoykagaYuborilgan }],
   moykada: (t) => [{ label: 'Moykada', value: t.stateMoykada }],
-  moykadan_chiqgan: (t) => [{ label: 'Moykadan chiqgan (joriy)', value: t.stateMoykadanChiqgan }],
   xom_jonatilgan: (t) => [{ label: "Xom holda jo'natilgan", value: t.stateXomJonatilgan }],
   olib_ketilgan: (t) => [{ label: 'Olib ketilgan', value: t.stateOlibKetilgan }],
-  // Yo'qotish (2026-08-31) -- BOOKED loss only: a serial still in the wash
-  // contributes nothing (report_totals' sum skips its NULL), so this chip and
-  // the Moykada chip never double-count the same kilograms.
-  yoqotish: (t) => [{ label: "Yo'qotish (yakunlangan)", value: t.stateYoqotish, loss: true }],
-  // Output-by-kalibr (2026-08-29) -- each column its own chip, same group;
-  // KN deliberately its own entry, never folded into the K1-K8 sums.
-  k1: (t) => [{ label: 'K1', value: t.stateK1 }],
-  k2: (t) => [{ label: 'K2', value: t.stateK2 }],
-  k3: (t) => [{ label: 'K3', value: t.stateK3 }],
-  k4: (t) => [{ label: 'K4', value: t.stateK4 }],
-  k5: (t) => [{ label: 'K5', value: t.stateK5 }],
-  k6: (t) => [{ label: 'K6', value: t.stateK6 }],
-  k7: (t) => [{ label: 'K7', value: t.stateK7 }],
-  k8: (t) => [{ label: 'K8', value: t.stateK8 }],
-  kn: (t) => [{ label: 'KN', value: t.stateKn }],
 }
 
 function ChipGroup({ title, chips }: { title: string; chips: TotalChip[] }) {

@@ -23,19 +23,43 @@ export type ReportColumnKind = 'context' | 'volume' | 'measurement'
 // defaults to 'movement' when omitted (every pre-existing volume column).
 //   - movement: the row's own kg, summed across ROWS in the filtered set —
 //     "Harakatlar bo'yicha". This is what every volume column did before
-//     today.
+//     today. Always additive across periods (each physical event counted
+//     exactly once, in its own period) — safe to stack monthly reports.
 //   - state: a serial's own standing balance, summed once per DISTINCT
 //     serial (never per row — a serial can own several rows) — "Seriyalar
 //     bo'yicha (N ta seriya)". As-of-now, never clipped to the date filter.
+//     Only used for genuinely as-of-now balance columns (Qabul qilingan/
+//     Omborda qoldi/Moykada/Xom jo'natilgan/Olib ketilgan) — see 2026-09-14
+//     note below for why the flow columns don't use this any more.
 //   - both: the column name legitimately means two different numbers —
-//     "Moykaga yuborilgan"/"Moykadan chiqgan" are each a real *activity*
-//     total (how much moved during this window) AND a real *standing*
-//     total (how much of that serial's total ever/still exists) that can
-//     diverge (see DECISIONS.md "Hisobot: Moyka rows..."). Renders one chip
-//     in EACH group, distinctly labelled ("(davrda)" / "(joriy)") so two
-//     different numbers under the same column name are never shown as one
-//     unlabelled "Jami."
-export type ReportColumnTotalBasis = 'movement' | 'state' | 'both'
+//     a real *activity* total (how much moved during this window,
+//     movement-basis) AND a real *standing* total (how much of that
+//     serial's total ever/still exists, state-basis).
+//   - none: a lifetime per-row figure with no safe strip aggregate at all
+//     (2026-09-14) — see that note.
+//
+// 2026-09-14 (see DECISIONS.md "Hisobot row/column model correction"):
+// moykaga_yuborilgan/moykadan_chiqgan went from 'both' to plain 'movement',
+// and k1-k8/kn/yoqotish went from 'state' to 'none'. Root cause and the
+// general rule this codifies: a strip chip is only valid when its
+// arithmetic is additive across the periods a user might stack (e.g. run
+// this report for Jan, Feb, Mar and add the three numbers together). A
+// state-basis chip on a LIFETIME column fails that test whenever the same
+// serial can appear as a row in more than one period's report — which,
+// for the moyka/kalibr columns, event kinds like moyka_output/chiqim make
+// routine (a serial's output can span several months). A range-scoped
+// alternative was evaluated and rejected: it collides exactly with the
+// movement chip under every direction where it's well-defined (both sum
+// the same underlying rows, just grouped differently), and produces a
+// coincidental, meaningless number under a KIRIM-only filter (moyka
+// activity happening to fall in the same window as an unrelated arrival
+// date). No chip is the only option that's both correct under every
+// filter and doesn't just relabel the same collision. The balance columns
+// (qabul_qilingan/omborda_qoldi/moykada/xom_jonatilgan/olib_ketilgan) keep
+// 'state' — they're irreducibly as-of-now, summing them across stacked
+// periods was never a meaningful operation to begin with, so this rule
+// doesn't apply to them.
+export type ReportColumnTotalBasis = 'movement' | 'state' | 'both' | 'none'
 
 export interface ReportColumnDef {
   key: string
@@ -89,16 +113,20 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // Namlik/SO2 today.
   { key: 'qabul_qilingan', label: 'Qabul qilingan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'omborda_qoldi', label: 'Omborda qoldi, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  // 'both': also a real per-row MOVEMENT total (report_totals.total_kg_to_moyka) — see ReportColumnTotalBasis above.
   // Default-VISIBLE (2026-09-03, MOYKADAN per-serial rows) — the "how much
   // sent to / received from Moyka" headline figures used to require opening
   // Ustunlar to see at all. Global default (this registry has no per-
   // direction notion of "visible"), same as every other column here — every
   // OTHER column's defaultVisible is unchanged by this migration.
-  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'both' },
+  //
+  // 2026-09-14: totalBasis 'both' → 'movement'. The table cell itself stays
+  // LIFETIME (kirim_line_state, unchanged) — only the strip chip changed.
+  // See ReportColumnTotalBasis above for why the state-basis chip on this
+  // column was removed rather than range-scoped.
+  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement' },
   { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  // 'both': also a real per-row MOVEMENT total (report_totals.total_kg_from_moyka) — deliberately allowed to diverge from the state figure, see DECISIONS.md.
-  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'both' },
+  // 2026-09-14: totalBasis 'both' → 'movement', same reasoning as moykaga_yuborilgan above.
+  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement' },
   // Yo'qotish (2026-08-31) — the per-serial REALIZED wash loss, booked only
   // once the serial is closed via Yakunlash (migration 0101's split; NULL,
   // rendered "—", while it is still open, because that gap is still
@@ -109,32 +137,36 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // (see migration 0107) so the row can never fail that arithmetic on
   // screen.
   //
-  // 🚩 The one state column that is default-VISIBLE, deliberately, against
-  // this family's own "expandable via the column picker" precedent: it was
-  // asked for so the loss TOTAL is on the strip without hunting through
-  // Ustunlar first, and the strip only chips columns that are visible.
-  { key: 'yoqotish', label: "Yo'qotish, kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'state' },
+  // 🚩 Default-VISIBLE, deliberately, against this family's own "expandable
+  // via the column picker" precedent — the loss figure was asked for on
+  // every row without hunting through Ustunlar first. 2026-09-14: totalBasis
+  // 'state' → 'none' — the strip chip was removed (same LIFETIME-summed-
+  // per-serial problem as the moyka pair above; see ReportColumnTotalBasis).
+  // The column itself is untouched, still visible, still per-row lifetime.
+  { key: 'yoqotish', label: "Yo'qotish, kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
   { key: 'xom_jonatilgan', label: "Xom holda jo'natilgan, kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'olib_ketilgan', label: 'Olib ketilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // Output-by-kalibr (2026-08-15 pattern, added 2026-08-29 -- Prompt 6, see
-  // DECISIONS.md "Hisobot: output-by-kalibr columns"): same per-serial
-  // standing-total shape as the 7 columns above (totalBasis: 'state' -- a
-  // serial's own total-ever-produced-under-this-kalibr figure, repeated on
-  // every row that serial owns), one column per kalibr K1-K8 in numeric
-  // order, then a separate KN column -- never summed together (KN is a
-  // distinct product, not a 9th calibre). All default-hidden, same
-  // "expandable via the column picker" precedent as every other
-  // serial-state column in this family, to avoid overwhelming the default
-  // view with 9 more columns on top of the 8 already default-visible.
-  { key: 'k1', label: 'K1, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k2', label: 'K2, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k3', label: 'K3, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k4', label: 'K4, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k5', label: 'K5, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k6', label: 'K6, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k7', label: 'K7, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k8', label: 'K8, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'kn', label: 'KN, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  // DECISIONS.md "Hisobot: output-by-kalibr columns"): a serial's own
+  // total-ever-produced-under-this-kalibr figure, repeated on every row that
+  // serial owns, one column per kalibr K1-K8 in numeric order, then a
+  // separate KN column -- never summed together (KN is a distinct product,
+  // not a 9th calibre). All default-hidden, same "expandable via the column
+  // picker" precedent as every other serial-state column in this family.
+  //
+  // 2026-09-14: totalBasis 'state' → 'none' for all nine — same reasoning as
+  // Yo'qotish above (a serial's calibre output can span several months, so
+  // a LIFETIME state-basis chip isn't additive across stacked periods). The
+  // columns themselves are untouched, still lifetime per-row figures.
+  { key: 'k1', label: 'K1, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'k2', label: 'K2, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'k3', label: 'K3, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'k4', label: 'K4, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'k5', label: 'K5, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'k6', label: 'K6, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'k7', label: 'K7, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'k8', label: 'K8, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'kn', label: 'KN, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
 ]
 
 export function defaultVisibleColumnKeys(): Set<string> {

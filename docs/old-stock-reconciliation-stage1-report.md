@@ -5,6 +5,13 @@
 Origin filter applied throughout: `kirim_orders.origin = 'opening_stock'` (operational-queue/inventory rule — real physical stock, filtered positively to old-stock rows only).
 
 > **Stage 2 applied 2026-09-14** — see `docs/decisions/0186-2026-09-14-old-stock-physical-count-reconciliation-stage-2.md` and migration `supabase/migrations/0121_old_stock_physical_count_reconciliation_20260716.sql` for what was actually applied and the one post-apply figure (`rahbar_stock_snapshot('eski').totalKg`) that came out different from what this report predicted, and why.
+>
+> **Correction applied 2026-09-14** — 0121 anchored Subxon's OLD KN `opening_kg` to the wrong
+> physical count date (2026-07-16 instead of the actual 2026-09-12). Fixed in
+> `docs/decisions/0187-2026-09-14-subxon-old-kn-opening-kg-baseline-correction.md` /
+> migration `0122_subxon_old_kn_opening_kg_baseline_correction.sql` — Subxon `opening_kg`
+> 37,439 → 59,221, live balance now reads 37,439 as originally intended, and `totalKg` is
+> back to the 122,184 this report predicted.
 
 ## Plain-language summary
 

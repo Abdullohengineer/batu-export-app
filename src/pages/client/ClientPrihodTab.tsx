@@ -129,9 +129,9 @@ function ClientKirimRowDetail({ row }: { row: KirimReportRow }) {
 // Uzbek, which would break this screen's Russian-only requirement (SPEC.md
 // §3.6) if reused unmodified — same row-detail/table divergence reasoning as
 // ClientKirimRowDetail above. The VALUES are the exact same report_totals
-// fields Rahbar's own strip reads. 2026-09-14: the state group dropped its
-// moyka-flow/kalibr/Yo'qotish chips, same as the Hisobot original — see that
-// group's own comment below for why.
+// fields Rahbar's own strip reads. 2026-09-14: the state group drops the
+// moyka pair's own chip and Yo'qotish, same as Hisobot's own TotalsStrip.tsx
+// — see that group's own comment below for why.
 interface TotalChip {
   label: string
   value: number
@@ -163,20 +163,38 @@ function ClientTotalsStrip({ totals }: { totals: ReportTotals }) {
     { label: `${clientLabel('col.moykadan_chiqgan')} (за период)`, value: totals.totalFromMoyka },
   ]
 
-  // 2026-09-14 (see DECISIONS.md "Hisobot row/column model correction"):
-  // dropped moykaga_yuborilgan/moykadan_chiqgan ("сейчас"), yoqotish, and
-  // k1-k8/kn from this group — same LIFETIME-summed-per-serial problem as
-  // Hisobot's own TotalsStrip.tsx (see that file's STATE_COLUMN_CHIPS
-  // comment), and "сейчас" was the wrong word regardless: these are
-  // as-of-now figures, not scoped to "За период" the way the label implied.
-  // The table's columns for these fields are unaffected — they still show
-  // each row's correct lifetime figure.
+  // 2026-09-14 (see docs/decisions/0185-...-hisobot-row-column-model-
+  // correction-ii.md): re-applies 97f5444 -- moykaga_yuborilgan/
+  // moykadan_chiqgan/k1-kn are RANGE-SCOPED again in the underlying RPC (an
+  // intervening decision, 0184, had wrongly reverted this to lifetime on a
+  // misread of intent). K1-K8/KN get their chip back here, mirroring
+  // Hisobot's own TotalsStrip.tsx -- range-scoping makes them additive, and
+  // there's no movement-chip counterpart for kalibr output to collide with.
+  // The moyka pair's own state chip stays OUT deliberately (same reasoning
+  // as Hisobot: redundant with the movementChips "(за период)" pair above,
+  // or actively misleading under a KIRIM-only filter) -- "сейчас" was
+  // always the wrong word for it regardless, so there's nothing to relabel.
+  // No "(jami)"/lifetime-twin columns added here on request -- this screen
+  // has no column picker (fixed 27-column list), and the Qabul qilingan
+  // identity check is an internal reconciliation tool a client has no need
+  // to verify; Hisobot carries the twins (default-hidden) for that.
+  // Yo'qotish stays out -- still lifetime-only, unchanged double-counting
+  // risk, same as Hisobot.
   const stateChips: TotalChip[] = [
     { label: clientLabel('col.qabul_qilingan'), value: totals.stateQabulQilingan },
     { label: clientLabel('col.omborda_qoldi'), value: totals.stateOmbordaQoldi },
     { label: clientLabel('col.moykada'), value: totals.stateMoykada },
     { label: clientLabel('col.xom_jonatilgan'), value: totals.stateXomJonatilgan },
     { label: clientLabel('col.olib_ketilgan'), value: totals.stateOlibKetilgan },
+    { label: clientLabel('col.k1'), value: totals.stateK1 },
+    { label: clientLabel('col.k2'), value: totals.stateK2 },
+    { label: clientLabel('col.k3'), value: totals.stateK3 },
+    { label: clientLabel('col.k4'), value: totals.stateK4 },
+    { label: clientLabel('col.k5'), value: totals.stateK5 },
+    { label: clientLabel('col.k6'), value: totals.stateK6 },
+    { label: clientLabel('col.k7'), value: totals.stateK7 },
+    { label: clientLabel('col.k8'), value: totals.stateK8 },
+    { label: clientLabel('col.kn'), value: totals.stateKn },
   ]
 
   return (

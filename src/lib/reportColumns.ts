@@ -27,24 +27,28 @@ export type ReportColumnKind = 'context' | 'volume' | 'measurement'
 //     monthly reports.
 //   - state: summed once per DISTINCT serial in the filtered set (never per
 //     row — a serial can own several rows) — "Seriyalar bo'yicha (N ta
-//     seriya)". Two different kinds of column use this basis, for two
+//     seriya)". Three different kinds of column use this basis, for three
 //     different reasons:
-//       - the 5 genuinely as-of-now balance columns (Qabul qilingan/Omborda
-//         qoldi/Moykada/Xom jo'natilgan/Olib ketilgan) and the two "(jami)"
+//       - the 4 genuinely as-of-now balance columns (Qabul qilingan/Omborda
+//         qoldi/Xom jo'natilgan/Olib ketilgan) and the two "(jami)"
 //         lifetime-twin columns below — these are LIFETIME figures, and
 //         summing once per distinct serial is correct for them because they
 //         are never meant to be stacked across periods in the first place
 //         (an as-of-now balance has no "Jan + Feb" meaning to preserve).
-//       - moykaga_yuborilgan/moykadan_chiqgan/k1-kn — these are RANGE-SCOPED
-//         (2026-09-14, see note below), so "once per distinct serial in the
-//         filtered set" sums exactly the rows in range, same total the
-//         movement basis would give; additive across stacked periods.
-//   - none: a per-row figure whose only source is a LIFETIME function
-//     (kirim_line_state's own yoqotish field, via client_serial_loss_kg) —
-//     summing it once per distinct serial would double-count any serial
-//     recurring across periods, and there is no range-scoped source for it
-//     yet (2026-09-14) to fix that the way the flow/kalibr columns were
-//     fixed. See that note.
+//       - Moykada (2026-09-14, see note further below) — AS-OF-PERIOD-END
+//         (p_to), not as-of-now any more, but the same "never meant to be
+//         stacked" reasoning applies: it's a snapshot at a point in time,
+//         not a flow, so summing it once per distinct serial for THIS one
+//         report's own p_to is meaningful; adding two different reports'
+//         Moykada totals together was never a sensible operation, exactly
+//         as it wasn't when this column was as-of-now.
+//       - moykaga_yuborilgan/moykadan_chiqgan/k1-kn/yoqotish — these are
+//         RANGE-SCOPED or period-attributed (2026-09-14, see notes below),
+//         so "once per distinct serial in the filtered set" sums exactly
+//         the activity/recognition that belongs to the filtered period;
+//         additive across stacked periods.
+//   - none: currently unused — every volume column now has a safe strip
+//     aggregate (movement, or state under one of the three reasons above).
 //
 // 2026-09-14 (see docs/decisions/0185-...-hisobot-row-column-model-
 // correction-ii.md): moykaga_yuborilgan/moykadan_chiqgan/k1-k8/kn are
@@ -55,20 +59,20 @@ export type ReportColumnKind = 'context' | 'volume' | 'measurement'
 // to see their incoming number" as a request for LIFETIME figures — it
 // meant the incoming figure FOR THAT PERIOD. The rule, restated plainly:
 // the selected date range governs both row selection AND column values,
-// for every direction. The one deliberate exception is the 5 as-of-now
-// balance columns above (and their two "(jami)" twins) — genuinely
-// timeless figures with no period meaning, so range-scoping them is not
-// just difficult, it's a category error.
+// for every direction. The one deliberate exception (as of THIS date) was
+// the 5 as-of-now balance columns above (and their two "(jami)" twins) —
+// genuinely timeless figures with no period meaning, so range-scoping them
+// was not just difficult, it was a category error. Moykada has since moved
+// out of that exception list — see the 2026-09-14 (later) note below.
 //
 // Because moykaga_yuborilgan/moykadan_chiqgan's PLAIN column is
 // range-scoped, the Qabul qilingan identity (Qabul qilingan = Omborda
-// qoldi + Moykaga yuborilgan + Xom jo'natilgan) and the Moyka-internal
-// identity (Moykaga yuborilgan = Moykadan chiqgan + Moykada + Yo'qotish)
-// can no longer be checked against it under a date filter — both identities
-// are inherently lifetime statements. Two new lifetime-TWIN columns
+// qoldi + Moykaga yuborilgan + Xom jo'natilgan) can no longer be checked
+// against it under a date filter — that identity is an inherently lifetime
+// statement. A new lifetime-TWIN column pair
 // (moykaga_yuborilgan_jami/moykadan_chiqgan_jami, sourced from the
 // unchanged kirim_line_state, default-hidden like every other
-// reconciliation-only column) exist for exactly that check; the plain
+// reconciliation-only column) exists for exactly that check; the plain
 // columns carry a `headerNote` pointing at them. No per-kalibr twin — the
 // Moykadan chiqgan (jami) twin already covers the aggregate check across
 // all kalibrs combined, same as before.
@@ -86,10 +90,41 @@ export type ReportColumnKind = 'context' | 'volume' | 'measurement'
 // so restoring their state chip is a genuinely new, non-duplicate, now-safe
 // number — 'state' restored for those nine.
 //
-// Yo'qotish is explicitly OUT of scope for this range-scoping pass (same as
-// when 97f5444 first deferred it) — its column stays sourced from
-// kirim_line_state/client_serial_loss_kg, still lifetime, so its
-// double-counting risk is unchanged and its chip stays removed ('none').
+// 2026-09-14 (later same day, see docs/decisions/0186-...-moykada-yoqotish-
+// period-scoping.md) — Moykada and Yo'qotish period-scoped, closing the
+// invariant gap the note above deliberately left open: a serial's Moykaga
+// yuborilgan/Moykadan chiqgan columns were already period-scoped, but
+// Moykada stayed as-of-now (kirim_line_state) and Yo'qotish stayed lifetime
+// (client_serial_loss_kg) — so a serial with a closed cycle could show 0 in
+// Moykada (correctly, nothing is left in the wash) AND a loss figure in
+// EVERY period it had any row in, not just the one it closed in (August
+// showing the same +55 loss as September for a serial that closed in
+// September, alongside Moykada silently reading 0 in both). Fixed by
+// making both columns genuinely period-relative instead of leaving one
+// lifetime:
+//   - Moykada is now AS-OF-PERIOD-END (kirim_line_moyka_asof(serial, p_to))
+//     — the in-moyka balance at the close of the report's own p_to, not
+//     "right now." A closed cycle (closed_at <= p_to) always reads 0,
+//     mirroring kirim_line_state's own closed-cycle override exactly (an
+//     earlier version of this fix omitted that override and produced a
+//     real invariant violation: a cycle that closed with sent > output
+//     showed its residual as "still in Moyka" instead of correctly as a
+//     surplus, live-caught for serial 190826-001).
+//   - Yo'qotish is now recognized only in the period wash_cycles.closed_at
+//     falls in (kirim_line_loss_range(serial, p_from, p_to)) — null
+//     ("blank," not zero) in every other period, including every period
+//     before closing. Reuses get_client_report's own loss_totals
+//     attribution shape (gate on closed_at, then read the full realized
+//     figure) rather than inventing a new one.
+// Together these hold the invariant: on any row, in any period, either
+// Moykada is nonzero (cycle open, or closed but this period predates the
+// close) or Yo'qotish is non-blank (cycle closed THIS period) — never both.
+// Both are now additive across stacked periods for the same reason as the
+// flow columns above (Moykada as a snapshot was already exempt from that
+// requirement; Yo'qotish's recognize-once-blank-elsewhere shape makes it a
+// genuine partition sum) — Yo'qotish is back to 'state'. No column uses
+// 'none' any more (kept in the type for a future column that might need
+// it, not because one exists today).
 export type ReportColumnTotalBasis = 'movement' | 'state' | 'none'
 
 export interface ReportColumnDef {
@@ -140,11 +175,13 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // Serial-state columns (2026-08-15, see DECISIONS.md "Hisobot: Moyka
   // rows, direction split, serial-state columns") — every row shows its
   // PARENT SERIAL's own standing breakdown, same value repeated on every
-  // row belonging to that serial. As-of-now, never clipped to the date
+  // row belonging to that serial. qabul_qilingan/omborda_qoldi/
+  // xom_jonatilgan/olib_ketilgan are as-of-now, never clipped to the date
   // filter (clipping breaks the reconciliation identity: Qabul qilingan =
-  // Omborda qoldi + Moykaga yuborilgan + Xom holda jo'natilgan). All
-  // default-hidden — expandable via the column picker, same as Tara/
-  // Namlik/SO2 today.
+  // Omborda qoldi + Moykaga yuborilgan + Xom holda jo'natilgan) — Moykada
+  // and Yo'qotish below are period-relative instead, see their own
+  // comments. All default-hidden — expandable via the column picker, same
+  // as Tara/Namlik/SO2 today.
   { key: 'qabul_qilingan', label: 'Qabul qilingan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'omborda_qoldi', label: 'Omborda qoldi, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // Default-VISIBLE (2026-09-03, MOYKADAN per-serial rows) — the "how much
@@ -167,6 +204,18 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // picker to check the Qabul qilingan identity and the Moyka-internal
   // identity now that the plain column is range-scoped.
   { key: 'moykaga_yuborilgan_jami', label: 'Moykaga yuborilgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  // 2026-09-14 (later same day, see docs/decisions/0186-...-moykada-
+  // yoqotish-period-scoping.md): AS-OF-PERIOD-END now (kirim_line_moyka_
+  // asof(serial, p_to)), not as-of-now (kirim_line_state) any more — the
+  // in-moyka balance at the close of the report's own p_to. A closed cycle
+  // always reads 0 here regardless of p_to (mirrors kirim_line_state's own
+  // closed-cycle override), which is what makes the invariant with
+  // Yo'qotish below hold: exactly one of the two is ever nonzero/non-blank
+  // for a given row in a given period. Strip chip stays ('state' basis) —
+  // a snapshot, not a flow, so summing it once per distinct serial for
+  // THIS report's own p_to remains the same kind of one-shot figure it
+  // always was as as-of-now; stacking it across two different reports'
+  // p_to values was never a meaningful operation either way.
   { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // 2026-09-14: RANGE-SCOPED, same treatment and same caveat as moykaga_yuborilgan above.
   { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement',
@@ -178,19 +227,26 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // in-process and already shows under Moykada). Sits directly after the
   // Moykadan chiqgan (jami) twin because that is the subtraction it is: the
   // identity is Moykaga yuborilgan (jami) = Moykadan chiqgan (jami) +
-  // Moykada + Yo'qotish (2026-09-14: the plain Moyka columns are
-  // range-scoped now, so the (jami) twins are the ones this identity
-  // actually closes against), and its value is sourced from the same basis
-  // those two are (see migration 0107) so the row can never fail that
-  // arithmetic on screen.
+  // Moykada + Yo'qotish (the plain Moyka columns are range-scoped, so the
+  // (jami) twins are the ones this identity actually closes against).
   //
   // 🚩 Default-VISIBLE, deliberately, against this family's own "expandable
   // via the column picker" precedent — the loss figure was asked for on
-  // every row without hunting through Ustunlar first. Still LIFETIME-only,
-  // no range-scoped twin (2026-09-14) — explicitly out of scope for this
-  // pass, same as when 97f5444 first deferred it; its strip chip therefore
-  // stays removed ('none') — see ReportColumnTotalBasis.
-  { key: 'yoqotish', label: "Yo'qotish, kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  // every row without hunting through Ustunlar first.
+  //
+  // 2026-09-14 (later same day, see docs/decisions/0186-...-moykada-
+  // yoqotish-period-scoping.md): PERIOD-ATTRIBUTED now
+  // (kirim_line_loss_range(serial, p_from, p_to)) instead of lifetime
+  // (client_serial_loss_kg unconditionally) — non-null ONLY in the period
+  // wash_cycles.closed_at falls in, null ("—", not 0) in every other
+  // period, including every period before closing. This is what fixes the
+  // original bug report: a serial used to show its full loss in EVERY
+  // period it had a row in, not just the one it actually closed in. Strip
+  // chip restored ('state', was 'none') — confirmed additive (a serial's
+  // loss is recognized in exactly one period and blank everywhere else, so
+  // summing per period and summing the combined range agree by
+  // construction; verified live, see the decision doc).
+  { key: 'yoqotish', label: "Yo'qotish, kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'state' },
   { key: 'xom_jonatilgan', label: "Xom holda jo'natilgan, kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'olib_ketilgan', label: 'Olib ketilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // Output-by-kalibr (2026-08-15 pattern, added 2026-08-29 -- Prompt 6, see

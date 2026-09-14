@@ -61,9 +61,9 @@ const MOVEMENT_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = 
 
 // STATE_COLUMN_CHIPS (2026-08-15) — summed once per DISTINCT serial in the
 // filtered set (never per row — "the trap"). qabul_qilingan/omborda_qoldi/
-// moykada/xom_jonatilgan/olib_ketilgan are genuinely as-of-now stock,
-// correctly dateless — see DECISIONS.md "Hisobot: Moyka rows, direction
-// split, serial-state columns".
+// xom_jonatilgan/olib_ketilgan are genuinely as-of-now stock, correctly
+// dateless — see DECISIONS.md "Hisobot: Moyka rows, direction split,
+// serial-state columns".
 //
 // 2026-09-14 (see docs/decisions/0185-...-hisobot-row-column-model-
 // correction-ii.md): re-applies 97f5444 — moykaga_yuborilgan/
@@ -81,9 +81,15 @@ const MOVEMENT_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = 
 // column keys, separate chips, default-hidden) are the reconciliation
 // figures, not a second view of the same metric.
 //
-// yoqotish stays OUT of this map — still lifetime-only, explicitly out of
-// scope for this range-scoping pass (see reportColumns.ts), so its
-// double-counting risk is unchanged and its chip stays removed.
+// 2026-09-14 (later same day, see docs/decisions/0186-...-moykada-yoqotish-
+// period-scoping.md): moykada is now AS-OF-PERIOD-END (kirim_line_moyka_
+// asof), not as-of-now — same chip, same "Moykada" label, just a different
+// point in time under the hood; see reportColumns.ts for why summing it
+// once per distinct serial is still the right basis. yoqotish's chip is
+// RESTORED (was removed, 'none') now that its column is period-attributed
+// (kirim_line_loss_range) instead of lifetime — confirmed additive: a
+// serial's loss is recognized in exactly one period and blank everywhere
+// else, so per-period sums and a combined-range sum agree by construction.
 const STATE_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = {
   qabul_qilingan: (t) => [{ label: 'Qabul qilingan', value: t.stateQabulQilingan }],
   omborda_qoldi: (t) => [{ label: 'Omborda qoldi', value: t.stateOmbordaQoldi }],
@@ -92,6 +98,11 @@ const STATE_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = {
   moykadan_chiqgan_jami: (t) => [{ label: 'Moykadan chiqgan (jami)', value: t.stateMoykadanChiqganLifetime }],
   xom_jonatilgan: (t) => [{ label: "Xom holda jo'natilgan", value: t.stateXomJonatilgan }],
   olib_ketilgan: (t) => [{ label: 'Olib ketilgan', value: t.stateOlibKetilgan }],
+  // Yo'qotish (2026-08-31, restored 2026-09-14) -- BOOKED loss only: a
+  // serial still in the wash, or closed in a different period than the one
+  // being viewed, contributes nothing (blank/null, not zero), so this chip
+  // and the Moykada chip never double-count the same kilograms.
+  yoqotish: (t) => [{ label: "Yo'qotish (yakunlangan)", value: t.stateYoqotish, loss: true }],
   // Output-by-kalibr (2026-08-29) -- each column its own chip, same group;
   // KN deliberately its own entry, never folded into the K1-K8 sums.
   k1: (t) => [{ label: 'K1', value: t.stateK1 }],

@@ -178,14 +178,19 @@ function ClientTotalsStrip({ totals }: { totals: ReportTotals }) {
   // has no column picker (fixed 27-column list), and the Qabul qilingan
   // identity check is an internal reconciliation tool a client has no need
   // to verify; Hisobot carries the twins (default-hidden) for that.
-  // Yo'qotish stays out -- still lifetime-only, unchanged double-counting
-  // risk, same as Hisobot.
+  //
+  // 2026-09-14 (later same day, see docs/decisions/0186-...-moykada-
+  // yoqotish-period-scoping.md): moykada is now AS-OF-PERIOD-END, same chip,
+  // mirroring Hisobot. Yo'qotish restored here too -- period-attributed now
+  // (blank outside its closing period), confirmed additive, same reasoning
+  // as Hisobot's own TotalsStrip.tsx.
   const stateChips: TotalChip[] = [
     { label: clientLabel('col.qabul_qilingan'), value: totals.stateQabulQilingan },
     { label: clientLabel('col.omborda_qoldi'), value: totals.stateOmbordaQoldi },
     { label: clientLabel('col.moykada'), value: totals.stateMoykada },
     { label: clientLabel('col.xom_jonatilgan'), value: totals.stateXomJonatilgan },
     { label: clientLabel('col.olib_ketilgan'), value: totals.stateOlibKetilgan },
+    { label: clientLabel('col.yoqotish'), value: totals.stateYoqotish, loss: true },
     { label: clientLabel('col.k1'), value: totals.stateK1 },
     { label: clientLabel('col.k2'), value: totals.stateK2 },
     { label: clientLabel('col.k3'), value: totals.stateK3 },

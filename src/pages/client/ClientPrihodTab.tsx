@@ -121,17 +121,17 @@ function ClientKirimRowDetail({ row }: { row: KirimReportRow }) {
   )
 }
 
-// Totals strip — shows ALL of Rahbar's Hisobot totals for this filtered
-// period, both groups (movement + per-serial standing state), including
-// Yo'qotish, per explicit instruction — not just the ones tied to the 27
+// Totals strip — mirrors Rahbar's own Hisobot TotalsStrip.tsx group-by-group
+// (movement + per-serial standing state), not just the ones tied to the 27
 // visible table columns above (which omit Netto/Hisobiy, so those two get
-// their own chip here anyway, translated, since the task asked for every
-// total regardless of column visibility). Bespoke, not TotalsStrip.tsx: that
-// component's chip labels ('Kirim', 'Qabul qilingan', "Yo'qotish
-// (yakunlangan)", ...) are hardcoded Uzbek, which would break this screen's
-// Russian-only requirement (SPEC.md §3.6) if reused unmodified — same
-// row-detail/table divergence reasoning as ClientKirimRowDetail above. The
-// VALUES are the exact same report_totals fields Rahbar's own strip reads.
+// their own chip here anyway, translated). Bespoke, not TotalsStrip.tsx: that
+// component's chip labels ('Kirim', 'Qabul qilingan', ...) are hardcoded
+// Uzbek, which would break this screen's Russian-only requirement (SPEC.md
+// §3.6) if reused unmodified — same row-detail/table divergence reasoning as
+// ClientKirimRowDetail above. The VALUES are the exact same report_totals
+// fields Rahbar's own strip reads. 2026-09-14: the state group dropped its
+// moyka-flow/kalibr/Yo'qotish chips, same as the Hisobot original — see that
+// group's own comment below for why.
 interface TotalChip {
   label: string
   value: number
@@ -163,24 +163,20 @@ function ClientTotalsStrip({ totals }: { totals: ReportTotals }) {
     { label: `${clientLabel('col.moykadan_chiqgan')} (за период)`, value: totals.totalFromMoyka },
   ]
 
+  // 2026-09-14 (see DECISIONS.md "Hisobot row/column model correction"):
+  // dropped moykaga_yuborilgan/moykadan_chiqgan ("сейчас"), yoqotish, and
+  // k1-k8/kn from this group — same LIFETIME-summed-per-serial problem as
+  // Hisobot's own TotalsStrip.tsx (see that file's STATE_COLUMN_CHIPS
+  // comment), and "сейчас" was the wrong word regardless: these are
+  // as-of-now figures, not scoped to "За период" the way the label implied.
+  // The table's columns for these fields are unaffected — they still show
+  // each row's correct lifetime figure.
   const stateChips: TotalChip[] = [
     { label: clientLabel('col.qabul_qilingan'), value: totals.stateQabulQilingan },
     { label: clientLabel('col.omborda_qoldi'), value: totals.stateOmbordaQoldi },
-    { label: `${clientLabel('col.moykaga_yuborilgan')} (сейчас)`, value: totals.stateMoykagaYuborilgan },
     { label: clientLabel('col.moykada'), value: totals.stateMoykada },
-    { label: `${clientLabel('col.moykadan_chiqgan')} (сейчас)`, value: totals.stateMoykadanChiqgan },
-    { label: clientLabel('col.yoqotish'), value: totals.stateYoqotish, loss: true },
     { label: clientLabel('col.xom_jonatilgan'), value: totals.stateXomJonatilgan },
     { label: clientLabel('col.olib_ketilgan'), value: totals.stateOlibKetilgan },
-    { label: clientLabel('col.k1'), value: totals.stateK1 },
-    { label: clientLabel('col.k2'), value: totals.stateK2 },
-    { label: clientLabel('col.k3'), value: totals.stateK3 },
-    { label: clientLabel('col.k4'), value: totals.stateK4 },
-    { label: clientLabel('col.k5'), value: totals.stateK5 },
-    { label: clientLabel('col.k6'), value: totals.stateK6 },
-    { label: clientLabel('col.k7'), value: totals.stateK7 },
-    { label: clientLabel('col.k8'), value: totals.stateK8 },
-    { label: clientLabel('col.kn'), value: totals.stateKn },
   ]
 
   return (

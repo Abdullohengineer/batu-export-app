@@ -159,6 +159,10 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups, overri
       return row.state?.moykada ?? ''
     case 'moykadan_chiqgan':
       return row.state?.moykadanChiqgan ?? ''
+    case 'moykaga_yuborilgan_jami':
+      return row.state?.moykagaYuborilganLifetime ?? ''
+    case 'moykadan_chiqgan_jami':
+      return row.state?.moykadanChiqganLifetime ?? ''
     case 'xom_jonatilgan':
       return row.state?.xomJonatilgan ?? ''
     case 'olib_ketilgan':

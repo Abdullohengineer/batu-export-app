@@ -40,9 +40,17 @@ interface TotalChip {
 // ROWS. Moyka rows deliberately excluded from Netto's own Kirim/Chiqim/
 // Neto split (internal movement, never left the factory — approved
 // explicitly, see DECISIONS.md); moykaga_yuborilgan/moykadan_chiqgan get
-// their OWN movement chips instead, labelled "(davrda)" to stay distinct
-// from their same-named state-group twin below — two numbers under one
-// name is a support call waiting to happen, per explicit instruction.
+// their OWN movement chips instead, labelled "(davrda)".
+//
+// 2026-09-14: the state-group twin below is ALSO range-scoped now (was
+// lifetime) — see DECISIONS.md "Hisobot moyka flow columns range-scoped".
+// The two chips can still legitimately disagree (this one sums by FILTERED
+// ROW — e.g. zero under a KIRIM-only direction filter, since no moyka rows
+// pass that filter; the state one sums by DISTINCT SERIAL in the filtered
+// set regardless of direction filter), so both stay, but now share the
+// "(davrda)" word — disambiguated by "— seriya" on the state chip's label
+// and by the two chips' own group headers ("Harakatlar bo'yicha" vs.
+// "Seriyalar bo'yicha").
 const MOVEMENT_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = {
   netto: (t) => [
     { label: 'Kirim', value: t.kgIn },
@@ -59,20 +67,31 @@ const MOVEMENT_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = 
   moykadan_chiqgan: (t) => [{ label: 'Moykadan chiqgan (davrda)', value: t.totalFromMoyka }],
 }
 
-// STATE_COLUMN_CHIPS (2026-08-15) — a serial's own as-of-now standing
-// balance, summed once per DISTINCT serial (never per row — "the trap").
-// Every one of these is genuinely a different question from its
-// MOVEMENT-group counterpart, not just a differently-scoped version of the
-// same number — see DECISIONS.md "Hisobot: Moyka rows, direction split,
-// serial-state columns" for why moykaga_yuborilgan/moykadan_chiqgan in
-// particular are EXPECTED to disagree with their movement chip once real
-// data exercises the difference.
+// STATE_COLUMN_CHIPS (2026-08-15) — summed once per DISTINCT serial in the
+// filtered set (never per row — "the trap"). qabul_qilingan/omborda_qoldi/
+// moykada/xom_jonatilgan/olib_ketilgan are genuinely as-of-now stock,
+// correctly dateless — see DECISIONS.md "Hisobot: Moyka rows, direction
+// split, serial-state columns".
+//
+// moykaga_yuborilgan/moykadan_chiqgan/k1-kn (2026-09-14): RANGE-SCOPED now,
+// not lifetime — see DECISIONS.md "Hisobot moyka flow columns range-scoped".
+// Relabelled from "(joriy)" to "— seriya (davrda)": "current" was accurate
+// when these were lifetime figures, it is not any more. "— seriya"
+// disambiguates from the movement group's own "(davrda)" chip above (same
+// word, different summing basis — see that chip's comment) without
+// repeating this group's own "Seriyalar bo'yicha" header verbatim on every
+// chip. Their pre-fix lifetime values are still available via the
+// moykaga_yuborilgan_jami/moykadan_chiqgan_jami chips below, for checking
+// the Qabul qilingan identity and the Moyka-internal identity (Moykaga
+// yuborilgan (jami) = Moykadan chiqgan (jami) + Moykada + Yo'qotish).
 const STATE_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = {
   qabul_qilingan: (t) => [{ label: 'Qabul qilingan', value: t.stateQabulQilingan }],
   omborda_qoldi: (t) => [{ label: 'Omborda qoldi', value: t.stateOmbordaQoldi }],
-  moykaga_yuborilgan: (t) => [{ label: 'Moykaga yuborilgan (joriy)', value: t.stateMoykagaYuborilgan }],
+  moykaga_yuborilgan: (t) => [{ label: 'Moykaga yuborilgan — seriya (davrda)', value: t.stateMoykagaYuborilgan }],
+  moykaga_yuborilgan_jami: (t) => [{ label: 'Moykaga yuborilgan (jami)', value: t.stateMoykagaYuborilganLifetime }],
   moykada: (t) => [{ label: 'Moykada', value: t.stateMoykada }],
-  moykadan_chiqgan: (t) => [{ label: 'Moykadan chiqgan (joriy)', value: t.stateMoykadanChiqgan }],
+  moykadan_chiqgan: (t) => [{ label: 'Moykadan chiqgan — seriya (davrda)', value: t.stateMoykadanChiqgan }],
+  moykadan_chiqgan_jami: (t) => [{ label: 'Moykadan chiqgan (jami)', value: t.stateMoykadanChiqganLifetime }],
   xom_jonatilgan: (t) => [{ label: "Xom holda jo'natilgan", value: t.stateXomJonatilgan }],
   olib_ketilgan: (t) => [{ label: 'Olib ketilgan', value: t.stateOlibKetilgan }],
   // Yo'qotish (2026-08-31) -- BOOKED loss only: a serial still in the wash

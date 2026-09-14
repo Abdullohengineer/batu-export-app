@@ -108,9 +108,9 @@ export function defaultReportFilters(from: string, to: string): ReportFilters {
 export type DateBasisSource = 'gate_stage1' | 'order_date' | 'gate_stage2' | 'sent_date' | 'received_date' | null
 
 // A serial's own standing balance (2026-08-15). qabulQilingan/ombordaQoldi/
-// moykada/xomJonatilgan/olibKetilgan are genuinely as-of-now, never clipped
-// to the report's date filter — clipping those would break the identity
-// Qabul qilingan = Omborda qoldi + Moykaga yuborilgan + Xom holda jo'natilgan.
+// xomJonatilgan/olibKetilgan are genuinely as-of-now, never clipped to the
+// report's date filter — clipping those would break the identity Qabul
+// qilingan = Omborda qoldi + Moykaga yuborilgan + Xom holda jo'natilgan.
 //
 // moykagaYuborilgan/moykadanChiqgan/k1..kn (2026-09-14, range-scoped moyka
 // flow columns, re-applying 97f5444 — see docs/decisions/0185-...) ARE
@@ -119,11 +119,23 @@ export type DateBasisSource = 'gate_stage1' | 'order_date' | 'gate_stage2' | 'se
 // Moykadan chiqgan + Moykada + Yo'qotish") are carried separately as
 // moykagaYuborilganLifetime/moykadanChiqganLifetime.
 //
+// moykada (2026-09-14, later same day — see docs/decisions/0186-...-
+// moykada-yoqotish-period-scoping.md) is AS-OF-PERIOD-END
+// (kirim_line_moyka_asof, gated by p_to), not as-of-now any more — the
+// in-moyka balance at the close of the report's own date range. A closed
+// cycle always reads 0 here regardless of p_to.
+//
 // "Yo'qotish" was excluded here from 2026-08-15 to 2026-08-31 on the
 // grounds that "no canonical per-serial loss-in-kg figure exists yet."
 // Migration 0101 (Yakunlash, 2026-08-29) created one — client_serial_loss_kg
-// — so the field is now carried; see `yoqotish` below. Still lifetime-only
-// (no range-scoped twin) as of 2026-09-14 — a separate, later task.
+// — so the field is now carried; see `yoqotish` below. 2026-09-14 (later
+// same day): PERIOD-ATTRIBUTED (kirim_line_loss_range) instead of lifetime
+// — non-null only in the period wash_cycles.closed_at falls in, null in
+// every other period. Together with moykada's own change above, this
+// closes the invariant gap: a row's Moykada and Yo'qotish are never both
+// nonzero/non-blank at once (see the decision doc for the live-caught
+// counterexample an earlier draft of this fix produced by omitting
+// moykada's closed-cycle override).
 export interface SerialState {
   qabulQilingan: number
   ombordaQoldi: number
@@ -402,6 +414,10 @@ export interface ReportTotals {
   stateQabulQilingan: number
   stateOmbordaQoldi: number
   stateMoykagaYuborilgan: number
+  // AS-OF-PERIOD-END (2026-09-14, later same day than the note above — see
+  // docs/decisions/0186-...-moykada-yoqotish-period-scoping.md), not
+  // as-of-now: summed once per distinct serial, each serial's own in-moyka
+  // balance at the close of THIS report's p_to (kirim_line_moyka_asof).
   stateMoykada: number
   stateMoykadanChiqgan: number
   // Lifetime twins (2026-09-14) of the two above, now that they're range-scoped.
@@ -409,10 +425,13 @@ export interface ReportTotals {
   stateMoykadanChiqganLifetime: number
   stateXomJonatilgan: number
   stateOlibKetilgan: number
-  // Realized wash loss (2026-08-31) — summed once per distinct serial on the
-  // same basis as the 7 above. Open serials contribute nothing (SQL's sum()
-  // skips their NULL), so this is total BOOKED loss for the filtered set,
-  // never a to-date guess at serials still in the wash.
+  // Realized wash loss — summed once per distinct serial on the same basis
+  // as the 7 above. 2026-09-14 (later same day): PERIOD-ATTRIBUTED, not
+  // lifetime — only serials whose wash cycle closed WITHIN this report's
+  // date range contribute (kirim_line_loss_range), so this is the loss
+  // recognized THIS period, additive across stacked periods; a serial
+  // still open, or closed in a different period, contributes nothing (SQL
+  // sum() skips its NULL either way).
   stateYoqotish: number
   // Output-by-kalibr totals (2026-08-29) -- same distinct-serial summing
   // basis as the 7 above, never the KN column folded into K1-K8's own sums.

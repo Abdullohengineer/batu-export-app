@@ -258,10 +258,6 @@ export function ReportTableRow({
         return <StateCell value={state?.moykada} />
       case 'moykadan_chiqgan':
         return <StateCell value={state?.moykadanChiqgan} />
-      case 'moykaga_yuborilgan_jami':
-        return <StateCell value={state?.moykagaYuborilganLifetime} />
-      case 'moykadan_chiqgan_jami':
-        return <StateCell value={state?.moykadanChiqganLifetime} />
       case 'xom_jonatilgan':
         return <StateCell value={state?.xomJonatilgan} />
       case 'olib_ketilgan':

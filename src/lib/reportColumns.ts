@@ -44,9 +44,6 @@ export interface ReportColumnDef {
   defaultVisible: boolean
   align?: 'right'
   totalBasis?: ReportColumnTotalBasis
-  // Hover tooltip on the <th> (ReportResultsTable.tsx) — used to flag a
-  // meaning change a reader might not expect from the label alone.
-  headerNote?: string
 }
 
 // Order here is display order, left to right. Defaults per the task spec:
@@ -98,39 +95,19 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // Ustunlar to see at all. Global default (this registry has no per-
   // direction notion of "visible"), same as every other column here — every
   // OTHER column's defaultVisible is unchanged by this migration.
-  //
-  // 2026-09-14: this column (and its chip, both "state"-basis and
-  // "movement"-basis) is now RANGE-SCOPED, not lifetime — see DECISIONS.md
-  // "Hisobot moyka flow columns range-scoped". The Qabul qilingan identity
-  // (Qabul qilingan = Omborda qoldi + Moykaga yuborilgan + Xom jo'natilgan)
-  // now needs "Moykaga yuborilgan (jami)" below, not this column.
-  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'both',
-    headerNote: "Davr bo'yicha. Balans tenglamasi (Qabul qilingan = Omborda qoldi + Moykaga yuborilgan + Xom jo'natilgan) uchun \"Moykaga yuborilgan (jami)\" ustunidan foydalaning." },
-  // Lifetime twin of the column above (2026-09-14) — see DECISIONS.md
-  // "Hisobot moyka flow columns range-scoped". Default-hidden, like every
-  // other state-only reconciliation column in this family; enable via the
-  // column picker to check the identity now that the plain column is
-  // range-scoped.
-  { key: 'moykaga_yuborilgan_jami', label: 'Moykaga yuborilgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'both' },
   { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // 'both': also a real per-row MOVEMENT total (report_totals.total_kg_from_moyka) — deliberately allowed to diverge from the state figure, see DECISIONS.md.
-  // 2026-09-14: range-scoped now too, same treatment and same caveat as
-  // moykaga_yuborilgan above — see its comment and "Moykadan chiqgan (jami)" below.
-  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'both',
-    headerNote: "Davr bo'yicha. \"Moykaga yuborilgan = Moykadan chiqgan + Moykada + Yo'qotish\" tenglamasi uchun \"Moykadan chiqgan (jami)\" ustunidan foydalaning." },
-  { key: 'moykadan_chiqgan_jami', label: 'Moykadan chiqgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'both' },
   // Yo'qotish (2026-08-31) — the per-serial REALIZED wash loss, booked only
   // once the serial is closed via Yakunlash (migration 0101's split; NULL,
   // rendered "—", while it is still open, because that gap is still
   // in-process and already shows under Moykada). Sits directly after
-  // Moykadan chiqgan because that is the subtraction it is: the identity is
-  // Moykaga yuborilgan (jami) = Moykadan chiqgan (jami) + Moykada +
-  // Yo'qotish (2026-09-14: the plain Moyka columns are range-scoped now, so
-  // the (jami) twins are the ones this identity actually closes against),
-  // and its value is sourced from the same basis those two are (see
-  // migration 0107) so the row can never fail that arithmetic on screen.
-  // Still lifetime-only, no range-scoped twin as of 2026-09-14 — see
-  // DECISIONS.md, a separate later task.
+  // Moykadan chiqgan because that is the subtraction it is: the four
+  // columns close as Moykaga yuborilgan = Moykadan chiqgan + Moykada +
+  // Yo'qotish, and its value is sourced from the same basis those two are
+  // (see migration 0107) so the row can never fail that arithmetic on
+  // screen.
   //
   // 🚩 The one state column that is default-VISIBLE, deliberately, against
   // this family's own "expandable via the column picker" precedent: it was
@@ -141,19 +118,14 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'olib_ketilgan', label: 'Olib ketilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // Output-by-kalibr (2026-08-15 pattern, added 2026-08-29 -- Prompt 6, see
   // DECISIONS.md "Hisobot: output-by-kalibr columns"): same per-serial
-  // summing shape as the 7 columns above (totalBasis: 'state' -- summed
-  // once per distinct serial, repeated on every row that serial owns), one
-  // column per kalibr K1-K8 in numeric order, then a separate KN column --
-  // never summed together (KN is a distinct product, not a 9th calibre).
-  // All default-hidden, same "expandable via the column picker" precedent
-  // as every other serial-state column in this family, to avoid
-  // overwhelming the default view with 9 more columns on top of the 8
-  // already default-visible.
-  //
-  // 2026-09-14: RANGE-SCOPED now (was lifetime total-ever-produced) — see
-  // DECISIONS.md "Hisobot moyka flow columns range-scoped". No lifetime
-  // twin per kalibr (not asked for; "Moykadan chiqgan (jami)" above already
-  // covers the aggregate check across all kalibrs combined).
+  // standing-total shape as the 7 columns above (totalBasis: 'state' -- a
+  // serial's own total-ever-produced-under-this-kalibr figure, repeated on
+  // every row that serial owns), one column per kalibr K1-K8 in numeric
+  // order, then a separate KN column -- never summed together (KN is a
+  // distinct product, not a 9th calibre). All default-hidden, same
+  // "expandable via the column picker" precedent as every other
+  // serial-state column in this family, to avoid overwhelming the default
+  // view with 9 more columns on top of the 8 already default-visible.
   { key: 'k1', label: 'K1, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'k2', label: 'K2, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'k3', label: 'K3, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },

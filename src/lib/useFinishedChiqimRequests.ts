@@ -173,7 +173,7 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
 // Single-request sibling of useFinishedChiqimRequests above, same three
 // tables/columns (CHIQIM_LINE_SELECT/GATE_WEIGHING_SELECT), scoped by id
 // instead of fetched in bulk. Built for the Hisobot old-KN passport
-// drill-down (ChiqimRequestDetail.tsx via OldKnRequestPassportModal.tsx) —
+// drill-down (ChiqimRequestDetail.tsx via ChiqimRequestPassportModal.tsx) —
 // a Hisobot row can be arbitrarily far back in history, so this fetches
 // exactly the one request rather than pulling every chiqim_requests row the
 // bulk hook above does for Menejer's own (small, current-session-scale) W2

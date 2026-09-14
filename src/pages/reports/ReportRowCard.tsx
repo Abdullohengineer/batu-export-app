@@ -25,7 +25,7 @@ export function ReportRowCard({
   calibreLabel,
   truckType,
   onOpenPassport,
-  onOpenOldKnRequest,
+  onOpenChiqimRequest,
 }: {
   row: ReportRow
   expanded: boolean
@@ -39,7 +39,7 @@ export function ReportRowCard({
   // that hazard).
   truckType: (requestId: string) => string
   onOpenPassport: (serial: string) => void
-  onOpenOldKnRequest: (requestId: string) => void
+  onOpenChiqimRequest: (requestId: string) => void
 }) {
   const qty = row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg
 
@@ -100,7 +100,7 @@ export function ReportRowCard({
               typeName={typeName}
               calibreLabel={calibreLabel}
               onOpenPassport={onOpenPassport}
-              onOpenOldKnRequest={onOpenOldKnRequest}
+              onOpenChiqimRequest={onOpenChiqimRequest}
             />
           )}
         </div>

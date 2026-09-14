@@ -5,18 +5,27 @@ import { useOldKnCollectionsByRequest } from '../../lib/useOldKnCollectionsByReq
 import { useProfileNames } from '../../lib/useProfileNames'
 import { ChiqimRequestDetail } from '../../components/ChiqimRequestDetail'
 
-// Hisobot's eski-KN (old Konditirskiy) CHIQIM row-expand only ever showed
-// the collected kg (OldKnRowDetail.tsx) — every other field the request
-// actually carries (Menejer/Ombor/Qorovul actors+times, gate photos) was
-// already fully built and rendered, just on a DIFFERENT screen (Menejer's
-// own "Yuborilgan CHIQIM so'rovlari" — FinishedChiqimList.tsx). Rather than
-// invent a new query, this modal is the exact same ChiqimRequestDetail body,
-// fed by a request-scoped fetch (useChiqimRequestById) instead of Menejer's
-// bulk one — the "passport" §3.2.5 already established for a KIRIM/CHIQIM
-// row's parent SERIAL doesn't apply here (old-KN has no serial, per Stage 1
-// design — see CLAUDE.md/DECISIONS.md "Opening stock"), so this is scoped
-// to the request itself, the only real "parent" an old-KN collection has.
-export function OldKnRequestPassportModal({
+// Hisobot's own "everything about this CHIQIM request" drill-down —
+// Menejer/Ombor/Qorovul actors+times, gate photos, and full cargo
+// composition, all of which was already fully built and rendered, just on
+// a DIFFERENT screen (Menejer's own "Yuborilgan CHIQIM so'rovlari" —
+// FinishedChiqimList.tsx). Rather than invent a new query, this modal is
+// the exact same ChiqimRequestDetail body, fed by a request-scoped fetch
+// (useChiqimRequestById) instead of Menejer's bulk one.
+//
+// Originally built 2026-09-14 (as OldKnRequestPassportModal, renamed
+// 2026-09-15) for old-KN's own drill-down only — old-KN has no serial, per
+// Stage 1 design (see CLAUDE.md/DECISIONS.md "Opening stock"), so it can't
+// use the §3.2.5 serial-passport pattern a KIRIM/CHIQIM row's parent
+// SERIAL gets. Widened 2026-09-15 (see docs/decisions/0189-...-chiqim-
+// dispatch-full-detail-and-kalibr-breakdown.md) to be every CHIQIM
+// dispatch line's own "So'rov tafsilotlarini ko'rish" button
+// (ChiqimDispatchRowDetail.tsx), not just old-KN's — that button was
+// gated behind "this request has old-KN cargo" at ship time, which meant
+// the common case (a pure-pallet or pure-raw fura dispatch) had no way to
+// reach its own photos/actor timestamps at all. Regression, not a design
+// choice; the fix is this modal becoming unconditional, not a new one.
+export function ChiqimRequestPassportModal({
   requestId,
   onClose,
   typeName,

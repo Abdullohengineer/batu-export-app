@@ -275,6 +275,31 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'k7', label: 'K7, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'k8', label: 'K8, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'kn', label: 'KN, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  // Dispatch-grain kalibr breakdown (2026-09-15, see docs/decisions/0189-
+  // ...-chiqim-dispatch-full-detail-and-kalibr-breakdown.md) — what THIS
+  // CHIQIM dispatch line physically carried, per kalibr (pallet component
+  // only; a chiqim_dispatch is the only row kind that ever populates
+  // these). Deliberately SEPARATE keys from k1-kn above, not a reuse: the
+  // two are different metrics at different grains (a SERIAL's own
+  // wash-output composition vs. what one TRUCK carried), and putting both
+  // under one "K4" label/chip would be the exact confusion already
+  // rejected for moykaga_yuborilgan (see ReportColumnTotalBasis above) —
+  // two numbers meaning different things under one name is a support call
+  // waiting to happen. Null (not 0) when the dispatch carried none of that
+  // kalibr, computed SQL-side (chiqim_dispatch_calibre_breakdown, nullif).
+  // totalBasis 'none' — no strip chip for v1, by explicit decision (same
+  // collision risk as the label above; the columns cover the need without
+  // it). All default-hidden, same "expandable via the column picker"
+  // precedent as every other column in this family.
+  { key: 'dispatch_k1', label: "K1 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k2', label: "K2 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k3', label: "K3 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k4', label: "K4 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k5', label: "K5 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k6', label: "K6 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k7', label: "K7 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k8', label: "K8 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_kn', label: "KN (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
 ]
 
 export function defaultVisibleColumnKeys(): Set<string> {

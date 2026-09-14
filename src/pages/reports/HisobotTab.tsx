@@ -15,7 +15,7 @@ import { dateBasisLabel, defaultReportFilters, type PalletStatusFilter } from '.
 import { REPORT_COLUMNS, defaultVisibleColumnKeys } from '../../lib/reportColumns'
 import { ReportResultsTable } from './ReportResultsTable'
 import { SerialPassportModal } from './SerialPassportModal'
-import { OldKnRequestPassportModal } from './OldKnRequestPassportModal'
+import { ChiqimRequestPassportModal } from './ChiqimRequestPassportModal'
 import { Button } from '../../components/ui/Button'
 import { StatusNote } from '../../components/ui/StatusNote'
 
@@ -58,11 +58,16 @@ export function HisobotTab() {
   // KIRIM or CHIQIM, always resolving to that row's PARENT serial (see
   // KirimRowDetail.tsx/ChiqimRowDetail.tsx). Not a route; local modal state.
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
-  // Eski KN (old Konditirskiy) has no serial, so it can't use the drill-down
-  // above -- its own passport-style drill-down is scoped to the CHIQIM
-  // request itself instead. See OldKnRowDetail.tsx's trigger button and
-  // OldKnRequestPassportModal.tsx.
-  const [oldKnRequestId, setOldKnRequestId] = useState<string | null>(null)
+  // Every CHIQIM dispatch line's own "So'rov tafsilotlarini ko'rish" button
+  // (ChiqimDispatchRowDetail.tsx, unconditional since 2026-09-15 -- see
+  // docs/decisions/0189-...-chiqim-dispatch-full-detail-and-kalibr-
+  // breakdown.md) opens this: the full request passport (Menejer/Ombor/
+  // Qorovul actors+times, gate photos, cargo composition). Originally built
+  // 2026-09-14 for old-KN's own drill-down only (old-KN has no serial, so
+  // it can't use the §3.2.5 serial-passport pattern above) -- widened to
+  // every dispatch line, not just old-KN's, so the name/state below no
+  // longer say "old KN."
+  const [chiqimRequestId, setChiqimRequestId] = useState<string | null>(null)
 
   // §3.3: includeInactive=true -- resolves ids on historical rows, and the
   // filter bar (ReportFilterBar, below) must still be able to select a
@@ -228,7 +233,7 @@ export function HisobotTab() {
             calibreLabel={calibreLabel}
             truckType={truckType}
             onOpenPassport={setPassportSerial}
-            onOpenOldKnRequest={setOldKnRequestId}
+            onOpenChiqimRequest={setChiqimRequestId}
           />
         </HistoryView>
 
@@ -243,10 +248,10 @@ export function HisobotTab() {
           </ErrorBoundary>
         )}
 
-        {oldKnRequestId && (
-          <OldKnRequestPassportModal
-            requestId={oldKnRequestId}
-            onClose={() => setOldKnRequestId(null)}
+        {chiqimRequestId && (
+          <ChiqimRequestPassportModal
+            requestId={chiqimRequestId}
+            onClose={() => setChiqimRequestId(null)}
             typeName={typeName}
             calibreLabel={calibreLabel}
           />

@@ -33,9 +33,11 @@ function lineLabel(line: FinishedChiqimLine, calibreLabel: (id: string) => strin
 // The full "everything about this CHIQIM request" body — extracted out of
 // FinishedChiqimList.tsx (Menejer's own W2 receipt view) so the identical
 // Menejer/Ombor/Qorovul actor+time+photo blocks and line list can be reused
-// unchanged from OldKnRequestPassportModal.tsx (Hisobot's eski-KN
-// drill-down) instead of being rebuilt — this WAS already "all info", it
-// just had nowhere else to render. FinishedChiqimList.tsx keeps its own
+// unchanged from ChiqimRequestPassportModal.tsx (Hisobot's own request
+// passport, reused by every CHIQIM dispatch line's expand panel — not
+// just old-KN's original drill-down, see that file's own header comment)
+// instead of being rebuilt — this WAS already "all info", it just had
+// nowhere else to render. FinishedChiqimList.tsx keeps its own
 // Tahrirlash/Bekor qilish actions, which are Menejer-specific write
 // affordances that don't belong in a read-only Hisobot passport.
 export function ChiqimRequestDetail({

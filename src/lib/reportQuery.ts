@@ -290,6 +290,24 @@ export interface ChiqimDispatchReportRow {
   dateBasis: string | null // chiqim_departed_at -- null excluded upstream (report_dispatch_rows_v2 requires it), kept nullable for type safety
   palletStatus: null // components can carry mixed statuses -- inapplicable at this grain
   state: null // no single serial at dispatch grain -- genuinely inapplicable, not a missing value
+  // Dispatch-grain kalibr breakdown (2026-09-15, chiqim_dispatch_calibre_
+  // breakdown -- see docs/decisions/0189-...-chiqim-dispatch-full-detail-
+  // and-kalibr-breakdown.md) -- what THIS dispatch physically carried, per
+  // kalibr, pallet component only (raw/old-KN have no calibre). Null, not
+  // 0, when the dispatch carried none of that kalibr -- same distinction
+  // SerialState's own k1-kn make, but a DIFFERENT metric at a DIFFERENT
+  // grain (a serial's own lifetime/period wash-output, vs this one truck's
+  // cargo) -- deliberately not reusing SerialState's fields/column keys,
+  // see reportColumns.ts.
+  dispatchK1: number | null
+  dispatchK2: number | null
+  dispatchK3: number | null
+  dispatchK4: number | null
+  dispatchK5: number | null
+  dispatchK6: number | null
+  dispatchK7: number | null
+  dispatchK8: number | null
+  dispatchKn: number | null
 }
 
 // MOYKAGA (2026-08-15) — one moyka_sends entry, dated by sent_date.
@@ -560,6 +578,20 @@ export interface ReportDbRow {
   state_k7?: number | string | null
   state_k8?: number | string | null
   state_kn?: number | string | null
+  // Dispatch-grain kalibr breakdown (2026-09-15, chiqim_dispatch_calibre_
+  // breakdown) -- see ChiqimDispatchReportRow's own comment for what these
+  // are and why they're separate from state_k1-kn above. Optional, same
+  // reason as the state_* columns: never present on fetchVoidedBarcodeMatch's
+  // bare report_chiqim_rows read, only on report_query_page's wire shape.
+  dispatch_k1?: number | string | null
+  dispatch_k2?: number | string | null
+  dispatch_k3?: number | string | null
+  dispatch_k4?: number | string | null
+  dispatch_k5?: number | string | null
+  dispatch_k6?: number | string | null
+  dispatch_k7?: number | string | null
+  dispatch_k8?: number | string | null
+  dispatch_kn?: number | string | null
 }
 
 function num(v: number | string | null | undefined): number | null {
@@ -641,6 +673,15 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
       dateBasis: row.date_basis,
       palletStatus: null,
       state: null, // no single serial at dispatch grain, genuinely inapplicable — see ChiqimDispatchReportRow's own comment
+      dispatchK1: num(row.dispatch_k1),
+      dispatchK2: num(row.dispatch_k2),
+      dispatchK3: num(row.dispatch_k3),
+      dispatchK4: num(row.dispatch_k4),
+      dispatchK5: num(row.dispatch_k5),
+      dispatchK6: num(row.dispatch_k6),
+      dispatchK7: num(row.dispatch_k7),
+      dispatchK8: num(row.dispatch_k8),
+      dispatchKn: num(row.dispatch_kn),
     }
   }
 

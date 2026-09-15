@@ -289,17 +289,29 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // kalibr, computed SQL-side (chiqim_dispatch_calibre_breakdown, nullif).
   // totalBasis 'none' — no strip chip for v1, by explicit decision (same
   // collision risk as the label above; the columns cover the need without
-  // it). All default-hidden, same "expandable via the column picker"
-  // precedent as every other column in this family.
-  { key: 'dispatch_k1', label: "K1 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k2', label: "K2 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k3', label: "K3 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k4', label: "K4 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k5', label: "K5 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k6', label: "K6 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k7', label: "K7 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k8', label: "K8 (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_kn', label: "KN (jo'natma), kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'none' },
+  // it).
+  //
+  // 2026-09-15 (later same day): default-VISIBLE, against this family's own
+  // "expandable via the column picker" precedent — same reasoning as
+  // Moykaga yuborilgan/Yo'qotish above. Shipped default-hidden in 0189, but
+  // that left the one thing a CHIQIM-movements viewer actually asked for
+  // ("what caliber did the dispatched goods carry") invisible unless they
+  // knew to open Ustunlar AND pick these nine over the pre-existing,
+  // identically-numbered k1-kn (which stay correctly blank on a
+  // chiqim_dispatch row — see that block's own comment). Confirmed live
+  // against project qohoqbapevrcjqxbstxi that the underlying columns
+  // already compute correctly (report_query_page's dispatch_k1..dispatch_kn,
+  // matching the exact per-request totals reported as "0/empty" — the data
+  // was never wrong, it just weren't on screen).
+  { key: 'dispatch_k1', label: "K1 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k2', label: "K2 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k3', label: "K3 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k4', label: "K4 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k5', label: "K5 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k6', label: "K6 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k7', label: "K7 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k8', label: "K8 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_kn', label: "KN (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
 ]
 
 export function defaultVisibleColumnKeys(): Set<string> {

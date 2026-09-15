@@ -48,6 +48,7 @@ export function ChiqimRequestDetail({
   typeName,
   calibreLabel,
   actorName,
+  onOpenPassport,
 }: {
   request: FinishedChiqimRequest
   manifestLines: ManifestLine[]
@@ -56,6 +57,12 @@ export function ChiqimRequestDetail({
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
   actorName: (id: string | null) => string
+  // Per-pallet seriya drill-down (2026-09-15 follow-up to 0189's Regression
+  // 2) -- optional because FinishedChiqimList.tsx (Menejer's own "Yuborilgan
+  // CHIQIM so'rovlari") has no SerialPassportModal mounted to open; only
+  // ChiqimRequestPassportModal.tsx (Hisobot) passes it. Plain text, same as
+  // before, when omitted.
+  onOpenPassport?: (serial: string) => void
 }) {
   const w = request.weighing
   return (
@@ -142,7 +149,22 @@ export function ChiqimRequestDetail({
             {manifestLines.map((m) => (
               <li key={m.id} className="flex items-center justify-between text-xs">
                 <span className="font-mono text-slate-600 dark:text-slate-400">
-                  {m.barcode2} · {typeName(m.type_id)} · {calibreLabel(m.calibre_id)}
+                  {m.barcode2} ·{' '}
+                  {onOpenPassport ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onOpenPassport(m.serial)
+                      }}
+                      className="underline hover:text-slate-900 dark:hover:text-slate-100"
+                    >
+                      {m.serial}
+                    </button>
+                  ) : (
+                    m.serial
+                  )}{' '}
+                  · {typeName(m.type_id)} · {calibreLabel(m.calibre_id)}
                 </span>
                 <span className="text-slate-600 dark:text-slate-400">{m.weight_kg.toLocaleString()} kg</span>
               </li>

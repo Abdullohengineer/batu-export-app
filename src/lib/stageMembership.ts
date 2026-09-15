@@ -27,6 +27,16 @@ export function hasRawRemainder(actualQty: number, sent: number): boolean {
 // silently keeping a closed serial receivable forever (same reasoning as
 // PartiyaBadge's required typeName, DECISIONS.md 2026-08-29 "Restore Ombor
 // Tayyor Window 2...").
+//
+// AMENDED 2026-09-15 (multi-wash support, see docs/decisions/0191): this
+// function's own logic is unchanged — the contract on its CALLERS
+// changed. `sent`/`received`/`closedAt` now mean "the serial's CURRENT
+// WASH's own figures" (the open wash if one exists, else the most
+// recently opened one — currentWash.ts), never the serial's lifetime
+// totals across every wash. Passing lifetime totals here again would
+// silently reintroduce the exact bug this migration fixed: a closed
+// wash's already-realized loss folded back into "still in Moyka" the
+// moment a later wash's new activity touched the same lifetime sum.
 export function isInMoyka(sent: number, received: number, closedAt: string | null): boolean {
   return closedAt === null && sent - received > 0
 }

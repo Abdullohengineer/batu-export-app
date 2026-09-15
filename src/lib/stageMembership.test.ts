@@ -24,6 +24,13 @@ test('hasRawRemainder: over-sent (should be blocked at the write path, but must 
 // balance (sent > received) AND not closed. No manual close event existed
 // at all until Yakunlash (2026-08-29, Prompt 10, see DECISIONS.md "Serial
 // close-out") reintroduced one — closedAt is now a required third param.
+//
+// AMENDED 2026-09-15 (multi-wash support, see docs/decisions/0191): these
+// cases still exercise the pure function correctly — its logic is
+// unchanged. In production the (sent, received, closedAt) triple now
+// comes from a serial's CURRENT WASH specifically (useMoykaOutput.ts),
+// not its lifetime totals; that's a caller-side contract, not something
+// this pure-function test suite needs to model.
 test('isInMoyka: never sent is not in Moyka', () => {
   assert.equal(isInMoyka(0, 0, null), false)
 })
@@ -76,4 +83,20 @@ test('fully packed and no raw remainder: neither predicate holds — left both p
   const sent = 5000
   assert.equal(hasRawRemainder(actualQty, sent), false)
   assert.equal(isInMoyka(sent, sent, null), false)
+})
+
+// The exact regression this migration exists to fix (docs/decisions/0191,
+// the P1/P2/P4 report): wash 1 closed with a small realized loss: 50 kg on
+// a 2320 kg send against 2270 kg received. A genuinely new wash 2 later
+// sends 92 kg, nothing received yet. Called with wash 1's own numbers,
+// isInMoyka correctly says "not in Moyka" (it's closed) — that was never
+// the bug. Called with wash 2's own numbers (what useMoykaOutput.ts must
+// now pass, not the serial's lifetime sent/received), it correctly says
+// "in Moyka." The bug was never in this function; it was every caller
+// mixing lifetime totals into a single-wash-shaped answer.
+test('multi-wash: wash 1 closed (not in Moyka) and wash 2 open (in Moyka) read independently', () => {
+  const wash1 = { sent: 2320, received: 2270, closedAt: '2026-08-29T10:10:42.343Z' }
+  const wash2 = { sent: 92, received: 0, closedAt: null as string | null }
+  assert.equal(isInMoyka(wash1.sent, wash1.received, wash1.closedAt), false)
+  assert.equal(isInMoyka(wash2.sent, wash2.received, wash2.closedAt), true)
 })

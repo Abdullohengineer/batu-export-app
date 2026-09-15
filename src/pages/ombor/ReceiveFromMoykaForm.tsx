@@ -74,6 +74,7 @@ export function ReceiveFromMoykaForm({
                 weight_kg: values.weightKg,
                 received_date: todayInTashkent(),
                 created_at: new Date().toISOString(),
+                wash_no: prev.washNo,
               },
             ],
             barcodeSeqByCalibre: {

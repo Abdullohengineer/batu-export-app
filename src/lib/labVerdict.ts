@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { currentWashBySerial } from './currentWash'
 
 export type LabGateStatus = 'passed' | 'failed' | 'untested'
 
@@ -13,11 +14,20 @@ export type LabGateStatus = 'passed' | 'failed' | 'untested'
 // Laborator hasn't tested it yet. Both read as 'untested', not 'passed' —
 // absence of a verdict must never default to available.
 //
-// wash_cycles is now exactly one row per serial (never one per cycle), but
-// lab_results.wash_cycle_id is still many-to-one against it — a reject
-// followed by a re-test is a NEW lab_results row against the SAME
-// wash_cycle_id, never a second wash_cycles row. "Current" is always the
-// LATEST such row by created_at.
+// AMENDED 2026-09-15 (multi-wash support, see docs/decisions/0191):
+// wash_cycles is one row per WASH of a serial now, not one row per
+// serial — a serial can have a closed wash 1 and an open wash 2 at once.
+// lab_results.wash_cycle_id is still many-to-one against a single wash's
+// id — a reject followed by a re-test is a NEW lab_results row against
+// the SAME wash_cycle_id, never a second wash_cycles row. "Current" is
+// the OPEN wash (closed_at is null) if one exists — there is at most one,
+// by the DB's own partial unique index — else the most recently opened
+// one (max wash_no), for a fully-settled serial with nothing open.
+// Picking "whichever wash_cycles row the query happened to return last"
+// (the pre-multi-wash shape) was silently arbitrary the moment a second
+// row could exist at all — this bug shipped before it had a chance to
+// show up, caught while doing the multi-wash migration, not from a live
+// incident.
 //
 // Shared by useAvailableFinishedStock.ts (bulk, Menejer's feasibility
 // checker), OmborChiqimTab.tsx's scan-time check (single serial), and
@@ -29,8 +39,13 @@ export async function currentLabStatus(serials: string[]): Promise<Map<string, L
   const statusBySerial = new Map<string, LabGateStatus>()
   if (uniqueSerials.length === 0) return statusBySerial
 
-  const { data: cycles } = await supabase.from('wash_cycles').select('id, serial').in('serial', uniqueSerials)
-  const cycleIdBySerial = new Map((cycles ?? []).map((c) => [c.serial, c.id]))
+  const { data: cycles } = await supabase
+    .from('wash_cycles')
+    .select('id, serial, wash_no, closed_at')
+    .in('serial', uniqueSerials)
+
+  const currentCycleBySerial = currentWashBySerial(cycles ?? [])
+  const cycleIdBySerial = new Map([...currentCycleBySerial].map(([serial, c]) => [serial, c.id]))
 
   const cycleIds = [...cycleIdBySerial.values()]
   const { data: results } = cycleIds.length

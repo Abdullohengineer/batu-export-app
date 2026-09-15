@@ -4,6 +4,7 @@ import { jarayonda, ortiqcha } from './tayyorCompletion'
 import { sortByDateDesc, maxDate } from './sortByDate'
 import { isInMoyka } from './stageMembership'
 import { currentLabStatus, type LabGateStatus } from './labVerdict'
+import { currentWashBySerial } from './currentWash'
 
 export interface FinishedPallet {
   barcode2: string
@@ -17,6 +18,12 @@ export interface FinishedPallet {
   // nowhere else in this hook -- one more column on the same select, no
   // new read.
   created_at: string
+  // Multi-wash support (2026-09-15, see docs/decisions/0191): which wash
+  // produced this pallet. Null only for a pre-migration row that predates
+  // wash_no (backfilled to 1 in practice -- see 0124) or a Rezka pallet,
+  // neither of which this Moyka-scoped hook's serialList (built from
+  // moyka_sends alone) can actually surface.
+  wash_no: number | null
 }
 
 export interface OutputSerial {
@@ -32,23 +39,44 @@ export interface OutputSerial {
   // by OmborTayyorTab so every pallet packed out of it gets a note
   // recording its old-stock lineage.
   isMinted: boolean
-  closedAt: string | null // wash_cycles.closed_at (2026-08-29, Prompt 10 — see
-  // DECISIONS.md "Serial close-out (Yakunlash)"). null = still open (unrealized
-  // gap, Moykada); set = closed (realized, Yo'qotish). Drives isInMoyka's third
+  // Multi-wash support (2026-09-15, see docs/decisions/0191): which wash is
+  // "current" for this serial — the open one if any exists, else the most
+  // recently opened one (currentWashBySerial, same picker labVerdict.ts
+  // uses). handleReceipt (OmborTayyorTab.tsx) tags new finished_pallets
+  // rows with this.
+  washNo: number
+  closedAt: string | null // the CURRENT WASH's own closed_at (2026-08-29,
+  // Prompt 10 — see DECISIONS.md "Serial close-out (Yakunlash)", amended
+  // 2026-09-15 for multi-wash). null = still open (unrealized gap,
+  // Moykada); set = closed (realized, Yo'qotish). Drives isInMoyka's third
   // param and computeLossDisplay everywhere this hook's data reaches.
-  sent: number // Yuborilgan — Σ moyka_sends.qty_kg (derived)
-  received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void (derived).
-  // Deliberately still counts 'consumed' pallets (only 'bekor_qilindi' is skipped):
-  // status is a CURRENT-LOCATION field, not a did-this-happen field. A pallet later
-  // consumed into a re-wash was still genuinely produced by THIS serial, and its
-  // locked final_loss_pct must not move retroactively. Same reasoning as
-  // yield_rows.output, which likewise applies no status filter. See DECISIONS.md
-  // "Opening stock, Stage 3".
-  inProcess: number // Jarayonda — max(0, sent − received); never negative (see DECISIONS)
-  excess: number // Ortiqcha — max(0, received − sent); non-blocking overage flag
-  pallets: FinishedPallet[] // this serial's pallets
+  sent: number // Yuborilgan — Σ moyka_sends.qty_kg for the CURRENT WASH only (derived).
+  // AMENDED 2026-09-15: was the serial's lifetime total across every wash.
+  // A closed wash's own gap is realized loss, already reported — folding a
+  // later wash's brand-new send into the same figure would have inflated
+  // "Jarayonda" with loss that already happened, the exact retroactive-
+  // corruption bug the whole multi-wash migration exists to fix (see
+  // docs/decisions/0191).
+  received: number // Qabul qilingan — Σ finished_pallets.weight_kg for the CURRENT WASH
+  // only, non-void (derived). Deliberately still counts 'consumed' pallets
+  // (only 'bekor_qilindi' is skipped): status is a CURRENT-LOCATION field,
+  // not a did-this-happen field. A pallet later consumed into a re-wash
+  // was still genuinely produced by THIS wash, and its locked loss must
+  // not move retroactively. Same reasoning as yield_rows.output, which
+  // likewise applies no status filter. See DECISIONS.md "Opening stock,
+  // Stage 3".
+  inProcess: number // Jarayonda — max(0, sent − received) for the current wash; never negative (see DECISIONS)
+  excess: number // Ortiqcha — max(0, received − sent) for the current wash; non-blocking overage flag
+  pallets: FinishedPallet[] // EVERY pallet this serial has ever produced,
+  // across every wash — deliberately LIFETIME-scoped, not current-wash-
+  // scoped, unlike sent/received/inProcess/excess above. This is Window
+  // 2's whole purpose (§5.3 "Qabul qilingan seriyalar" — browse everything
+  // ever received, regardless of live balance); each pallet's own wash_no
+  // says which wash produced it for display, if a consumer wants to badge
+  // that.
   lastActivityDate: string | null // max(last moyka_sends.sent_date, last finished_pallets.received_date)
   // — used to sort this list newest-first (DECISIONS "Universal sort rule").
+  // Lifetime-scoped like pallets (most recent activity of ANY wash).
   barcodeSeqByCalibre: Record<string, number> // count of every pallet ever made for this serial+calibre —
   // barcode2 is a permanent PK, so the next barcode's sequence number must never collide with a prior one.
 }
@@ -92,8 +120,10 @@ export function useMoykaOutput() {
     setLoading(true)
     try {
       const [{ data: sends }, { data: pallets }] = await Promise.all([
-        supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
-        supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, created_at, status'),
+        supabase.from('moyka_sends').select('serial, wash_no, qty_kg, sent_date'),
+        supabase
+          .from('finished_pallets')
+          .select('barcode2, serial, calibre_id, weight_kg, received_date, created_at, status, wash_no'),
       ])
 
       const serialList = [...new Set((sends ?? []).map((s) => s.serial))]
@@ -106,15 +136,30 @@ export function useMoykaOutput() {
 
       const labStatusBySerial = await currentLabStatus(serialList)
 
-      const sentBySerial = new Map<string, number>()
+      // Lifetime figures (every wash combined) -- used only for
+      // lastActivityDate below, which deliberately sorts on the most
+      // recent activity of ANY wash, not just the current one.
       const lastSentDateBySerial = new Map<string, string>()
       for (const s of sends ?? []) {
-        sentBySerial.set(s.serial, (sentBySerial.get(s.serial) ?? 0) + s.qty_kg)
         const prevSent = lastSentDateBySerial.get(s.serial)
         if (!prevSent || s.sent_date > prevSent) lastSentDateBySerial.set(s.serial, s.sent_date)
       }
 
+      // Current-wash-scoped sent, keyed by (serial, wash_no) -- see the
+      // OutputSerial.sent doc comment for why this replaced a plain
+      // per-serial lifetime sum.
+      const sentByWash = new Map<string, number>()
+      for (const s of sends ?? []) {
+        const key = `${s.serial}:${s.wash_no}`
+        sentByWash.set(key, (sentByWash.get(key) ?? 0) + s.qty_kg)
+      }
+
+      // pallets stays LIFETIME-scoped per serial (Window 2's own purpose —
+      // see FinishedPallet/OutputSerial.pallets doc comments); a separate
+      // per-(serial, wash_no) received map below feeds the current-wash
+      // `received` figure instead.
       const palletsBySerial = new Map<string, FinishedPallet[]>()
+      const receivedByWash = new Map<string, number>()
       for (const p of pallets ?? []) {
         if (p.status === 'bekor_qilindi') continue
         const list = palletsBySerial.get(p.serial) ?? []
@@ -124,15 +169,13 @@ export function useMoykaOutput() {
           weight_kg: p.weight_kg,
           received_date: p.received_date,
           created_at: p.created_at,
+          wash_no: p.wash_no,
         })
         palletsBySerial.set(p.serial, list)
-      }
-      const receivedBySerial = new Map<string, number>()
-      for (const [serial, serialPallets] of palletsBySerial) {
-        receivedBySerial.set(
-          serial,
-          serialPallets.reduce((sum, p) => sum + p.weight_kg, 0),
-        )
+        if (p.wash_no !== null) {
+          const key = `${p.serial}:${p.wash_no}`
+          receivedByWash.set(key, (receivedByWash.get(key) ?? 0) + p.weight_kg)
+        }
       }
 
       // Every pallet ever made for a (serial, calibre) — barcode2 is a
@@ -153,23 +196,27 @@ export function useMoykaOutput() {
       const [{ data: orders }, { data: types }, { data: cycles }] = await Promise.all([
         supabase.from('kirim_orders').select('order_id, owner_id, origin').in('order_id', orderIds),
         supabase.from('product_types').select('id, category_id'),
-        supabase.from('wash_cycles').select('serial, closed_at').in('serial', serialList),
+        supabase.from('wash_cycles').select('serial, wash_no, closed_at').in('serial', serialList),
       ])
 
       const lineBySerial = new Map((kLines ?? []).map((l) => [l.serial, l]))
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
       const categoryByType = new Map((types ?? []).map((t) => [t.id, t.category_id]))
-      const closedAtBySerial = new Map((cycles ?? []).map((c) => [c.serial, c.closed_at as string | null]))
+      // The current wash per serial (open one, else the highest wash_no) —
+      // see currentWash.ts. Drives washNo/closedAt/sent/received below.
+      const currentWashBySerialMap = currentWashBySerial(cycles ?? [])
 
       // Shared join/derivation for both windows — avoids fetching or
-      // computing sent/received/pallets twice for the same serial shape.
+      // computing pallets twice for the same serial shape.
       function baseRow(serial: string) {
         const line = lineBySerial.get(serial)
         if (!line) return null
         const order = orderById.get(line.order_id)
         if (!order) return null
-        const sent = sentBySerial.get(serial) ?? 0
-        const received = receivedBySerial.get(serial) ?? 0
+        const currentWash = currentWashBySerialMap.get(serial)
+        const washNo = currentWash?.wash_no ?? 1
+        const sent = sentByWash.get(`${serial}:${washNo}`) ?? 0
+        const received = receivedByWash.get(`${serial}:${washNo}`) ?? 0
         const serialPallets = palletsBySerial.get(serial) ?? []
         const lastReceivedDate = serialPallets.reduce<string | null>(
           (max, p) => (!max || p.received_date > max ? p.received_date : max),
@@ -181,7 +228,8 @@ export function useMoykaOutput() {
           partiyaNo: line.partiya_no,
           owner_id: order.owner_id,
           isMinted: order.origin === 'internal_reprocess',
-          closedAt: closedAtBySerial.get(serial) ?? null,
+          washNo,
+          closedAt: currentWash?.closed_at ?? null,
           sent,
           received,
           pallets: serialPallets,
@@ -208,6 +256,7 @@ export function useMoykaOutput() {
             partiyaNo: base.partiyaNo,
             owner_id: base.owner_id,
             isMinted: base.isMinted,
+            washNo: base.washNo,
             closedAt: base.closedAt,
             labStatus: labStatusBySerial.get(serial) ?? 'untested',
             sent: base.sent,
@@ -240,13 +289,18 @@ export function useMoykaOutput() {
 
   // Two filtered views of the one fetched/sorted set (2026-08-29, Prompt 9)
   // — see this hook's own header comment. `serials`: §5.3 Window 1's
-  // receive-picker membership, unchanged (isInMoyka). `receivedSerials`:
-  // §5.3's restored Window 2 — every serial that has ever received
-  // anything, balance irrelevant, so a fully-packed serial (received =
-  // sent, in-Moyka balance 0) stays visible for the record instead of
-  // disappearing the moment packing catches up.
+  // receive-picker membership — isInMoyka fed the current wash's own
+  // sent/received/closedAt (2026-09-15 amendment, see OutputSerial's doc
+  // comments). `receivedSerials`: §5.3's restored Window 2 — every serial
+  // that has EVER received anything, in ANY wash, balance irrelevant, so a
+  // fully-packed serial (current wash's received = sent, balance 0) stays
+  // visible for the record instead of disappearing the moment packing
+  // catches up. Filters on `pallets.length` (lifetime, every wash) rather
+  // than `received` (current-wash-only after the same amendment) —
+  // otherwise a serial whose current wash has 0 pallets so far, but whose
+  // earlier wash has plenty, would wrongly vanish from this history list.
   const serials = useMemo(() => allSerials.filter((s) => isInMoyka(s.sent, s.received, s.closedAt)), [allSerials])
-  const receivedSerials = useMemo(() => allSerials.filter((s) => s.received > 0), [allSerials])
+  const receivedSerials = useMemo(() => allSerials.filter((s) => s.pallets.length > 0), [allSerials])
 
   return { serials, receivedSerials, loading, refresh }
 }

@@ -85,17 +85,22 @@ export function OmborTayyorTab() {
   }
 
   // §5.3: one pallet per save → one finished_pallets row + its Barcode #2.
-  // Unchanged by the single-tile redesign — only the UI calling this
-  // changed (ReceiveFromMoykaForm.tsx now owns keeping its own form open
-  // across saves); this write logic stays byte-for-byte identical.
   //
   // The real hard gate is the RLS policy on this INSERT (see file header) —
   // if it somehow fires (a lab verdict flipping between render and submit),
   // this throws and FinishedReceiptForm's own error handling surfaces it.
+  // AMENDED 2026-09-15 (multi-wash support, see docs/decisions/0191): the
+  // policy now checks the INSERTED row's own wash_no against that wash's
+  // lab verdict, not just the serial's — wash_no must be set correctly
+  // here or every receipt against a multi-wash serial fails the gate.
+  // `serial` is an OutputSerial from useMoykaOutput's `serials` (the
+  // receive-picker's own membership, isInMoyka-filtered) — its washNo is
+  // already the current (open) wash this receipt belongs to.
   async function handleReceipt(serial: OutputSerial, values: ReceiptValues) {
     const { error } = await supabase.from('finished_pallets').insert({
       barcode2: values.barcode2,
       serial: serial.serial,
+      wash_no: serial.washNo,
       type_id: serial.type_id,
       calibre_id: values.calibreId,
       weight_kg: values.weightKg,

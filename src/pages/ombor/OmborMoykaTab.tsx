@@ -55,26 +55,38 @@ export function OmborMoykaTab() {
   }
 
   // §5.2: no new barcode on a send — Barcode #1 (Step 3) already identifies
-  // the serial and travels with it. This just records the event. Unchanged
-  // by the two-tile redesign — only the UI that calls this changed; the
-  // insert/upsert bodies are identical to before.
+  // the serial and travels with it. This just records the event.
   //
   // Laborator v2 (2026-07-28): this is also the moment a serial's
   // wash_cycles row is minted — CHIQIM lab testing is now enterable as soon
   // as material is sent to Moyka, so the row lab_results.wash_cycle_id needs
   // to point at must already exist by the time Laborator opens the test
-  // form. `on conflict do nothing` makes this safe to run on every send, not
-  // just the first. wash_cycles is lab-linkage-only now (DECISIONS.md "Moyka
+  // form.
+  //
+  // AMENDED 2026-09-15 (multi-wash support, see docs/decisions/0191): the
+  // raw `wash_cycles` upsert this used to do client-side (`on conflict
+  // (serial) do nothing`) broke outright once wash_cycles_serial_key was
+  // dropped — there's no longer a single-column unique for `onConflict:
+  // 'serial'` to target — and it couldn't have enforced the new-wash gate
+  // (wash N+1 only once wash N is closed and real raw remainder still
+  // exists) from the client anyway, since that needs a row lock and a real
+  // balance read. Both now live server-side in open_or_continue_wash: it
+  // reuses the currently open wash if one exists (the old upsert's common
+  // case), or opens wash_no+1 under the gate, or raises if the gate fails.
+  // wash_cycles is otherwise still lab-linkage-only (DECISIONS.md "Moyka
   // loss becomes live; remove Tugallash") — nothing ever writes 'final' to
-  // its status again, so this upsert's status value is otherwise inert.
+  // its status.
   async function handleSend(serial: MoykaSerial, qtyKg: number) {
-    const { error: cycleErr } = await supabase
-      .from('wash_cycles')
-      .upsert({ serial: serial.serial, status: 'active' }, { onConflict: 'serial', ignoreDuplicates: true })
-    if (cycleErr) throw cycleErr
+    const { data: washResult, error: washErr } = await supabase.rpc('open_or_continue_wash', {
+      p_serial: serial.serial,
+    })
+    if (washErr) throw washErr
+    const washNo = washResult?.[0]?.wash_no
+    if (washNo === undefined) throw new Error('open_or_continue_wash: kutilmagan javob')
 
     const { error } = await supabase.from('moyka_sends').insert({
       serial: serial.serial,
+      wash_no: washNo,
       sent_date: todayInTashkent(),
       qty_kg: qtyKg,
       created_by: profile?.id,

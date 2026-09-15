@@ -4,12 +4,21 @@ import { sortByDateDesc } from './sortByDate'
 
 // §5.5.3 Laborator CHIQIM (decisive check). Trigger changed (2026-07-28,
 // Laborator v2 — see DECISIONS.md "Lab moves inside Moyka, wash-cycle
-// concept removed"): a serial's wash_cycles row now exists as soon as it is
+// concept removed"): a wash_cycles row now exists as soon as material is
 // FIRST sent to Moyka (OmborMoykaTab.tsx's send action mints it, status
 // 'active'), not at Tugallash — CHIQIM lab testing is enterable immediately,
 // well before any pallet exists. There is nothing to sample a specific
-// pallet from anymore; "jami kg" here is the serial's total sent-to-Moyka
+// pallet from anymore; "jami kg" here is THIS WASH's total sent-to-Moyka
 // weight, not a pallet sum.
+//
+// AMENDED 2026-09-15 (multi-wash support, see docs/decisions/0191): a
+// serial can have more than one wash_cycles row now (one per wash of a
+// portion of it) — this loop already iterates per wash_cycles row, which
+// is correct as-is (each wash genuinely needs its own lab test/queue
+// entry). What needed fixing was sentKg/sentDate below, which used to be
+// looked up by serial alone — two washes of the same serial would both
+// have shown the SAME (wrong, whole-serial-lifetime) total instead of
+// each wash's own sent amount. Now keyed by (serial, wash_no).
 
 interface RawLabResult {
   id: string
@@ -102,8 +111,8 @@ export function useLaboratorChiqim() {
     setLoading(true)
     try {
       const [{ data: cycles }, { data: sends }] = await Promise.all([
-        supabase.from('wash_cycles').select('id, serial'),
-        supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
+        supabase.from('wash_cycles').select('id, serial, wash_no'),
+        supabase.from('moyka_sends').select('serial, wash_no, qty_kg, sent_date'),
       ])
       if (!cycles || cycles.length === 0) {
         if (requestIdRef.current === requestId) {
@@ -114,12 +123,14 @@ export function useLaboratorChiqim() {
         return
       }
 
-      const sentBySerial = new Map<string, number>()
-      const earliestSentDateBySerial = new Map<string, string>()
+      const washKey = (serial: string, washNo: number) => `${serial}:${washNo}`
+      const sentByWash = new Map<string, number>()
+      const earliestSentDateByWash = new Map<string, string>()
       for (const s of sends ?? []) {
-        sentBySerial.set(s.serial, (sentBySerial.get(s.serial) ?? 0) + s.qty_kg)
-        const prev = earliestSentDateBySerial.get(s.serial)
-        if (!prev || s.sent_date < prev) earliestSentDateBySerial.set(s.serial, s.sent_date)
+        const key = washKey(s.serial, s.wash_no)
+        sentByWash.set(key, (sentByWash.get(key) ?? 0) + s.qty_kg)
+        const prev = earliestSentDateByWash.get(key)
+        if (!prev || s.sent_date < prev) earliestSentDateByWash.set(key, s.sent_date)
       }
 
       const serials = [...new Set(cycles.map((c) => c.serial))]
@@ -197,8 +208,8 @@ export function useLaboratorChiqim() {
             target_moisture_pct: line.target_moisture_pct,
             target_so2_mg_kg: line.target_so2_mg_kg,
             is_sulfured: line.is_sulfured,
-            sentKg: sentBySerial.get(cycle.serial) ?? 0,
-            sentDate: earliestSentDateBySerial.get(cycle.serial) ?? '',
+            sentKg: sentByWash.get(washKey(cycle.serial, cycle.wash_no)) ?? 0,
+            sentDate: earliestSentDateByWash.get(washKey(cycle.serial, cycle.wash_no)) ?? '',
             rejected: !!result,
             kirimMoisturePct: kirimResult?.moisture_pct ?? null,
             kirimSo2MgKg: kirimResult?.so2_mg_kg ?? null,

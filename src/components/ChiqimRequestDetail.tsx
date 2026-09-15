@@ -81,27 +81,49 @@ export function ChiqimRequestDetail({
         </div>
       </div>
 
-      <div>
-        <div className="font-medium text-slate-700 dark:text-slate-300">Qorovul — Bo'sh vazn (kirish)</div>
-        <div className="text-slate-500 dark:text-slate-400">
-          {actorName(w?.stage1_created_by ?? null)} · {fmt(w?.stage1_completed_at ?? null)} · {w?.pustoy_kg?.toLocaleString() ?? '—'} kg
+      {/* Fura (2026-09-15 follow-up, see this file's own header comment and
+          docs/decisions/ "Fura nakladnoy photo missing from
+          ChiqimRequestDetail") — the gate never weighs this truck, so `w`
+          is always null and the two gate-stage blocks below would be four
+          permanent "—" placeholders. Replaced outright by the guard's own
+          fura record (chiqim_fura_photos, via furaPhotos), same "replace,
+          don't append" treatment SerialPassportModal.tsx already gives this
+          exact case for a serial's own dispatches. Ordinary trucks are
+          untouched. */}
+      {request.truck_type === 'fura' ? (
+        <div>
+          <div className="font-medium text-slate-700 dark:text-slate-300">Qorovul — Fura</div>
+          <div className="text-slate-500 dark:text-slate-400">Darvozada o'lchanmaydi</div>
+          <div className="mt-1 flex flex-wrap gap-3">
+            <GatePhoto path={request.furaPhotos.kirdi} label="Moshina rasmi (kirdi)" bucket="chiqim-fura-photos" />
+            <GatePhoto path={request.furaPhotos.chiqdi} label="Nakladnoy rasmi (chiqdi)" bucket="chiqim-fura-photos" />
+          </div>
         </div>
-        <div className="mt-1 flex flex-wrap gap-3">
-          <GatePhoto path={w?.stage1_plate_photo ?? null} label="Moshina raqami rasmi" />
-          <GatePhoto path={w?.stage1_scale_photo ?? null} label="Tarozi rasmi (kirish)" />
-        </div>
-      </div>
+      ) : (
+        <>
+          <div>
+            <div className="font-medium text-slate-700 dark:text-slate-300">Qorovul — Bo'sh vazn (kirish)</div>
+            <div className="text-slate-500 dark:text-slate-400">
+              {actorName(w?.stage1_created_by ?? null)} · {fmt(w?.stage1_completed_at ?? null)} · {w?.pustoy_kg?.toLocaleString() ?? '—'} kg
+            </div>
+            <div className="mt-1 flex flex-wrap gap-3">
+              <GatePhoto path={w?.stage1_plate_photo ?? null} label="Moshina raqami rasmi" />
+              <GatePhoto path={w?.stage1_scale_photo ?? null} label="Tarozi rasmi (kirish)" />
+            </div>
+          </div>
 
-      <div>
-        <div className="font-medium text-slate-700 dark:text-slate-300">Qorovul — Yuk bilan vazn (chiqish)</div>
-        <div className="text-slate-500 dark:text-slate-400">
-          {actorName(w?.stage2_created_by ?? null)} · {fmt(w?.completed_at ?? null)} · {w?.gruzheny_kg?.toLocaleString() ?? '—'} kg
-        </div>
-        <div className="mt-1 flex flex-wrap gap-3">
-          <GatePhoto path={w?.stage2_scale_photo ?? null} label="Tarozi rasmi (chiqish)" />
-          <GatePhoto path={w?.departure_doc_photo ?? null} label="Chiqish hujjati rasmi" />
-        </div>
-      </div>
+          <div>
+            <div className="font-medium text-slate-700 dark:text-slate-300">Qorovul — Yuk bilan vazn (chiqish)</div>
+            <div className="text-slate-500 dark:text-slate-400">
+              {actorName(w?.stage2_created_by ?? null)} · {fmt(w?.completed_at ?? null)} · {w?.gruzheny_kg?.toLocaleString() ?? '—'} kg
+            </div>
+            <div className="mt-1 flex flex-wrap gap-3">
+              <GatePhoto path={w?.stage2_scale_photo ?? null} label="Tarozi rasmi (chiqish)" />
+              <GatePhoto path={w?.departure_doc_photo ?? null} label="Chiqish hujjati rasmi" />
+            </div>
+          </div>
+        </>
+      )}
 
       <div>
         <div className="font-medium text-slate-700 dark:text-slate-300">Yuk tarkibi</div>

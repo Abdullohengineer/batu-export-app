@@ -60,6 +60,17 @@ export interface FinishedChiqimRequest {
   voided_at: string | null
   lines: FinishedChiqimLine[]
   weighing: FinishedChiqimWeighing | null
+  // Fura gate photos (2026-09-15 follow-up — see docs/decisions/ "Fura
+  // nakladnoy photo missing from ChiqimRequestDetail"): a fura is never
+  // gate-weighed (weighing stays null, by design, see FinishedChiqimWeighing
+  // above), so its own gate record lives in chiqim_fura_photos instead —
+  // read here via the chiqim_request_totals view (0105), the same source
+  // SerialPassportModal.tsx/ClientReportTab.tsx already read correctly for
+  // their own "dispatches" sub-sections. Always an object, never null: the
+  // view's cross join lateral chiqim_fura_photo_paths(cr.id) guarantees one
+  // row per request regardless of truck_type — only the two leaf values are
+  // nullable (no capture yet, or a regular truck that will never have one).
+  furaPhotos: { kirdi: string | null; chiqdi: string | null }
 }
 
 // Shared between useFinishedChiqimRequests (bulk, Menejer's own W2 list) and
@@ -128,7 +139,7 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const [{ data: reqs }, { data: lines }, { data: weighings }] = await Promise.all([
+      const [{ data: reqs }, { data: lines }, { data: weighings }, { data: furaPhotoRows }] = await Promise.all([
         supabase
           .from('chiqim_requests')
           .select(
@@ -137,6 +148,11 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
           ),
         supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT),
         supabase.from('gate_weighings').select(GATE_WEIGHING_SELECT).eq('dir', 'chiqim'),
+        // Bulk read, not one RPC call per request — chiqim_request_totals
+        // already computes chiqim_fura_photo_paths(cr.id) for every row via
+        // its own cross join lateral, so one plain select covers the whole
+        // list in the same round trip shape as the two queries above.
+        supabase.from('chiqim_request_totals').select('request_id, kirdi_photo, chiqdi_photo'),
       ])
 
       // Cast explicitly, same reason as useGateHistory.ts: without generated
@@ -146,16 +162,25 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
       // `reqs` too — the voided_at addition made this select's own string a
       // concatenation for the first time.
       const weighingRows = (weighings ?? []) as unknown as (FinishedChiqimWeighing & { request_id: string })[]
-      const reqRows = (reqs ?? []) as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing'>[]
+      const reqRows = (reqs ?? []) as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing' | 'furaPhotos'>[]
       const lineRows = (lines ?? []) as unknown as RawLine[]
+      const furaPhotoRowsTyped = (furaPhotoRows ?? []) as unknown as {
+        request_id: string
+        kirdi_photo: string | null
+        chiqdi_photo: string | null
+      }[]
 
       const combined: FinishedChiqimRequest[] = reqRows
         .filter((r) => !r.plate.startsWith('TEST-'))
-        .map((r) => ({
-          ...r,
-          lines: lineRows.filter((l) => l.request_id === r.id).map(toLine),
-          weighing: weighingRows.find((w) => w.request_id === r.id) ?? null,
-        }))
+        .map((r) => {
+          const fph = furaPhotoRowsTyped.find((p) => p.request_id === r.id)
+          return {
+            ...r,
+            lines: lineRows.filter((l) => l.request_id === r.id).map(toLine),
+            weighing: weighingRows.find((w) => w.request_id === r.id) ?? null,
+            furaPhotos: { kirdi: fph?.kirdi_photo ?? null, chiqdi: fph?.chiqdi_photo ?? null },
+          }
+        })
 
       setRequests(sortByDateDesc(combined, (r) => r.created_at))
     } finally {
@@ -194,29 +219,36 @@ export function useChiqimRequestById(requestId: string | null) {
     setError(null)
     ;(async () => {
       try {
-        const [{ data: req, error: reqErr }, { data: lines }, { data: weighings }] = await Promise.all([
-          supabase
-            .from('chiqim_requests')
-            .select(
-              'id, request_date, plate, driver, owner_id, status, truck_type, created_by, created_at, ' +
-                'ombor_finished_at, ombor_finished_by, voided_at',
-            )
-            .eq('id', requestId)
-            .single(),
-          supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT).eq('request_id', requestId),
-          supabase.from('gate_weighings').select(GATE_WEIGHING_SELECT).eq('dir', 'chiqim').eq('request_id', requestId),
-        ])
+        const [{ data: req, error: reqErr }, { data: lines }, { data: weighings }, { data: furaPhotoRow }] =
+          await Promise.all([
+            supabase
+              .from('chiqim_requests')
+              .select(
+                'id, request_date, plate, driver, owner_id, status, truck_type, created_by, created_at, ' +
+                  'ombor_finished_at, ombor_finished_by, voided_at',
+              )
+              .eq('id', requestId)
+              .single(),
+            supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT).eq('request_id', requestId),
+            supabase.from('gate_weighings').select(GATE_WEIGHING_SELECT).eq('dir', 'chiqim').eq('request_id', requestId),
+            // Same chiqim_request_totals view as the bulk hook above, scoped
+            // to one request — see FinishedChiqimRequest.furaPhotos's own
+            // comment.
+            supabase.from('chiqim_request_totals').select('kirdi_photo, chiqdi_photo').eq('request_id', requestId).maybeSingle(),
+          ])
         if (reqErr) throw reqErr
         if (cancelled) return
 
-        const reqRow = req as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing'>
+        const reqRow = req as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing' | 'furaPhotos'>
         const lineRows = (lines ?? []) as unknown as RawLine[]
         const weighingRows = (weighings ?? []) as unknown as (FinishedChiqimWeighing & { request_id: string })[]
+        const fph = furaPhotoRow as unknown as { kirdi_photo: string | null; chiqdi_photo: string | null } | null
 
         setRequest({
           ...reqRow,
           lines: lineRows.map(toLine),
           weighing: weighingRows[0] ?? null,
+          furaPhotos: { kirdi: fph?.kirdi_photo ?? null, chiqdi: fph?.chiqdi_photo ?? null },
         })
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "So'rovni yuklashda xatolik yuz berdi.")

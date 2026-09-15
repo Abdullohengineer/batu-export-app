@@ -625,7 +625,21 @@ function mapState(row: ReportDbRow): SerialState | null {
   }
 }
 
-export function mapDbRowToReportRow(row: ReportDbRow): ReportRow {
+// Return type is widened to include ChiqimReportRow (2026-09-15 build-fix
+// follow-up): the 0188 rollup narrowed the exported `ReportRow` union to
+// the 4 kinds the MAIN table actually renders (kirim/chiqim_dispatch/
+// moyka_send/moyka_output) and correctly left ChiqimReportRow's own legacy
+// per-pallet branch below in place for fetchVoidedBarcodeMatch (see that
+// type's own comment -- "survives as the return type of ONE caller only"),
+// but never widened THIS function's signature to match, so the untouched
+// legacy branch's `kind: 'chiqim'` return silently stopped type-checking
+// against its own declared return type. Not a behavior bug -- the branch's
+// body was always correct and exercised correctly by fetchVoidedBarcodeMatch
+// and by reportQuery.test.ts's own CHIQIM-row tests -- purely a signature
+// gap `tsc -b` (not `tsc --noEmit` against the solution-style root
+// tsconfig.json, which checks nothing) catches and `vite build`'s dev
+// server esbuild pass does not, which is how this shipped unnoticed.
+export function mapDbRowToReportRow(row: ReportDbRow): ReportRow | ChiqimReportRow {
   if (row.kind === 'kirim') {
     const declaredQty = num(row.declared_qty) ?? 0
     const effectiveQtyKg = Number(row.qty_kg)

@@ -161,11 +161,18 @@ export function TotalsStrip({
 }) {
   const visibleVolumeColumns = REPORT_COLUMNS.filter((c) => c.kind === 'volume' && visibleColumnKeys.has(c.key))
 
+  // 2026-09-15 build-fix follow-up: dropped the dead `|| c.totalBasis ===
+  // 'both'` clauses from both filters below. `ReportColumnTotalBasis` (see
+  // reportColumns.ts) has been 'movement' | 'state' | 'none' since before
+  // this file's own PR#144 -- 'both' was never a reachable value here, just
+  // an un-pruned OR-clause `tsc -b` correctly flags as an impossible
+  // comparison. No column has ever set totalBasis: 'both', so removing it
+  // changes no chip's membership -- confirmed by grepping reportColumns.ts.
   const movementChips = visibleVolumeColumns
-    .filter((c) => (c.totalBasis ?? 'movement') === 'movement' || c.totalBasis === 'both')
+    .filter((c) => (c.totalBasis ?? 'movement') === 'movement')
     .flatMap((c) => MOVEMENT_COLUMN_CHIPS[c.key]?.(totals) ?? [])
 
-  const stateColumns = visibleVolumeColumns.filter((c) => c.totalBasis === 'state' || c.totalBasis === 'both')
+  const stateColumns = visibleVolumeColumns.filter((c) => c.totalBasis === 'state')
   const stateChips = stateColumns.flatMap((c) => STATE_COLUMN_CHIPS[c.key]?.(totals) ?? [])
 
   return (

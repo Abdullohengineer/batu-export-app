@@ -140,7 +140,12 @@ export function useReportQuery(filters: ReportFilters) {
         ])
         if (cancelled) return
 
-        setRows(((pageResult.data ?? []) as ReportDbRow[]).map(mapDbRowToReportRow))
+        // `as ReportRow[]`: report_query_page never emits kind: 'chiqim' (see
+        // ReportDbRow.kind's own comment) -- mapDbRowToReportRow's return
+        // type is widened to include ChiqimReportRow only for
+        // fetchVoidedBarcodeMatch's direct report_chiqim_rows read below,
+        // which this RPC-backed path can never produce.
+        setRows(((pageResult.data ?? []) as ReportDbRow[]).map(mapDbRowToReportRow) as ReportRow[])
 
         const t = totalsResult.data?.[0] as
           | {
@@ -253,7 +258,9 @@ export async function fetchAllReportRowsForExport(filters: ReportFilters): Promi
       p_offset: chunk * EXPORT_CHUNK_SIZE,
     })
     if (error) throw error
-    const batch = ((data ?? []) as ReportDbRow[]).map(mapDbRowToReportRow)
+    // Same invariant as the setRows call above: report_query_page never
+    // emits kind: 'chiqim', so this cast is safe.
+    const batch = ((data ?? []) as ReportDbRow[]).map(mapDbRowToReportRow) as ReportRow[]
     all.push(...batch)
     if (batch.length < EXPORT_CHUNK_SIZE) return all
   }

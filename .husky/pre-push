@@ -1,0 +1,20 @@
+# Blocks `git push` on a red build. Runs the literal Netlify build command
+# (netlify.toml: `npm run build` -> `tsc -b && vite build`) so a build that
+# fails here is guaranteed to fail there too, and vice versa -- no separate
+# "local check" that can drift from what actually ships.
+#
+# Added 2026-09-15 (see docs/decisions/0193-...-netlify-build-break-root-
+# cause-two-pre-existing-tsc-b-gaps.md) after 7 straight Netlify production
+# build failures went unnoticed for 24h+: every prior local verification in
+# this codebase's history was `tsc --noEmit` against the root tsconfig.json,
+# which is references-only (`files: []`) and silently checks nothing without
+# `-b` -- a "clean typecheck" that was never actually run. This hook makes
+# that class of false-clean result structurally impossible to push past
+# again: it runs the SAME command Netlify runs, not a lighter stand-in.
+#
+# Deliberately pre-push, not pre-commit: `npm run build` takes a few seconds
+# (tsc -b's incremental cache keeps repeat runs fast, but a cold build after
+# `git clean`/a fresh checkout is not instant) -- expensive enough to want
+# it once per push, not on every commit while iterating locally.
+echo "pre-push: running npm run build (tsc -b && vite build) -- same command Netlify runs..."
+npm run build

@@ -30,11 +30,19 @@ export function ChiqimRequestPassportModal({
   onClose,
   typeName,
   calibreLabel,
+  onOpenPassport,
 }: {
   requestId: string
   onClose: () => void
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
+  // Per-pallet seriya drill-down (2026-09-15 follow-up to 0189's
+  // "Regression 2 -- not reproducible"): the operator reported back that
+  // the manifest's seriya reference wasn't clickable here, unlike the same
+  // list rendered inline in ChiqimDispatchRowDetail.tsx's own expand panel.
+  // Root cause was ChiqimRequestDetail never taking an onOpenPassport prop
+  // at all (not a wiring break -- it never existed). Threaded through here.
+  onOpenPassport: (serial: string) => void
 }) {
   const { request, loading, error } = useChiqimRequestById(requestId)
   const { lines: manifestLines, loading: manifestLoading } = useDispatchManifestLines(requestId)
@@ -96,6 +104,7 @@ export function ChiqimRequestPassportModal({
               typeName={typeName}
               calibreLabel={calibreLabel}
               actorName={actorName}
+              onOpenPassport={onOpenPassport}
             />
           )}
         </div>

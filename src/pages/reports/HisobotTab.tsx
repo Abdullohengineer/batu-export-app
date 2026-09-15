@@ -254,6 +254,18 @@ export function HisobotTab() {
             onClose={() => setChiqimRequestId(null)}
             typeName={typeName}
             calibreLabel={calibreLabel}
+            // Switches modals rather than stacking them: both this modal and
+            // SerialPassportModal are `fixed inset-0 z-50`, so opening one
+            // on top of the other while both stay mounted would paint
+            // whichever renders later in the tree over the other, not
+            // necessarily the one just opened. No nested-modal precedent
+            // exists elsewhere in this app to follow instead -- every other
+            // passport drill-down opens from a plain row, never from inside
+            // another modal.
+            onOpenPassport={(serial) => {
+              setChiqimRequestId(null)
+              setPassportSerial(serial)
+            }}
           />
         )}
       </div>

@@ -12,17 +12,21 @@ import {
   type ClientTip,
   type ClientChiqimLedger,
   type ClientChiqimLedgerFilters,
-  type ClientChiqimSerialRow,
+  type ClientChiqimTruckRow,
 } from '../../lib/clientChiqimLedger'
 import { formatDate } from '../../lib/formatDate'
 import { downloadClientChiqimLedgerExcel } from '../../lib/clientChiqimLedgerExport'
 import { todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 
-// Расход sub-tab — rewritten (CLAUDE.md task "Rebuild the client portal..."
-// Part B.3) from a flat per-dispatch-event table to one row per serial,
-// each expandable to its own per-dispatch detail. See
+// Расход sub-tab — rewritten (CLAUDE.md task "Rebuild the client
+// portal...", Fix 2) from a per-serial table to one row per TRUCK/dispatch
+// event (chiqim_requests.id), no per-serial breakdown anywhere -- a serial
+// is single-type by construction (CLAUDE.md) but a truck is not, so the
+// expand panel breaks a truck's load down by Вид сырья and (for Готовая
+// продукция/Старый склад ювилган only) by calibre instead. See
 // src/lib/clientChiqimLedger.ts for the Тип taxonomy and
-// supabase/migrations/0114/0116 for the backing RPC pivot.
+// supabase/migrations/0125_client_chiqim_ledger_per_truck_grain.sql for the
+// backing RPC regrain.
 
 const pillClass =
   'rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
@@ -31,13 +35,7 @@ function kg(v: number): string {
   return `${Math.round(v).toLocaleString()} кг`
 }
 
-function calibreString(calibres: { label: string; kg: number }[]): string {
-  if (calibres.length === 0) return '—'
-  return calibres.map((c) => `${c.label}: ${Math.round(c.kg).toLocaleString()}`).join(', ')
-}
-
-// Тип badge(s) — usually one; the task's own "rare edge case" (a serial
-// whose dispatches span multiple types in the period) renders as several
+// Тип badge(s) — usually one; a mixed-load truck (rare) renders as several
 // comma-joined badges rather than picking just one and hiding the rest.
 function TipBadges({ tips }: { tips: ClientTip[] }) {
   return (
@@ -54,34 +52,33 @@ function TipBadges({ tips }: { tips: ClientTip[] }) {
   )
 }
 
-function ExpandedDispatches({ row }: { row: ClientChiqimSerialRow }) {
+function ExpandedTruck({ row, typeName }: { row: ClientChiqimTruckRow; typeName: (id: string) => string }) {
   return (
     <div className="border-t border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/40">
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Отгрузки</p>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
-            <th className="py-1 pr-2">№</th>
-            <th className="py-1 pr-2">Дата</th>
-            <th className="py-1 pr-2">Машина</th>
-            <th className="py-1 pr-2">Водитель</th>
-            <th className="py-1 text-right">Кол-во</th>
-            <th className="py-1">По калибрам</th>
-          </tr>
-        </thead>
-        <tbody>
-          {row.dispatches.map((d, i) => (
-            <tr key={d.requestId} className="border-t border-slate-100 dark:border-slate-800">
-              <td className="py-1 pr-2 text-slate-400">N{i + 1}</td>
-              <td className="py-1 pr-2 whitespace-nowrap">{formatDate(d.date)}</td>
-              <td className="py-1 pr-2 whitespace-nowrap">{d.plate}</td>
-              <td className="py-1 pr-2 whitespace-nowrap">{d.driver}</td>
-              <td className="py-1 text-right tabular-nums">{kg(d.kg)}</td>
-              <td className="py-1 text-xs text-slate-500 dark:text-slate-400">{calibreString(d.calibres)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">По видам сырья</p>
+      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700 dark:text-slate-300">
+        {row.typeBreakdown.map((t) => (
+          <span key={t.typeId}>
+            {typeName(t.typeId)}: <span className="font-medium">{kg(t.kg)}</span>
+          </span>
+        ))}
+      </div>
+      {/* Only Готовая продукция/Старый склад (ювилган) trucks ever populate
+          this -- Кондитерка/Возврат/Старый склад Кондитерка have no calibre
+          data at all (see the backing RPC's own comment), so the section is
+          simply omitted rather than shown empty. */}
+      {row.calibreBreakdown.length > 0 && (
+        <>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">По калибрам</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700 dark:text-slate-300">
+            {row.calibreBreakdown.map((c) => (
+              <span key={c.calibreId}>
+                {c.label}: <span className="font-medium">{kg(c.kg)}</span>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -152,15 +149,11 @@ export function ClientRashodTab() {
     return productTypes.find((t) => t.id === id)?.name ?? '—'
   }
 
-  function rowKey(row: ClientChiqimSerialRow): string {
-    return row.serial ?? `pool-${row.typeId}`
-  }
-
-  function toggle(key: string) {
+  function toggle(requestId: string) {
     setExpanded((prev) => {
       const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
+      if (next.has(requestId)) next.delete(requestId)
+      else next.add(requestId)
       return next
     })
   }
@@ -233,34 +226,32 @@ export function ClientRashodTab() {
 
       {!loading && !error && ledger && (
         <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-          <table className="w-full min-w-[900px] border-collapse text-sm">
+          <table className="w-full min-w-[700px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
                 <th className="px-3 py-2" />
-                <th className="px-3 py-2">Серия</th>
-                <th className="px-3 py-2">Вид сырья</th>
+                <th className="px-3 py-2">Дата</th>
                 <th className="px-3 py-2">Тип</th>
-                <th className="px-3 py-2 text-right">ИТОГО отгружено (кг)</th>
-                <th className="px-3 py-2">ИТОГО по калибрам</th>
-                <th className="px-3 py-2 text-right">Отгрузок</th>
+                <th className="px-3 py-2">Машина</th>
+                <th className="px-3 py-2">Водитель</th>
+                <th className="px-3 py-2 text-right">Всего кг</th>
               </tr>
             </thead>
             <tbody>
               {ledger.rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
                     Ничего не найдено
                   </td>
                 </tr>
               )}
               {ledger.rows.map((row) => {
-                const key = rowKey(row)
-                const isOpen = expanded.has(key)
+                const isOpen = expanded.has(row.requestId)
                 return (
                   <>
                     <tr
-                      key={key}
-                      onClick={() => toggle(key)}
+                      key={row.requestId}
+                      onClick={() => toggle(row.requestId)}
                       className="cursor-pointer border-b border-slate-100 align-top hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
                     >
                       <td className="px-3 py-2">
@@ -274,26 +265,18 @@ export function ClientRashodTab() {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
                         </svg>
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {/* Bare dash, no annotation — matches the internal Hisobot's own
-                            convention for a chiqim_old_kn row exactly (ReportTableRow.tsx's
-                            Серия cell: `row.kind === 'chiqim_old_kn' ? '—' : row.serial`).
-                            The Тип badge in the next column already says "Старый склад
-                            Кондитерка", so the row isn't ambiguous without extra text here. */}
-                        {row.isPool ? <span className="text-slate-400">—</span> : row.serial}
-                      </td>
-                      <td className="px-3 py-2">{typeName(row.typeId)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.date)}</td>
                       <td className="px-3 py-2">
                         <TipBadges tips={row.tips} />
                       </td>
+                      <td className="px-3 py-2 whitespace-nowrap">{row.plate}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{row.driver}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{kg(row.totalKg)}</td>
-                      <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">{calibreString(row.calibres)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{row.dispatchCount}</td>
                     </tr>
                     {isOpen && (
-                      <tr key={`${key}-panel`}>
-                        <td colSpan={7} className="p-0">
-                          <ExpandedDispatches row={row} />
+                      <tr key={`${row.requestId}-panel`}>
+                        <td colSpan={6} className="p-0">
+                          <ExpandedTruck row={row} typeName={typeName} />
                         </td>
                       </tr>
                     )}

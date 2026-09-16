@@ -3,12 +3,14 @@ import { usePersistentState } from '../../lib/FilterState'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarStockSnapshot, useRahbarDashboardLedger } from '../../lib/useRahbarDashboardV2'
-import { SCOPE_LABEL, type ZaxiraScope, type ByCalibreTypeRow } from '../../lib/rahbarDashboardV2'
-import { formatLossKg, formatLossPct } from '../../lib/formatLoss'
+import { SCOPE_LABEL, type ZaxiraScope } from '../../lib/rahbarDashboardV2'
+import { computeDashboardDerived } from '../../lib/rahbarDashboardDerived'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { OldStockDrilldown } from '../../components/OldStockDrilldown'
-import { HorizontalBar } from '../../components/ui/HorizontalBar'
+import { HeroTiles } from '../../components/rahbar/HeroTiles'
+import { OmborHozirSection } from '../../components/rahbar/OmborHozirSection'
+import { C, fmt } from '../../components/rahbar/dashboardTheme'
 import { todayInTashkent, firstOfMonthInTashkent, previousMonthRangeInTashkent } from '../../lib/dateRange'
 
 // Rahbar "Bosh sahifa" -- stock-reconciliation dashboard, rebuilt against
@@ -21,7 +23,12 @@ import { todayInTashkent, firstOfMonthInTashkent, previousMonthRangeInTashkent }
 // Reads ONLY rahbar_stock_snapshot / rahbar_dashboard_ledger
 // (useRahbarDashboardV2.ts). No balance arithmetic here beyond re-slicing
 // the already-summed byCalibreType rows by the Turlar filter -- a client-
-// side regroup of server totals, not a new sum.
+// side regroup of server totals, not a new sum (computeDashboardDerived).
+//
+// Hero tiles / "Omborda hozir" block extracted to
+// components/rahbar/HeroTiles.tsx + OmborHozirSection.tsx (2026-09-16) so
+// the client Панель mirror can reuse them instead of forking -- see
+// docs/decisions/ "HeroTiles/OmborHozirSection extraction".
 
 const BOSHIDAN = '2026-07-15'
 
@@ -34,47 +41,15 @@ const PERIOD_LABEL: Record<PeriodPreset, string> = {
   custom: 'Boshqa davr',
 }
 
-function fmt(v: number): string {
-  return Math.round(v).toLocaleString()
-}
+type TileTone = 'raw' | 'moyka' | 'calibre' | 'kn' | 'oldKn' | 'neutral'
 
-// Palette -- amber/emerald/red already load-bearing tokens.ts tones (xom /
-// ok / departed). Purple and the muted pool-stock tone aren't in tokens.ts
-// (no existing "Konditirskiy" or "pool stock" status concept there) so
-// they're named locally, once, rather than scattered ad hoc classes.
-const C = {
-  raw: '#d97706', // amber-600
-  rawBg: '#fef3c7', // amber-100
-  moyka: '#0369a1', // sky-700 -- in-process, between raw and finished
-  moykaBg: '#e0f2fe', // sky-100
-  calibre: '#059669', // emerald-600
-  calibreBg: '#d1fae5', // emerald-100
-  kn: '#9333ea', // purple-600
-  knBg: '#f3e8ff', // purple-100
-  oldKn: '#78716c', // stone-500 -- deliberately muted/separate, "pool stock"
-  oldKnBg: '#e7e5e4', // stone-200
-  departed: '#dc2626', // red-600 -- material that left the factory
-  loss: '#334155', // slate-700 -- lost in washing, not departed: black, not red
-  lossBg: '#e2e8f0',
-}
-
-function Tile({ label, value, unit, caption, tone }: { label: string; value: number; unit?: string; caption: string; tone: 'raw' | 'moyka' | 'calibre' | 'kn' | 'oldKn' | 'neutral' }) {
+// Tone -> {bg,fg} lookup, unchanged from the pre-extraction local `Tile`
+// component -- HeroTiles itself is palette-agnostic (see its own file
+// comment), so each caller resolves its own colors before building tiles.
+function tileStyle(tone: TileTone): { bg: string; fg: string } {
   const bg = tone === 'raw' ? C.rawBg : tone === 'moyka' ? C.moykaBg : tone === 'calibre' ? C.calibreBg : tone === 'kn' ? C.knBg : tone === 'oldKn' ? C.oldKnBg : '#f4efe6'
   const fg = tone === 'raw' ? C.raw : tone === 'moyka' ? C.moyka : tone === 'calibre' ? C.calibre : tone === 'kn' ? C.kn : tone === 'oldKn' ? C.oldKn : '#5d5140'
-  return (
-    <div className="rounded-xl p-4" style={{ background: bg }}>
-      <div className="text-xs font-semibold uppercase tracking-wide opacity-75" style={{ color: fg }}>
-        {label}
-      </div>
-      <div className="mt-1.5 text-2xl font-extrabold tabular-nums" style={{ color: fg }}>
-        {fmt(value)}
-        {unit && <span className="ml-1 text-sm font-semibold opacity-60">{unit}</span>}
-      </div>
-      <div className="mt-1.5 text-xs opacity-70" style={{ color: fg }}>
-        {caption}
-      </div>
-    </div>
-  )
+  return { bg, fg }
 }
 
 export function RahbarHome() {
@@ -100,44 +75,8 @@ export function RahbarHome() {
   function calibreLabel(id: string): string {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
-  function isKn(id: string): boolean {
-    return calibres.find((c) => c.id === id)?.is_numberless ?? false
-  }
 
-  const activeTypeIds = selectedTypeIds ?? productTypes.map((t) => t.id)
-
-  function sliceByType(rows: ByCalibreTypeRow[]): ByCalibreTypeRow[] {
-    return selectedTypeIds === null ? rows : rows.filter((r) => selectedTypeIds.includes(r.typeId))
-  }
-
-  function regroupByCalibre(rows: ByCalibreTypeRow[]): { calibreId: string; kg: number }[] {
-    const map = new Map<string, number>()
-    for (const r of sliceByType(rows)) map.set(r.calibreId, (map.get(r.calibreId) ?? 0) + r.kg)
-    return [...map.entries()].map(([calibreId, kg]) => ({ calibreId, kg })).sort((a, b) => b.kg - a.kg)
-  }
-
-  const dispatchedKalibrliPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => !isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
-  const dispatchedKnPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
-
-  const dispatchedByCalibre = ledger ? regroupByCalibre(ledger.byCalibreType.dispatched).filter((r) => !isKn(r.calibreId)) : []
-  const dispatchedKnRows = ledger ? regroupByCalibre(ledger.byCalibreType.dispatched).filter((r) => isKn(r.calibreId)) : []
-  // 2026-08-30: the per-calibre bars are a LIVE BALANCE, not a period flow.
-  // They plotted the period's output under a heading a reader takes for stock:
-  // for August that read K4 = 23,570 kg while only 960 kg was on hand, the rest
-  // dispatched. Now off stock_on_hand_rows via rahbar_stock_snapshot -- the same
-  // view Ombor qoldig'i reads, so the two screens cannot disagree. regroupByCalibre
-  // is reused unchanged, which keeps the Turlar filter working on these bars.
-  const stockByCalibre = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => !isKn(r.calibreId)) : []
-  const stockKn = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => isKn(r.calibreId)) : []
-  const stockMax = Math.max(1, ...stockByCalibre.map((r) => r.kg), ...stockKn.map((r) => r.kg))
-  // 2026-08-31: split out explicitly, and derived from the SAME filtered
-  // arrays the bars are drawn from (never from snapshot.finishedCalibredKg,
-  // which the Turlar picker does not narrow) so the sentence can never
-  // describe a different set than the bars directly above it.
-  const stockCalibredTotal = stockByCalibre.reduce((sum, r) => sum + r.kg, 0)
-  const stockKnTotal = stockKn.reduce((sum, r) => sum + r.kg, 0)
-  const stockTotal = stockCalibredTotal + stockKnTotal
-  const dispatchedMax = Math.max(1, ...dispatchedByCalibre.map((r) => r.kg), ...dispatchedKnRows.map((r) => r.kg))
+  const derived = computeDashboardDerived(snapshot, ledger, selectedTypeIds, calibres)
 
   // Eski drill-down (2026-09-08): two separate graphs, only at scope='eski'
   // -- see docs/DECISIONS.md "Rahbar Eski drill-down: old KN reintroduced,
@@ -147,15 +86,8 @@ export function RahbarHome() {
   // arithmetic). oldKn is new: snapshot.oldKnByType (migration 0111),
   // naturally empty at scope != 'eski' since old_kn rows never pass the
   // 'yangi' scope filter -- never re-added to the main/Yangi dashboard.
-  const oldWashedSeries = [...stockByCalibre, ...stockKn].map((r) => ({ label: calibreLabel(r.calibreId), kg: r.kg }))
+  const oldWashedSeries = [...derived.stockByCalibre, ...derived.stockKn].map((r) => ({ label: calibreLabel(r.calibreId), kg: r.kg }))
   const oldKnSeries = snapshot ? snapshot.oldKnByType.map((t) => ({ label: t.typeName, kg: t.kg })) : []
-
-  // 2026-08-30: oldKnKg deliberately EXCLUDED from the headline. Its tile was
-  // removed in the same pass, so leaving it in would put 81,915 kg of real
-  // client stock inside a number with nothing on screen accounting for it.
-  // A recorded choice, not a side effect -- see DECISIONS.md "Rahbar dashboard
-  // corrections". Old KN is now reachable only via Ombor qoldig'i and Hisobot.
-  const grandTotal = snapshot ? snapshot.rawKg + snapshot.moykadaKg + snapshot.finishedCalibredKg + snapshot.konditirskiyKg : 0
 
   return (
     <div className="space-y-4">
@@ -211,60 +143,45 @@ export function RahbarHome() {
       {snapLoading || !snapshot ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-          <Tile label="Jami yuvilgan va yuvilmagan mahsulot" value={grandTotal} unit="kg" caption="Hozirgi holat — xom, moykada va tayyor" tone="neutral" />
-          <Tile label="Xom · yuvilmagan" value={snapshot.rawKg} unit="kg" caption="Hozirgi holat — yuvishga tayyor" tone="raw" />
-          <Tile label="Moykada" value={snapshot.moykadaKg} unit="kg" caption="Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan" tone="moyka" />
-          {/* 2026-08-31: both tiles now name their own calibre set in the
-              label. This tile reads 11,210 kg where the two sentences lower
-              down the page read 17,580 kg, and the gap between them is
-              exactly the Konditerka tile beside it -- the numbers agreed all
-              along, the labels did not say so. "Tayyor · kalibrli" alone was
-              read as "finished product", not as "K1-K8 only". Reported and
-              confirmed: the figures stay as they are, the wording is what
-              changes -- here and in both sentences below. */}
-          <Tile
-            label="Tayyor · kalibrli (K1–K8)"
-            value={snapshot.finishedCalibredKg}
-            unit="kg"
-            caption={
-              ledgerLoading
-                ? "Hozirgi qoldiq · konditerkasiz"
-                : `Hozirgi qoldiq · konditerkasiz · bu davrda ${fmt(dispatchedKalibrliPeriod)} kg olib ketilgan`
-            }
-            tone="calibre"
-          />
-          <Tile
-            label="Konditerka (KN)"
-            value={snapshot.konditirskiyKg}
-            unit="kg"
-            caption={
-              ledgerLoading
-                ? "Hozirgi qoldiq · kalibrlidan alohida"
-                : `Hozirgi qoldiq · kalibrlidan alohida · bu davrda ${fmt(dispatchedKnPeriod)} kg olib ketilgan`
-            }
-            tone="kn"
-          />
-          {/* 6th tile (2026-09-08) — Старый склад Кондитерка, the old-KN pool
-              balance. Deliberately NOT gated by `scope` (unlike the drill-
-              down section below it): this is real client stock, always
-              relevant, not something that should vanish/read 0 just because
-              Yangi is selected — snapshot.oldKnKg is now scope-independent
-              (migration 0120) specifically so this tile reads the same
-              81,915 kg regardless of the Zaxira toggle. Reuses the `oldKn`
-              tone already defined in Tile's own tone union (stone-gray,
-              matching OldStockDrilldown.tsx's existing old-KN color) —
-              deliberately distinct from Konditerka (KN)'s purple beside it,
-              since the two are genuinely different things (new production
-              vs. an old-stock pool) that happen to share the "KN" name. */}
-          <Tile
-            label="Старый склад Кондитерка"
-            value={snapshot.oldKnKg}
-            unit="kg"
-            caption="Hozirgi qoldiq · havzadan"
-            tone="oldKn"
-          />
-        </div>
+        <HeroTiles
+          tiles={[
+            { key: 'jami', label: 'Jami yuvilgan va yuvilmagan mahsulot', value: derived.grandTotal, unit: 'kg', caption: 'Hozirgi holat — xom, moykada va tayyor', ...tileStyle('neutral') },
+            { key: 'xom', label: 'Xom · yuvilmagan', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi holat — yuvishga tayyor', ...tileStyle('raw') },
+            { key: 'moyka', label: 'Moykada', value: snapshot.moykadaKg, unit: 'kg', caption: "Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan", ...tileStyle('moyka') },
+            // 2026-08-31: both tiles now name their own calibre set in the
+            // label. This tile reads 11,210 kg where the two sentences lower
+            // down the page read 17,580 kg, and the gap between them is
+            // exactly the Konditerka tile beside it -- the numbers agreed
+            // all along, the labels did not say so. "Tayyor · kalibrli"
+            // alone was read as "finished product", not as "K1-K8 only".
+            // Reported and confirmed: the figures stay as they are, the
+            // wording is what changes -- here and in both sentences below.
+            {
+              key: 'kalibrli',
+              label: 'Tayyor · kalibrli (K1–K8)',
+              value: snapshot.finishedCalibredKg,
+              unit: 'kg',
+              caption: ledgerLoading ? 'Hozirgi qoldiq · konditerkasiz' : `Hozirgi qoldiq · konditerkasiz · bu davrda ${fmt(derived.dispatchedKalibrliPeriod)} kg olib ketilgan`,
+              ...tileStyle('calibre'),
+            },
+            {
+              key: 'kn',
+              label: 'Konditerka (KN)',
+              value: snapshot.konditirskiyKg,
+              unit: 'kg',
+              caption: ledgerLoading ? 'Hozirgi qoldiq · kalibrlidan alohida' : `Hozirgi qoldiq · kalibrlidan alohida · bu davrda ${fmt(derived.dispatchedKnPeriod)} kg olib ketilgan`,
+              ...tileStyle('kn'),
+            },
+            // 6th tile (2026-09-08) — Старый склад Кондитерка, the old-KN pool
+            // balance. Deliberately NOT gated by `scope` (unlike the drill-
+            // down section below it): this is real client stock, always
+            // relevant, not something that should vanish/read 0 just because
+            // Yangi is selected — snapshot.oldKnKg is now scope-independent
+            // (migration 0120) specifically so this tile reads the same
+            // 81,915 kg regardless of the Zaxira toggle.
+            { key: 'oldKn', label: 'Старый склад Кондитерка', value: snapshot.oldKnKg, unit: 'kg', caption: 'Hozirgi qoldiq · havzadan', ...tileStyle('oldKn') },
+          ]}
+        />
       )}
 
       {/* Eski drill-down -- only at scope='eski', two separate graphs:
@@ -272,99 +189,29 @@ export function RahbarHome() {
           scope='yangi' (the main dashboard) -- see DECISIONS.md. */}
       {scope === 'eski' && snapshot && !snapLoading && (
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-          <SectionHeading>Эски zaxira</SectionHeading>
+          <SectionHeading>Эski zaxira</SectionHeading>
           <p className="mb-4 text-xs text-slate-400">Jonli qoldiq — ювилган mahsulot va Старый склад Кондитерка havzasi alohida</p>
-          <OldStockDrilldown oldWashed={{ totalKg: stockTotal, series: oldWashedSeries }} oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }} />
+          <OldStockDrilldown oldWashed={{ totalKg: derived.stockTotal, series: oldWashedSeries }} oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }} />
         </div>
       )}
 
-      {/* Yuvib tugallangan mahsulot */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <SectionHeading>Omborda hozir — kalibr bo'yicha</SectionHeading>
-            <p className="text-xs text-slate-400">Jonli qoldiq · yuqoridagi davr tanlovi bu qatorlarga ta'sir qilmaydi</p>
-          </div>
-          <details className="relative">
-            <summary className="cursor-pointer list-none rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-300">
-              Turlar: {selectedTypeIds === null ? 'hammasi' : `${selectedTypeIds.length} tanlangan`}
-              <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-slate-800">
-                {activeTypeIds.length} / {productTypes.length}
-              </span>{' '}
-              ▾
-            </summary>
-            <div className="absolute right-0 z-10 mt-1 w-56 rounded-md border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-              <button type="button" className="mb-1 block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => setSelectedTypeIds(null)}>
-                Hammasi
-              </button>
-              {productTypes.map((t) => {
-                const checked = activeTypeIds.includes(t.id)
-                return (
-                  <label key={t.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        const next = new Set(activeTypeIds)
-                        if (checked) next.delete(t.id)
-                        else next.add(t.id)
-                        setSelectedTypeIds([...next])
-                      }}
-                    />
-                    {t.name}
-                  </label>
-                )
-              })}
-            </div>
-          </details>
-        </div>
-
-        {ledgerLoading || !ledger ? (
-          <p className="text-sm text-slate-400">Yuklanmoqda…</p>
-        ) : (
-          <>
-            <div className="space-y-2.5">
-              {stockByCalibre.map((r) => (
-                <HorizontalBar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={stockMax} color={C.calibre} pctOfLabel={stockTotal > 0 ? `${Math.round((r.kg / stockTotal) * 100)}%` : undefined} />
-              ))}
-              {stockByCalibre.length === 0 && <p className="text-sm text-slate-400">Omborda kalibrlangan mahsulot yo'q.</p>}
-              {stockKn.length > 0 && <div className="my-1 border-t border-slate-100 dark:border-slate-800" />}
-              {stockKn.map((r) => (
-                <HorizontalBar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={stockMax} color={C.kn} pctOfLabel={stockTotal > 0 ? `${Math.round((r.kg / stockTotal) * 100)}%` : undefined} />
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-slate-400">
-              Hozir omborda <strong className="text-slate-700 dark:text-slate-300">{fmt(stockTotal)} kg</strong> tayyor mahsulot — kalibrli{' '}
-              <strong className="text-slate-700 dark:text-slate-300">{fmt(stockCalibredTotal)} kg</strong> + konditerka{' '}
-              <strong className="text-slate-700 dark:text-slate-300">{fmt(stockKnTotal)} kg</strong>, olib ketilgani chegirilgan. Bu qatorlar{' '}
-              <strong className="text-slate-700 dark:text-slate-300">jonli qoldiq</strong>, davr bo'yicha ishlab chiqarish emas. Foizlar — jami qoldiqdan ulush. Konditerka alohida qator.
-              {ledger && ` Tanlangan davrda yuvishdan chiqqan: ${fmt(ledger.moyka.calibreKg + ledger.moyka.konditirskiyKg)} kg · yo'qotish ${formatLossKg(ledger.moyka.lossKg)} (${formatLossPct(ledger.moyka.lossPct)}).`}
-            </p>
-
-            <div className="my-6 h-px bg-slate-200 dark:bg-slate-800" />
-
-            <div className="mb-3">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Olib ketilgan tayyor mahsulot</h3>
-              <p className="text-xs text-slate-400">Yuvilgandan keyin mijozga qaytgan qismi</p>
-            </div>
-            <div className="space-y-2.5">
-              {dispatchedByCalibre.map((r) => (
-                <HorizontalBar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={dispatchedMax} color={C.departed} pctOfLabel={ledger.finished.dispatchedKg > 0 ? `${Math.round((r.kg / ledger.finished.dispatchedKg) * 100)}%` : undefined} />
-              ))}
-              {dispatchedByCalibre.length === 0 && dispatchedKnRows.length === 0 && <p className="text-sm text-slate-400">Bu davrda olib ketilgan yo'q.</p>}
-              {dispatchedKnRows.length > 0 && <div className="my-1 border-t border-slate-100 dark:border-slate-800" />}
-              {dispatchedKnRows.map((r) => (
-                <HorizontalBar key={r.calibreId} label={calibreLabel(r.calibreId)} value={r.kg} max={dispatchedMax} color={C.departed} pctOfLabel={ledger.finished.dispatchedKg > 0 ? `${Math.round((r.kg / ledger.finished.dispatchedKg) * 100)}%` : undefined} />
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-slate-400">
-              Jami olib ketilgan <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.dispatchedKg)} kg</strong> · omborda qolgan{' '}
-              <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.closingKg)} kg</strong> (kalibrli va konditerka birgalikda — yuqoridagi{' '}
-              <em>Tayyor · kalibrli</em> katakchasi faqat K1–K8ni ko'rsatadi). Foizlar — o'sha kalibrning jami olib ketilgan miqdoridan qancha qismi.
-            </p>
-          </>
-        )}
-      </div>
+      <OmborHozirSection
+        ledgerLoading={ledgerLoading}
+        ledger={ledger}
+        productTypes={productTypes}
+        selectedTypeIds={selectedTypeIds}
+        setSelectedTypeIds={setSelectedTypeIds}
+        calibreLabel={calibreLabel}
+        stockByCalibre={derived.stockByCalibre}
+        stockKn={derived.stockKn}
+        stockMax={derived.stockMax}
+        stockCalibredTotal={derived.stockCalibredTotal}
+        stockKnTotal={derived.stockKnTotal}
+        stockTotal={derived.stockTotal}
+        dispatchedByCalibre={derived.dispatchedByCalibre}
+        dispatchedKnRows={derived.dispatchedKnRows}
+        dispatchedMax={derived.dispatchedMax}
+      />
     </div>
   )
 }

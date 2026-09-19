@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
+import { queryClient } from './queryClient'
 import { mapDbRowToReportRow, type ReportFilters, type ReportRow, type ChiqimReportRow, type ReportTotals, type ReportDbRow } from './reportQuery'
 
 // §3.2.1-3.2.4 — the shared query engine, now a thin client over the
@@ -186,9 +187,51 @@ export function useReportQuery(filters: ReportFilters) {
         // args, and passing the same `params` object to both is what
         // guarantees that structurally, not just by convention.
         const params = toRpcParams(filters)
+        // 2026-09-19 (Phase 1B): the two RPCs go through React Query's cache
+        // rather than straight to supabase, so re-entering Hisobot (or the
+        // client Приход tab, which shares this hook) with the same filters
+        // inside the cache window reuses the result instead of re-running
+        // report_query_page + report_totals — together ~35% of all measured
+        // database time.
+        //
+        // fetchQuery, NOT useQuery: this hook's debounce/abort/pagination
+        // logic below is load-bearing and has its own incident history (see
+        // the AbortController comment above). Wrapping just the fetch keeps
+        // every one of those semantics byte-for-byte — including "on error,
+        // keep the last good rows rather than rendering a fabricated empty
+        // result" — while still getting dedupe and caching. A full useQuery
+        // rewrite of this hook would have been a behaviour rewrite of the
+        // one screen that already handles this correctly.
+        //
+        // The `.error`-not-throw convention is preserved by resolving to the
+        // same { data, error } shape the callers below already expect.
+        const pageKey = ['report_query_page', params, PAGE_SIZE, (page - 1) * PAGE_SIZE] as const
+        const totalsKey = ['report_totals', params] as const
         const [pageResult, totalsResult, voided] = await Promise.all([
-          supabase.rpc('report_query_page', { ...params, p_limit: PAGE_SIZE, p_offset: (page - 1) * PAGE_SIZE }).abortSignal(controller.signal),
-          supabase.rpc('report_totals', params).abortSignal(controller.signal),
+          queryClient
+            .fetchQuery({
+              queryKey: pageKey,
+              queryFn: async () => {
+                const res = await supabase
+                  .rpc('report_query_page', { ...params, p_limit: PAGE_SIZE, p_offset: (page - 1) * PAGE_SIZE })
+                  .abortSignal(controller.signal)
+                if (res.error) throw res.error
+                return res.data
+              },
+            })
+            .then((data) => ({ data, error: null as { message: string } | null }))
+            .catch((err: { message?: string }) => ({ data: null, error: { message: err?.message ?? 'RPC error' } })),
+          queryClient
+            .fetchQuery({
+              queryKey: totalsKey,
+              queryFn: async () => {
+                const res = await supabase.rpc('report_totals', params).abortSignal(controller.signal)
+                if (res.error) throw res.error
+                return res.data
+              },
+            })
+            .then((data) => ({ data, error: null as { message: string } | null }))
+            .catch((err: { message?: string }) => ({ data: null, error: { message: err?.message ?? 'RPC error' } })),
           fetchVoidedBarcodeMatch(filters.barcode2, controller.signal),
         ])
         // Superseded by a newer effect instance (filter/page changed, or

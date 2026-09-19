@@ -54,7 +54,13 @@ function tileStyle(tone: TileTone): { bg: string; fg: string } {
 
 export function RahbarHome() {
   const [scope, setScope] = usePersistentState<ZaxiraScope>('rahbar.scope', 'yangi')
-  const [preset, setPreset] = usePersistentState<PeriodPreset>('rahbar.preset', 'boshidan')
+  // Default preset is 'bu_oy', NOT 'boshidan' (2026-09-19, Phase 1A). The
+  // old default made every fresh dashboard mount ask rahbar_dashboard_ledger
+  // for the entire dataset since project inception (BOSHIDAN -> today) — the
+  // widest query the screen can issue, fired automatically, by default, with
+  // no cache. That single RPC was ~15% of all measured database time.
+  // 'Boshidan' is still one click away in the period selector.
+  const [preset, setPreset] = usePersistentState<PeriodPreset>('rahbar.preset', 'bu_oy')
   const [customFrom, setCustomFrom] = usePersistentState('rahbar.customFrom', BOSHIDAN)
   const [customTo, setCustomTo] = usePersistentState('rahbar.customTo', () => todayInTashkent())
   const [selectedTypeIds, setSelectedTypeIds] = usePersistentState<string[] | null>('rahbar.types', null) // null = hammasi

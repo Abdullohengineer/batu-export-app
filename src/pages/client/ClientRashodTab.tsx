@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { usePersistentState } from '../../lib/FilterState'
+import { useDebouncedValue } from '../../lib/useDebouncedValue'
+import { queryKeys } from '../../lib/queryClient'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
 import {
@@ -120,30 +123,25 @@ export function ClientRashodTab() {
     'clientHisobot.rashod.filters',
     defaultClientChiqimLedgerFilters(defaultRange.from, defaultRange.to),
   )
-  const [ledger, setLedger] = useState<ClientChiqimLedger | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetchClientChiqimLedger(filters)
-      .then((data) => {
-        if (!cancelled) setLedger(data)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message ?? 'Ошибка загрузки')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [filters])
+  // 2026-09-19 (Phase 1B): was a bare useEffect that re-fired
+  // client_chiqim_ledger on every filter object change — no debounce, no
+  // cancellation, no cache. Debounced so a date-picker tick doesn't fire an
+  // RPC per change, and moved onto React Query so returning to this tab
+  // within the cache window reuses the result instead of re-querying.
+  const debouncedFilters = useDebouncedValue(filters)
+  const filterKey = JSON.stringify(debouncedFilters)
+  const {
+    data: ledger = null,
+    isPending: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: queryKeys.clientChiqimLedger(filterKey),
+    queryFn: () => fetchClientChiqimLedger(debouncedFilters),
+  })
+  const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : null
 
   function typeName(id: string): string {
     return productTypes.find((t) => t.id === id)?.name ?? '—'

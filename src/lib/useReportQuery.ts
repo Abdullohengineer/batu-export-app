@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { mapDbRowToReportRow, type ReportFilters, type ReportRow, type ChiqimReportRow, type ReportTotals, type ReportDbRow } from './reportQuery'
 
@@ -11,6 +11,12 @@ import { mapDbRowToReportRow, type ReportFilters, type ReportRow, type ChiqimRep
 // state. No FETCH_CAP here or anywhere downstream — the DB scans however
 // many rows match, and totals/count reflect the FULL filtered set even
 // though only one page of rows is ever held in memory.
+// 2026-09-19 (Hisobot perf pass, Change 1) — filter changes are debounced
+// this long before the RPCs fire, so fast typing in serial/barcode2/plate/
+// driver doesn't fire report_query_page + report_totals once per
+// keystroke. Page navigation and the initial load are NOT debounced (see
+// the load-trigger logic below) — those should feel instant.
+const FILTER_DEBOUNCE_MS = 300
 const PAGE_SIZE = 100
 const EXPORT_CHUNK_SIZE = 1000
 // Safety net only, not a silent truncation point (§ requirement 5): if an
@@ -126,8 +132,17 @@ export function useReportQuery(filters: ReportFilters) {
     setPage(1)
   }, [filterKey])
 
+  // isInitialMount / prevFilterKeyRef (Change 1) — decide, per effect run,
+  // whether this fetch is the first load (fire immediately), a filter
+  // change (debounce FILTER_DEBOUNCE_MS so rapid typing collapses into one
+  // request), or a page-navigation-only change (fire immediately — paging
+  // should feel instant, it's not the thing that scales with typing speed).
+  const isInitialMount = useRef(true)
+  const prevFilterKeyRef = useRef(filterKey)
+
   useEffect(() => {
     let cancelled = false
+    let debounceId: ReturnType<typeof setTimeout> | undefined
 
     async function load() {
       setLoading(true)
@@ -227,9 +242,21 @@ export function useReportQuery(filters: ReportFilters) {
       }
     }
 
-    load()
+    const filterChanged = prevFilterKeyRef.current !== filterKey
+    prevFilterKeyRef.current = filterKey
+
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      load() // initial load — never debounced
+    } else if (filterChanged) {
+      debounceId = setTimeout(load, FILTER_DEBOUNCE_MS) // filter change — debounced
+    } else {
+      load() // page navigation only — never debounced, should feel instant
+    }
+
     return () => {
       cancelled = true
+      if (debounceId !== undefined) clearTimeout(debounceId)
     }
     // filterKey captures filters' actual identity; filters itself is a
     // fresh object every render.

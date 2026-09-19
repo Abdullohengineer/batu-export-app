@@ -1,0 +1,31 @@
+-- TEMPORARY MITIGATION (reversible; revert once the structural Hisobot work
+-- lands and the tail is confirmed collapsed).
+--
+-- Raises statement_timeout 8s -> 20s so users on Hisobot get a slow response
+-- instead of a hard "canceling statement due to statement timeout" failure
+-- while report_query_page/report_totals are still being optimized.
+--
+-- Why BOTH roles: PostgREST/Supavisor physically authenticates every pooled
+-- connection as `authenticator` (confirmed via pg_stat_activity -- every
+-- PostgREST backend shows usename=authenticator), then does SET ROLE
+-- authenticated per request. Postgres applies a role's `ALTER ROLE ... SET`
+-- defaults only at SESSION START, for the LOGIN role -- a later SET ROLE does
+-- NOT re-fetch the target role's stored GUC defaults. So `authenticator`'s own
+-- setting is what actually governs real request execution; `authenticated`'s
+-- is largely vestigial for pooled traffic but is set too, to stay consistent
+-- and to cover any direct (non-pooled) connection.
+--
+-- NOT changed, deliberately: `lock_timeout` (still 8s on authenticator).
+-- Real lock contention on these tables is confirmed (two live 40P01 deadlocks
+-- hit while applying earlier RLS migrations). Raising lock_timeout would make
+-- queries queue LONGER behind locks rather than failing fast, which works
+-- against stability -- it should not follow statement_timeout upward.
+--
+-- NOT changed: `anon` (still 3s). Unauthenticated traffic should stay tightly
+-- bounded; Hisobot is an authenticated-only surface.
+--
+-- Takes effect on newly-opened pooled connections; already-open backends keep
+-- 8s until they cycle.
+
+alter role authenticator set statement_timeout = '20s';
+alter role authenticated set statement_timeout = '20s';

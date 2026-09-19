@@ -80,7 +80,7 @@ export function HisobotTab() {
   // the FULL filtered set, never summed from `rows` (which is only ever one
   // page). §requirement 1: filters are pushed into the query itself
   // (report_query_page/report_totals) — no client-side narrowing left here.
-  const { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading } = useReportQuery(filters)
+  const { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading, error } = useReportQuery(filters)
   // CHIQIM truck type badge (2026-08-30) — a label resolver threaded like
   // ownerName/typeName/calibreLabel, not a row source. See
   // useChiqimTruckTypes.ts for why it is not threaded through report_rows_v2.
@@ -121,9 +121,20 @@ export function HisobotTab() {
       <div className="space-y-4">
         <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(filters.directions)} visibleColumnKeys={visibleColumnKeys} />
 
+        {/* 2026-09-19 (post-debounce incident) -- report_query_page/
+            report_totals failing (previously: silent, rendered as a false
+            "Natija topilmadi" or a totals/rows count mismatch) now surfaces
+            here instead. `rows`/`totals` are deliberately left at their
+            last-known-good values by useReportQuery on error, not cleared
+            to empty -- this banner is what tells the user those numbers may
+            be stale, rather than the screen silently claiming zero results. */}
+        {error && (
+          <StatusNote tone="problem">Hisobotni yuklashda xatolik yuz berdi: {error}. Qayta urinib ko'ring.</StatusNote>
+        )}
+
         <HistoryView
           loading={loading}
-          isEmpty={totalCount === 0 && !showVoidedCallout}
+          isEmpty={totalCount === 0 && !showVoidedCallout && !error}
           emptyText="Natija topilmadi."
           resultCount={totalCount}
           filters={

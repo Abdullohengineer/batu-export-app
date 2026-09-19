@@ -1,13 +1,24 @@
 # TECH DEBT (tracked, not yet scheduled): schema-wide RLS `my_role()`/`my_owner_id()` caching sweep
 
-## Status: open, own PR later — not part of the `0202` P0 hotfix
+## Status: open, own PR later — not part of the `0202`/`0206` P0 hotfixes
 
 `0202` fixed the specific timeout by wrapping `my_role()`/`my_owner_id()`
 calls as `(select my_role())`/`(select my_owner_id())` in the 34
 `client_read_own_*`/`read_all` SELECT policies on the 17 tables
-`rahbar_stock_snapshot`/`rahbar_dashboard_ledger` touch. That fix was
-deliberately scoped to exactly those tables ("whichever is minimal" for a
-P0) — it did **not** touch every other RLS policy in the schema.
+`rahbar_stock_snapshot`/`rahbar_dashboard_ledger` touch. `0206` closed a gap
+`0202` left open (a bare `auth.uid()` call in the same 17 tables' `read_all`
+policy, plus two lookup tables `calibres`/`product_types` `0202` never
+touched at all). Both were deliberately scoped to exactly the tables these
+two RPCs depend on ("whichever is minimal" for a P0) — they did **not**
+touch every other RLS policy in the schema.
+
+**Update 2026-09-19 (post-`0206`):** re-ran the performance advisor after
+`0206` — the `auth_rls_initplan` finding count dropped from 31 to **12**,
+now confined to 10 tables outside both dashboard RPCs' dependency graph:
+`audit_log`, `chiqim_fura_photos`, `chiqim_line_raw_serials`,
+`dispatch_manifest`, `notes`, `owners`, `product_categories`, `profiles`,
+`rezka_cycles`, `settings_limits`. The scope below is updated accordingly —
+smaller than originally logged, still open.
 
 ## Why this is real, tracked debt
 
@@ -25,9 +36,15 @@ once, exactly like this incident.
 
 ## Scope of a future sweep (not started)
 
+- Remaining tables per the post-`0206` advisor re-run: `audit_log`,
+  `chiqim_fura_photos`, `chiqim_line_raw_serials`, `dispatch_manifest`,
+  `notes`, `owners`, `product_categories`, `profiles`, `rezka_cycles`,
+  `settings_limits` (12 findings across these 10). None of these sit on the
+  Rahbar dashboard / client Панель hot path — that path is now fully clear.
 - Enumerate every `client_read_own_*`/`read_all` policy schema-wide via
   `pg_policies` (the same technique `0202`/`0195`'s table-by-table audits
-  already used, just without limiting to a fixed table list this time).
+  already used, just without limiting to a fixed table list this time) to
+  confirm nothing beyond the advisor's current list is missed.
 - Apply the same `(select my_role())`/`(select my_owner_id())` wrap to
   each — a pure, behavior-preserving performance rewrite, same as `0202`.
 - Verify no regression per role (staff roles via `read_all`, client via

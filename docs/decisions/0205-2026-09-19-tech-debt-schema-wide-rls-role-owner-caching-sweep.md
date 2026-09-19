@@ -1,6 +1,25 @@
 # TECH DEBT (tracked, not yet scheduled): schema-wide RLS `my_role()`/`my_owner_id()` caching sweep
 
-## Status: open, own PR later — not part of the `0202`/`0206` P0 hotfixes
+## Status: CLOSED 2026-09-19 (`0207`) — schema-wide `auth_rls_initplan` finding count is 0
+
+`0132`/`0133` wrapped the remaining 10 tables (12 findings) plus the 2
+trivial INSERT `with_check` findings this entry's own scope had listed.
+Performance advisor re-run after both: **0 findings.** Nothing left to
+schedule for this specific tech debt — see `0207` for the full writeup,
+including a correction to an incorrect "profiles cascades to every RLS
+check" claim that motivated prioritizing it (checked: `my_role()`/
+`my_owner_id()` are `SECURITY DEFINER` owned by `postgres`, which has
+`rolbypassrls = true` — profiles' own RLS never engaged for their internal
+lookup, no cascade existed).
+
+This class of issue is closed. A **different, unrelated** performance
+problem was found on `report_query_page`/`report_totals` while checking
+this sweep's real-world impact (deep per-row `LATERAL` function nesting +
+unusually high planning time, not an RLS caching gap) — tracked separately,
+see `0207`'s own "not yet actioned" section and any decision entry number
+that follows it once that investigation starts.
+
+## Status (historical, pre-closure): open, own PR later — not part of the `0202`/`0206` P0 hotfixes
 
 `0202` fixed the specific timeout by wrapping `my_role()`/`my_owner_id()`
 calls as `(select my_role())`/`(select my_owner_id())` in the 34

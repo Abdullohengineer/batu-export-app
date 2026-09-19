@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { mapDbRowToReportRow, type ReportFilters, type ReportRow, type ChiqimReportRow, type ReportTotals, type ReportDbRow } from './reportQuery'
 
@@ -11,6 +11,12 @@ import { mapDbRowToReportRow, type ReportFilters, type ReportRow, type ChiqimRep
 // state. No FETCH_CAP here or anywhere downstream — the DB scans however
 // many rows match, and totals/count reflect the FULL filtered set even
 // though only one page of rows is ever held in memory.
+// 2026-09-19 (Hisobot perf pass, Change 1) — filter changes are debounced
+// this long before the RPCs fire, so fast typing in serial/barcode2/plate/
+// driver doesn't fire report_query_page + report_totals once per
+// keystroke. Page navigation and the initial load are NOT debounced (see
+// the load-trigger logic below) — those should feel instant.
+const FILTER_DEBOUNCE_MS = 300
 const PAGE_SIZE = 100
 const EXPORT_CHUNK_SIZE = 1000
 // Safety net only, not a silent truncation point (§ requirement 5): if an
@@ -68,7 +74,12 @@ function toRpcParams(filters: ReportFilters): RpcParams {
 // entirely (a voided, unclaimed pallet has no dispatch date and would never
 // survive the date-or-status-override filter otherwise — see the SQL
 // function's own comment). Reads the base view, not the paginated RPC.
-async function fetchVoidedBarcodeMatch(barcode2Query: string): Promise<ChiqimReportRow | null> {
+//
+// Best-effort: this is a supplementary callout, not the main data — an
+// error or an aborted-in-flight request (see useReportQuery's own
+// abortSignal wiring) both just mean "no callout this time," never a
+// reason to fail the whole load().
+async function fetchVoidedBarcodeMatch(barcode2Query: string, signal: AbortSignal): Promise<ChiqimReportRow | null> {
   const query = barcode2Query.trim()
   if (!query) return null
   const { data } = await supabase
@@ -76,6 +87,7 @@ async function fetchVoidedBarcodeMatch(barcode2Query: string): Promise<ChiqimRep
     .select('*')
     .eq('barcode2', query)
     .eq('pallet_status', 'bekor_qilingan')
+    .abortSignal(signal)
     .maybeSingle()
   if (!data) return null
   return mapDbRowToReportRow(data as ReportDbRow) as ChiqimReportRow
@@ -118,6 +130,16 @@ export function useReportQuery(filters: ReportFilters) {
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
+  // 2026-09-19 (post-debounce incident, see docs/decisions/ — Hisobot
+  // search returning empty/mismatched results under load) — report_totals
+  // and report_query_page were failing server-side (Postgres 57014,
+  // "canceling statement due to statement timeout") under bursts of
+  // concurrent requests, and the old code never checked `.error` on either
+  // RPC result — a failed request silently rendered as "zero rows" (or
+  // "N natija topildi" from a totals call that happened to succeed next to
+  // a page call that didn't), indistinguishable from a genuine empty
+  // result. Surfaced here instead of swallowed; see the load() body below.
+  const [error, setError] = useState<string | null>(null)
 
   // A new filter set always starts back at page 1 — the previous page
   // number almost never makes sense against a differently-filtered result.
@@ -126,19 +148,73 @@ export function useReportQuery(filters: ReportFilters) {
     setPage(1)
   }, [filterKey])
 
+  // isInitialMount / prevFilterKeyRef (Change 1) — decide, per effect run,
+  // whether this fetch is the first load (fire immediately), a filter
+  // change (debounce FILTER_DEBOUNCE_MS so rapid typing collapses into one
+  // request), or a page-navigation-only change (fire immediately — paging
+  // should feel instant, it's not the thing that scales with typing speed).
+  const isInitialMount = useRef(true)
+  const prevFilterKeyRef = useRef(filterKey)
+
   useEffect(() => {
-    let cancelled = false
+    // AbortController, not a plain boolean — a superseded request's HTTP
+    // call is actually cancelled (see the two `.abortSignal(...)` calls
+    // below), not just ignored on arrival. This is what breaks the pile-up
+    // that caused the 2026-09-19 incident: previously, a debounced load()
+    // that had already fired kept running on the server for its FULL
+    // duration even after a newer filter change superseded it client-side
+    // (no cancellation signal was ever sent), so rapid interaction could
+    // leave several of these real, uncancelled report_totals/
+    // report_query_page calls in flight at once, competing for the same
+    // Postgres connections/CPU — confirmed live via Supabase logs: bursts
+    // of paired report_query_page + report_totals calls failing together
+    // with Postgres 57014 ("canceling statement due to statement
+    // timeout"), not a data or SQL-correctness problem. Aborting a
+    // superseded request tells the browser to drop the connection
+    // immediately instead of waiting it out, which is what actually
+    // reduces concurrent DB load as interactions pile up — the debounce
+    // alone only delayed when a request FIRED, it never stopped one that
+    // had already fired.
+    const controller = new AbortController()
+    let debounceId: ReturnType<typeof setTimeout> | undefined
 
     async function load() {
       setLoading(true)
       try {
+        // Built ONCE, used for both calls below — report_query_page and
+        // report_totals must never be able to drift onto different filter
+        // args, and passing the same `params` object to both is what
+        // guarantees that structurally, not just by convention.
         const params = toRpcParams(filters)
         const [pageResult, totalsResult, voided] = await Promise.all([
-          supabase.rpc('report_query_page', { ...params, p_limit: PAGE_SIZE, p_offset: (page - 1) * PAGE_SIZE }),
-          supabase.rpc('report_totals', params),
-          fetchVoidedBarcodeMatch(filters.barcode2),
+          supabase.rpc('report_query_page', { ...params, p_limit: PAGE_SIZE, p_offset: (page - 1) * PAGE_SIZE }).abortSignal(controller.signal),
+          supabase.rpc('report_totals', params).abortSignal(controller.signal),
+          fetchVoidedBarcodeMatch(filters.barcode2, controller.signal),
         ])
-        if (cancelled) return
+        // Superseded by a newer effect instance (filter/page changed, or
+        // unmount) while this was in flight — its own load() already owns
+        // (or will own) `rows`/`totals`/`totalCount`/`error`; committing
+        // this stale response over that would be exactly the race this
+        // guard exists to prevent. Checked BEFORE looking at `.error`,
+        // since an aborted request resolves as an error too (an
+        // AbortError, not a real failure) — that path is silent by
+        // design, never surfaced to the user.
+        if (controller.signal.aborted) return
+
+        // Real, non-abort error from either RPC — surface it and stop.
+        // Deliberately does NOT call setRows/setTotals/setTotalCount here:
+        // this is the exact bug this fix targets (a failed
+        // report_query_page silently rendering as "0 rows", or a failed
+        // report_totals silently rendering "0 natija" next to a
+        // successful page fetch) — showing stale-but-real last-known data
+        // under an error banner is less misleading than replacing it with
+        // a fabricated empty result.
+        if (pageResult.error || totalsResult.error) {
+          setError(pageResult.error?.message ?? totalsResult.error?.message ?? "Ma'lumotlarni yuklashda xatolik yuz berdi.")
+          setLoading(false)
+          return
+        }
+        setError(null)
 
         // `as ReportRow[]`: report_query_page never emits kind: 'chiqim' (see
         // ReportDbRow.kind's own comment) -- mapDbRowToReportRow's return
@@ -222,14 +298,34 @@ export function useReportQuery(filters: ReportFilters) {
         })
         setTotalCount(Number(t?.total_count ?? 0))
         setVoidedBarcodeMatch(voided)
+      } catch (err) {
+        // Safety net for a genuine JS exception (e.g. mapDbRowToReportRow
+        // choking on an unexpected row shape) rather than an RPC-level
+        // `.error` — still must not be swallowed. An abort can in
+        // principle surface here too depending on the runtime, so it gets
+        // the same "superseded, not a real failure" pass-through as above.
+        if (controller.signal.aborted) return
+        setError(err instanceof Error ? err.message : "Ma'lumotlarni yuklashda xatolik yuz berdi.")
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     }
 
-    load()
+    const filterChanged = prevFilterKeyRef.current !== filterKey
+    prevFilterKeyRef.current = filterKey
+
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      load() // initial load — never debounced
+    } else if (filterChanged) {
+      debounceId = setTimeout(load, FILTER_DEBOUNCE_MS) // filter change — debounced
+    } else {
+      load() // page navigation only — never debounced, should feel instant
+    }
+
     return () => {
-      cancelled = true
+      controller.abort()
+      if (debounceId !== undefined) clearTimeout(debounceId)
     }
     // filterKey captures filters' actual identity; filters itself is a
     // fresh object every render.
@@ -238,7 +334,7 @@ export function useReportQuery(filters: ReportFilters) {
 
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 
-  return { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading }
+  return { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading, error }
 }
 
 export class ExportTooLargeError extends Error {}

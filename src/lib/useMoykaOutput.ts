@@ -21,6 +21,12 @@ export interface FinishedPallet {
 
 export interface OutputSerial {
   serial: string
+  cycleNo: number // wash_cycles.cycle_no (Path E cheat version, see DECISIONS.md
+  // "Path E cheat: multi-cycle wash_cycles scoping"). 1 for every ordinary
+  // serial — a second, admin-only value only ever exists after a manual
+  // residual-reprocess incident (open_second_wash_cycle). ONE ROW PER
+  // (serial, cycleNo) now, not per serial — a twice-processed serial
+  // appears here twice, each row scoped to its own cycle's own activity.
   type_id: string
   partiyaNo: number | null
   category_id: string
@@ -32,25 +38,37 @@ export interface OutputSerial {
   // by OmborTayyorTab so every pallet packed out of it gets a note
   // recording its old-stock lineage.
   isMinted: boolean
-  closedAt: string | null // wash_cycles.closed_at (2026-08-29, Prompt 10 — see
-  // DECISIONS.md "Serial close-out (Yakunlash)"). null = still open (unrealized
-  // gap, Moykada); set = closed (realized, Yo'qotish). Drives isInMoyka's third
-  // param and computeLossDisplay everywhere this hook's data reaches.
-  sent: number // Yuborilgan — Σ moyka_sends.qty_kg (derived)
-  received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void (derived).
-  // Deliberately still counts 'consumed' pallets (only 'bekor_qilindi' is skipped):
-  // status is a CURRENT-LOCATION field, not a did-this-happen field. A pallet later
-  // consumed into a re-wash was still genuinely produced by THIS serial, and its
-  // locked final_loss_pct must not move retroactively. Same reasoning as
+  closedAt: string | null // THIS ROW'S OWN CYCLE'S wash_cycles.closed_at (2026-08-29,
+  // Prompt 10 — see DECISIONS.md "Serial close-out (Yakunlash)"; cycle-scoped,
+  // Path E cheat version). null = still open (unrealized gap, Moykada); set =
+  // closed (realized, Yo'qotish). Drives isInMoyka's third param and
+  // computeLossDisplay everywhere this hook's data reaches.
+  sent: number // Yuborilgan — Σ moyka_sends.qty_kg WITHIN THIS CYCLE'S OWN WINDOW
+  // ([opened_at, next cycle's opened_at) or [opened_at, +inf) for the
+  // latest cycle) — cycle-scoped, Path E cheat version. For every
+  // single-cycle serial this is identical to the old whole-serial sum
+  // (opened_at is backfilled to the earliest send, so the lower bound is a
+  // no-op, and there is no next cycle to bound above).
+  received: number // Qabul qilingan — Σ finished_pallets.weight_kg, non-void,
+  // WITHIN THIS CYCLE'S OWN WINDOW (same cycle-scoping as sent, Path E cheat
+  // version). Deliberately still counts 'consumed' pallets (only
+  // 'bekor_qilindi' is skipped): status is a CURRENT-LOCATION field, not a
+  // did-this-happen field. A pallet later consumed into a re-wash was still
+  // genuinely produced by THIS serial's THIS cycle, and its locked
+  // final_loss_pct must not move retroactively. Same reasoning as
   // yield_rows.output, which likewise applies no status filter. See DECISIONS.md
   // "Opening stock, Stage 3".
-  inProcess: number // Jarayonda — max(0, sent − received); never negative (see DECISIONS)
-  excess: number // Ortiqcha — max(0, received − sent); non-blocking overage flag
-  pallets: FinishedPallet[] // this serial's pallets
+  inProcess: number // Jarayonda — max(0, sent − received), this cycle's own; never negative (see DECISIONS)
+  excess: number // Ortiqcha — max(0, received − sent), this cycle's own; non-blocking overage flag
+  pallets: FinishedPallet[] // this cycle's own pallets (cycle-scoped by received_date window)
   lastActivityDate: string | null // max(last moyka_sends.sent_date, last finished_pallets.received_date)
-  // — used to sort this list newest-first (DECISIONS "Universal sort rule").
-  barcodeSeqByCalibre: Record<string, number> // count of every pallet ever made for this serial+calibre —
-  // barcode2 is a permanent PK, so the next barcode's sequence number must never collide with a prior one.
+  // WITHIN THIS CYCLE — used to sort this list newest-first (DECISIONS "Universal sort rule").
+  barcodeSeqByCalibre: Record<string, number> // count of every pallet ever made for this SERIAL
+  // (whole-serial, deliberately NOT cycle-scoped, Path E cheat version) — a
+  // barcode2 is a permanent PK, so the next barcode's sequence number must
+  // never collide with a prior CYCLE's pallets either, not just a prior
+  // save within the same cycle. Identical across every cycle-row of the
+  // same serial.
 }
 
 // §5.3 data: serials sent to Moyka (Step 5). No more manual finish event
@@ -96,6 +114,10 @@ export function useMoykaOutput() {
         supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, created_at, status'),
       ])
 
+      // Anchored on sends, unchanged from before Path E — a wash_cycles row
+      // with no send yet (the brief window right after an admin runs
+      // open_second_wash_cycle but before the residual is actually sent)
+      // simply doesn't surface here, same as a first-ever cycle never did.
       const serialList = [...new Set((sends ?? []).map((s) => s.serial))]
       if (serialList.length === 0) {
         if (requestIdRef.current === requestId) {
@@ -106,45 +128,6 @@ export function useMoykaOutput() {
 
       const labStatusBySerial = await currentLabStatus(serialList)
 
-      const sentBySerial = new Map<string, number>()
-      const lastSentDateBySerial = new Map<string, string>()
-      for (const s of sends ?? []) {
-        sentBySerial.set(s.serial, (sentBySerial.get(s.serial) ?? 0) + s.qty_kg)
-        const prevSent = lastSentDateBySerial.get(s.serial)
-        if (!prevSent || s.sent_date > prevSent) lastSentDateBySerial.set(s.serial, s.sent_date)
-      }
-
-      const palletsBySerial = new Map<string, FinishedPallet[]>()
-      for (const p of pallets ?? []) {
-        if (p.status === 'bekor_qilindi') continue
-        const list = palletsBySerial.get(p.serial) ?? []
-        list.push({
-          barcode2: p.barcode2,
-          calibre_id: p.calibre_id,
-          weight_kg: p.weight_kg,
-          received_date: p.received_date,
-          created_at: p.created_at,
-        })
-        palletsBySerial.set(p.serial, list)
-      }
-      const receivedBySerial = new Map<string, number>()
-      for (const [serial, serialPallets] of palletsBySerial) {
-        receivedBySerial.set(
-          serial,
-          serialPallets.reduce((sum, p) => sum + p.weight_kg, 0),
-        )
-      }
-
-      // Every pallet ever made for a (serial, calibre) — barcode2 is a
-      // permanent PK, so the next barcode's sequence number must never
-      // collide with a prior one.
-      const barcodeSeqBySerial = new Map<string, Record<string, number>>()
-      for (const p of pallets ?? []) {
-        const bySerial = barcodeSeqBySerial.get(p.serial) ?? {}
-        bySerial[p.calibre_id] = (bySerial[p.calibre_id] ?? 0) + 1
-        barcodeSeqBySerial.set(p.serial, bySerial)
-      }
-
       const { data: kLines } = await supabase
         .from('kirim_lines')
         .select('serial, order_id, type_id, partiya_no')
@@ -153,74 +136,108 @@ export function useMoykaOutput() {
       const [{ data: orders }, { data: types }, { data: cycles }] = await Promise.all([
         supabase.from('kirim_orders').select('order_id, owner_id, origin').in('order_id', orderIds),
         supabase.from('product_types').select('id, category_id'),
-        supabase.from('wash_cycles').select('serial, closed_at').in('serial', serialList),
+        // Path E cheat version (see DECISIONS.md "Path E cheat: multi-cycle
+        // wash_cycles scoping") — id/cycle_no/opened_at/closed_at, not just
+        // serial/closed_at. Ordered so cycle N's own window end (exclusive)
+        // is cycle N+1's opened_at, same boundary rule the SQL-side
+        // functions (client_serial_loss_kg etc.) use — never closed_at,
+        // which is "when Yakunlash was clicked," not "when the next
+        // cycle's material actually started arriving."
+        supabase.from('wash_cycles').select('id, serial, cycle_no, opened_at, closed_at').in('serial', serialList).order('cycle_no'),
       ])
 
       const lineBySerial = new Map((kLines ?? []).map((l) => [l.serial, l]))
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
       const categoryByType = new Map((types ?? []).map((t) => [t.id, t.category_id]))
-      const closedAtBySerial = new Map((cycles ?? []).map((c) => [c.serial, c.closed_at as string | null]))
 
-      // Shared join/derivation for both windows — avoids fetching or
-      // computing sent/received/pallets twice for the same serial shape.
-      function baseRow(serial: string) {
-        const line = lineBySerial.get(serial)
-        if (!line) return null
-        const order = orderById.get(line.order_id)
-        if (!order) return null
-        const sent = sentBySerial.get(serial) ?? 0
-        const received = receivedBySerial.get(serial) ?? 0
-        const serialPallets = palletsBySerial.get(serial) ?? []
-        const lastReceivedDate = serialPallets.reduce<string | null>(
-          (max, p) => (!max || p.received_date > max ? p.received_date : max),
-          null,
-        )
-        return {
-          serial,
-          type_id: line.type_id,
-          partiyaNo: line.partiya_no,
-          owner_id: order.owner_id,
-          isMinted: order.origin === 'internal_reprocess',
-          closedAt: closedAtBySerial.get(serial) ?? null,
-          sent,
-          received,
-          pallets: serialPallets,
-          barcodeSeqByCalibre: barcodeSeqBySerial.get(serial) ?? {},
-          lastSentDate: lastSentDateBySerial.get(serial) ?? null,
-          lastReceivedDate,
-        }
+      interface CycleWindow {
+        cycleNo: number
+        openedAt: string
+        closedAt: string | null
+        // Exclusive upper bound — the next cycle's own opened_at, or null
+        // for the latest cycle (unbounded above, matching every
+        // single-cycle serial's original whole-serial-lifetime behavior).
+        nextOpenedAt: string | null
+      }
+      const cyclesBySerial = new Map<string, CycleWindow[]>()
+      for (const c of cycles ?? []) {
+        const list = cyclesBySerial.get(c.serial) ?? []
+        list.push({ cycleNo: c.cycle_no, openedAt: c.opened_at, closedAt: c.closed_at, nextOpenedAt: null })
+        cyclesBySerial.set(c.serial, list)
+      }
+      for (const list of cyclesBySerial.values()) {
+        list.sort((a, b) => a.cycleNo - b.cycleNo)
+        for (let i = 0; i < list.length - 1; i++) list[i].nextOpenedAt = list[i + 1].openedAt
+      }
+      function inWindow(date: string, w: CycleWindow) {
+        return date >= w.openedAt.slice(0, 10) && (w.nextOpenedAt === null || date < w.nextOpenedAt.slice(0, 10))
       }
 
-      // Built for EVERY serial in this fetch (2026-08-29, Prompt 9) — not
-      // pre-filtered to isInMoyka any more. Window 2 (receivedSerials,
-      // below) needs a fully-received serial (balance 0) to stay in this
-      // set; the receive picker's own membership (serials, isInMoyka) is
-      // still exactly what it was, just derived as a filter AFTER this map
-      // instead of before it — same rows, same figures, no behaviour change
-      // for that consumer.
-      const combined: OutputSerial[] = serialList
-        .map((serial): OutputSerial | null => {
-          const base = baseRow(serial)
-          if (!base) return null
-          return {
-            serial: base.serial,
-            type_id: base.type_id,
-            partiyaNo: base.partiyaNo,
-            owner_id: base.owner_id,
-            isMinted: base.isMinted,
-            closedAt: base.closedAt,
+      // Every pallet ever made for a (serial, calibre) — barcode2 is a
+      // permanent PK, so the next barcode's sequence number must never
+      // collide with a prior one, WHOLE-SERIAL, across every cycle (Path E
+      // cheat version — deliberately NOT cycle-scoped, unlike everything
+      // else in this hook).
+      const barcodeSeqBySerial = new Map<string, Record<string, number>>()
+      for (const p of pallets ?? []) {
+        const bySerial = barcodeSeqBySerial.get(p.serial) ?? {}
+        bySerial[p.calibre_id] = (bySerial[p.calibre_id] ?? 0) + 1
+        barcodeSeqBySerial.set(p.serial, bySerial)
+      }
+
+      const livePallets = (pallets ?? []).filter((p) => p.status !== 'bekor_qilindi')
+
+      // One row per (serial, cycle) — every field below is scoped to that
+      // one cycle's own date window (see inWindow), except
+      // barcodeSeqByCalibre (whole-serial, see above).
+      const combined: OutputSerial[] = []
+      for (const serial of serialList) {
+        const line = lineBySerial.get(serial)
+        if (!line) continue
+        const order = orderById.get(line.order_id)
+        if (!order) continue
+
+        const serialCycles = cyclesBySerial.get(serial) ?? []
+        for (const w of serialCycles) {
+          const cycleSends = (sends ?? []).filter((s) => s.serial === serial && inWindow(s.sent_date, w))
+          const cyclePallets = livePallets
+            .filter((p) => p.serial === serial && inWindow(p.received_date, w))
+            .map((p) => ({
+              barcode2: p.barcode2,
+              calibre_id: p.calibre_id,
+              weight_kg: p.weight_kg,
+              received_date: p.received_date,
+              created_at: p.created_at,
+            }))
+
+          const sent = cycleSends.reduce((sum, s) => sum + s.qty_kg, 0)
+          const received = cyclePallets.reduce((sum, p) => sum + p.weight_kg, 0)
+          const lastSentDate = cycleSends.reduce<string | null>((max, s) => (!max || s.sent_date > max ? s.sent_date : max), null)
+          const lastReceivedDate = cyclePallets.reduce<string | null>(
+            (max, p) => (!max || p.received_date > max ? p.received_date : max),
+            null,
+          )
+
+          combined.push({
+            serial,
+            cycleNo: w.cycleNo,
+            type_id: line.type_id,
+            partiyaNo: line.partiya_no,
+            owner_id: order.owner_id,
+            isMinted: order.origin === 'internal_reprocess',
+            closedAt: w.closedAt,
             labStatus: labStatusBySerial.get(serial) ?? 'untested',
-            sent: base.sent,
-            received: base.received,
-            pallets: base.pallets,
-            barcodeSeqByCalibre: base.barcodeSeqByCalibre,
-            category_id: categoryByType.get(base.type_id) ?? '',
-            inProcess: jarayonda(base.sent, base.received),
-            excess: ortiqcha(base.sent, base.received),
-            lastActivityDate: maxDate(base.lastSentDate, base.lastReceivedDate),
-          }
-        })
-        .filter((s): s is OutputSerial => s !== null)
+            sent,
+            received,
+            pallets: cyclePallets,
+            barcodeSeqByCalibre: barcodeSeqBySerial.get(serial) ?? {},
+            category_id: categoryByType.get(line.type_id) ?? '',
+            inProcess: jarayonda(sent, received),
+            excess: ortiqcha(sent, received),
+            lastActivityDate: maxDate(lastSentDate, lastReceivedDate),
+          })
+        }
+      }
 
       // Universal sort rule (DECISIONS "Universal sort rule", SPEC.md §5
       // intro): every stage/history list sorts newest-first. Sorted once

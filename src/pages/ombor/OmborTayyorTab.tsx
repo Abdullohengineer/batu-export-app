@@ -185,7 +185,17 @@ export function OmborTayyorTab() {
         <div className="mt-2 space-y-2">
           {receivedSerials.length === 0 && <p className="text-sm text-slate-400">Hali qabul qilingan seriya yo'q.</p>}
           {receivedSerials.map((s) => {
-            const expanded = expandedSerial === s.serial
+            // Keyed by (serial, cycleNo), not bare serial — Path E cheat
+            // version (see DECISIONS.md "Path E cheat: multi-cycle
+            // wash_cycles scoping") means a twice-processed serial produces
+            // TWO rows here now, one per cycle (each with its own real
+            // pallets, its own residual, its own Yakunlash eligibility).
+            // expandedSerial/confirmingClose were keyed by bare serial
+            // before Path E, which was safe under the old one-row-per-
+            // serial invariant; kept as bare-serial keys, both rows of a
+            // twice-processed serial would expand/confirm together as one.
+            const rowKey = `${s.serial}-${s.cycleNo}`
+            const expanded = expandedSerial === rowKey
             const sortedPallets = sortByDateDesc(s.pallets, (p) => p.created_at)
             const loss = computeLossDisplay(s.sent, s.received, s.closedAt)
             const residualKg = s.sent - s.received
@@ -195,14 +205,18 @@ export function OmborTayyorTab() {
             // placement requirement). Gated exactly per spec: still open,
             // a real residual to book, and lab-passed (closing a serial
             // that never passed makes no sense — same reasoning as the
-            // server-side RPC's own check).
+            // server-side RPC's own check). close_wash_cycle_serial itself
+            // only ever targets a serial's single currently-open cycle (the
+            // partial unique index guarantees at most one), so passing
+            // s.serial to handleYakunlash below is still correct even
+            // though this row is now cycle-scoped.
             const canYakunlash = s.closedAt === null && s.labStatus === 'passed' && residualKg > 0
-            const confirming = confirmingClose === s.serial
+            const confirming = confirmingClose === rowKey
             return (
-              <Card key={s.serial} padding="compact">
+              <Card key={rowKey} padding="compact">
                 <button
                   type="button"
-                  onClick={() => setExpandedSerial(expanded ? null : s.serial)}
+                  onClick={() => setExpandedSerial(expanded ? null : rowKey)}
                   className="flex w-full items-center gap-2 text-left"
                 >
                   <SerialChip>{s.serial}</SerialChip>
@@ -225,7 +239,7 @@ export function OmborTayyorTab() {
                     type="button"
                     onClick={() => {
                       setCloseError(null)
-                      setConfirmingClose(s.serial)
+                      setConfirmingClose(rowKey)
                     }}
                     className="mt-2 rounded-md border border-amber-300 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
                   >

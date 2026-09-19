@@ -63,14 +63,21 @@ export function OmborMoykaTab() {
   // wash_cycles row is minted — CHIQIM lab testing is now enterable as soon
   // as material is sent to Moyka, so the row lab_results.wash_cycle_id needs
   // to point at must already exist by the time Laborator opens the test
-  // form. `on conflict do nothing` makes this safe to run on every send, not
-  // just the first. wash_cycles is lab-linkage-only now (DECISIONS.md "Moyka
-  // loss becomes live; remove Tugallash") — nothing ever writes 'final' to
-  // its status again, so this upsert's status value is otherwise inert.
+  // form. wash_cycles is lab-linkage-only for a first send — nothing ever
+  // writes 'final' to its status again, so the status value is inert.
+  //
+  // Path E cheat version (multi-cycle wash_cycles, see DECISIONS.md
+  // "Path E cheat: multi-cycle wash_cycles scoping"): wash_cycles is no
+  // longer unique(serial) (it's unique(serial, cycle_no) now), so a plain
+  // upsert can't target it via PostgREST's onConflict (no predicate
+  // support for the partial one-open-cycle index). Replaced with an RPC,
+  // `ensure_open_wash_cycle`, that does the identical thing server-side:
+  // insert a cycle_no=1 row only if this serial has never had ANY
+  // wash_cycles row before; otherwise no-op, exactly as the old upsert did
+  // (including for a closed serial someone sends to via this same picker —
+  // that gap is separate, already flagged, and unaffected by this change).
   async function handleSend(serial: MoykaSerial, qtyKg: number) {
-    const { error: cycleErr } = await supabase
-      .from('wash_cycles')
-      .upsert({ serial: serial.serial, status: 'active' }, { onConflict: 'serial', ignoreDuplicates: true })
+    const { error: cycleErr } = await supabase.rpc('ensure_open_wash_cycle', { p_serial: serial.serial })
     if (cycleErr) throw cycleErr
 
     const { error } = await supabase.from('moyka_sends').insert({
@@ -95,8 +102,13 @@ export function OmborMoykaTab() {
   // set). No send action, no expand: managing what's happening in Moyka is
   // Tayyor Mahsulot's job (§5.3); this is just visibility that it's there.
   function processingRow(s: OutputSerial) {
+    // Keyed by (serial, cycleNo), not bare serial — Path E cheat version
+    // (see DECISIONS.md "Path E cheat: multi-cycle wash_cycles scoping")
+    // means a twice-processed serial produces two rows here now, one per
+    // cycle; a bare-serial key would collide React's reconciliation across
+    // them.
     return (
-      <Card key={s.serial} padding="compact">
+      <Card key={`${s.serial}-${s.cycleNo}`} padding="compact">
         <div className="flex items-center gap-2">
           <SerialChip>{s.serial}</SerialChip>
           <PartiyaBadge partiyaNo={s.partiyaNo} typeName={typeName(s.type_id)} />

@@ -164,9 +164,11 @@ export function ClientPanelTab() {
             // Fix 4 (2026-09-19) — old opening-stock raw material, investigated
             // and confirmed genuine (see docs/decisions/0199): already
             // correctly excluded from Новое's snapshot.rawKg, but until now had
-            // no tile anywhere on the client screen at all (unlike Rahbar's
-            // dashboard, where it was at least visible, relabeled, under the
-            // always-present "Xom" tile). Mirrors Rahbar's own new 7th tile.
+            // no tile anywhere on the client screen at all. Mirrors Rahbar's
+            // own 7th tile -- no duplication risk here the way Rahbar had:
+            // this client toggle is 2-way only (no "Hammasi"), so this tile
+            // and "Сырьё · непромытое" already live in mutually exclusive
+            // branches (scope === 'eski' vs. else), never rendered together.
             { key: 'oldRaw', label: 'Старое сырьё', value: snapshot.rawKg, unit: 'кг', caption: 'Текущий остаток · старое сырьё', ...tileStyle('raw') },
           ]}
         />

@@ -151,10 +151,20 @@ export function RahbarHome() {
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : (
         <HeroTiles
-          className={scope === 'yangi' ? 'grid grid-cols-2 gap-3 lg:grid-cols-5' : 'grid grid-cols-2 gap-3 lg:grid-cols-7'}
+          className={scope === 'yangi' ? 'grid grid-cols-2 gap-3 lg:grid-cols-5' : 'grid grid-cols-2 gap-3 lg:grid-cols-6'}
           tiles={[
             { key: 'jami', label: 'Jami yuvilgan va yuvilmagan mahsulot', value: derived.grandTotal, unit: 'kg', caption: 'Hozirgi holat — xom, moykada va tayyor', ...tileStyle('neutral') },
-            { key: 'xom', label: 'Xom · yuvilmagan', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi holat — yuvishga tayyor', ...tileStyle('raw') },
+            // "Xom · yuvilmagan" -- shown at Yangi (new raw only) and Hammasi
+            // (combined new+old, since snapshot.rawKg is already the
+            // unfiltered total at that scope -- no separate arithmetic).
+            // Hidden at Eski (2026-09-19, option a): showing new-stock
+            // language ("yuvishga tayyor") for what is, at that scope,
+            // entirely old opening-stock material read as misleading -- and
+            // it duplicated the new "Старое сырьё" tile below. "Старое
+            // сырьё" takes over at Eski instead.
+            ...(scope !== 'eski'
+              ? [{ key: 'xom', label: 'Xom · yuvilmagan', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi holat — yuvishga tayyor', ...tileStyle('raw') }]
+              : []),
             { key: 'moyka', label: 'Moykada', value: snapshot.moykadaKg, unit: 'kg', caption: "Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan", ...tileStyle('moyka') },
             // 2026-08-31: both tiles now name their own calibre set in the
             // label. This tile reads 11,210 kg where the two sentences lower
@@ -194,20 +204,15 @@ export function RahbarHome() {
               ? [{ key: 'oldKn', label: 'Старый склад Кондитерка', value: snapshot.oldKnKg, unit: 'kg', caption: 'Hozirgi qoldiq · havzadan', ...tileStyle('oldKn') }]
               : []),
             // 7th tile (2026-09-19) — Старое сырьё, old (opening-stock) raw
-            // material that never got processed. Investigated as Fix 4: this
-            // is a real, distinct figure (snapshot.rawKg at scope != 'yangi'
-            // is already old-stock-only, since 'yangi' filters to
-            // origin != 'opening_stock') but until now had no tile of its
-            // own naming it as such -- a reader could only find it by
-            // toggling to Eski and re-reading the always-present "Xom ·
-            // yuvilmagan" tile, which elsewhere means "new, awaiting
-            // processing." 🚩 Flagged, not silently resolved: this DOES mean
-            // the same kg figure now appears twice on screen at Eski/Hammasi
-            // (once as "Xom · yuvilmagan", once as this tile) -- "Xom"
-            // itself was left unchanged since only adding a new tile was
-            // asked for; hiding "Xom" at these scopes is a one-line follow-up
-            // if the duplication should go instead.
-            ...(scope !== 'yangi'
+            // material that never got processed (Fix 4: snapshot.rawKg at
+            // scope='eski' is already old-stock-only, since 'yangi' filters
+            // to origin != 'opening_stock'). Shown ONLY at Eski (2026-09-19,
+            // option a) -- replaces "Xom · yuvilmagan" there rather than
+            // sitting alongside it (the two were showing the identical kg
+            // under two labels). Hidden at Hammasi: that scope already shows
+            // the combined new+old total under "Xom · yuvilmagan" itself
+            // (an aggregation view, not a place for a third breakdown tile).
+            ...(scope === 'eski'
               ? [{ key: 'oldRaw', label: 'Старое сырьё', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi qoldiq · eski xom-ashyo', ...tileStyle('raw') }]
               : []),
           ]}

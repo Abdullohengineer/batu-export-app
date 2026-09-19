@@ -75,6 +75,9 @@ export function RahbarHome() {
   function calibreLabel(id: string): string {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
+  function typeName(id: string): string {
+    return productTypes.find((t) => t.id === id)?.name ?? id
+  }
 
   const derived = computeDashboardDerived(snapshot, ledger, selectedTypeIds, calibres)
 
@@ -87,6 +90,10 @@ export function RahbarHome() {
   // naturally empty at scope != 'eski' since old_kn rows never pass the
   // 'yangi' scope filter -- never re-added to the main/Yangi dashboard.
   const oldWashedSeries = [...derived.stockByCalibre, ...derived.stockKn].map((r) => ({ label: calibreLabel(r.calibreId), kg: r.kg }))
+  // Fix 3 (2026-09-19) -- same rows as oldWashedSeries, regrouped by product
+  // type instead of calibre (derived.stockByType), for the drill-down's
+  // second, stacked breakdown.
+  const oldWashedByTypeSeries = derived.stockByType.map((r) => ({ label: typeName(r.typeId), kg: r.kg }))
   const oldKnSeries = snapshot ? snapshot.oldKnByType.map((t) => ({ label: t.typeName, kg: t.kg })) : []
 
   return (
@@ -144,7 +151,7 @@ export function RahbarHome() {
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : (
         <HeroTiles
-          className={scope === 'yangi' ? 'grid grid-cols-2 gap-3 lg:grid-cols-5' : 'grid grid-cols-2 gap-3 lg:grid-cols-6'}
+          className={scope === 'yangi' ? 'grid grid-cols-2 gap-3 lg:grid-cols-5' : 'grid grid-cols-2 gap-3 lg:grid-cols-7'}
           tiles={[
             { key: 'jami', label: 'Jami yuvilgan va yuvilmagan mahsulot', value: derived.grandTotal, unit: 'kg', caption: 'Hozirgi holat — xom, moykada va tayyor', ...tileStyle('neutral') },
             { key: 'xom', label: 'Xom · yuvilmagan', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi holat — yuvishga tayyor', ...tileStyle('raw') },
@@ -186,6 +193,23 @@ export function RahbarHome() {
             ...(scope !== 'yangi'
               ? [{ key: 'oldKn', label: 'Старый склад Кондитерка', value: snapshot.oldKnKg, unit: 'kg', caption: 'Hozirgi qoldiq · havzadan', ...tileStyle('oldKn') }]
               : []),
+            // 7th tile (2026-09-19) — Старое сырьё, old (opening-stock) raw
+            // material that never got processed. Investigated as Fix 4: this
+            // is a real, distinct figure (snapshot.rawKg at scope != 'yangi'
+            // is already old-stock-only, since 'yangi' filters to
+            // origin != 'opening_stock') but until now had no tile of its
+            // own naming it as such -- a reader could only find it by
+            // toggling to Eski and re-reading the always-present "Xom ·
+            // yuvilmagan" tile, which elsewhere means "new, awaiting
+            // processing." 🚩 Flagged, not silently resolved: this DOES mean
+            // the same kg figure now appears twice on screen at Eski/Hammasi
+            // (once as "Xom · yuvilmagan", once as this tile) -- "Xom"
+            // itself was left unchanged since only adding a new tile was
+            // asked for; hiding "Xom" at these scopes is a one-line follow-up
+            // if the duplication should go instead.
+            ...(scope !== 'yangi'
+              ? [{ key: 'oldRaw', label: 'Старое сырьё', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi qoldiq · eski xom-ashyo', ...tileStyle('raw') }]
+              : []),
           ]}
         />
       )}
@@ -197,7 +221,11 @@ export function RahbarHome() {
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
           <SectionHeading>Эski zaxira</SectionHeading>
           <p className="mb-4 text-xs text-slate-400">Jonli qoldiq — ювилган mahsulot va Старый склад Кондитерка havzasi alohida</p>
-          <OldStockDrilldown oldWashed={{ totalKg: derived.stockTotal, series: oldWashedSeries }} oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }} />
+          <OldStockDrilldown
+            oldWashed={{ totalKg: derived.stockTotal, series: oldWashedSeries }}
+            oldWashedByType={oldWashedByTypeSeries}
+            oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }}
+          />
         </div>
       )}
 

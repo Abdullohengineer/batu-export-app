@@ -91,10 +91,15 @@ export function ClientPanelTab() {
   function calibreLabel(id: string): string {
     return calibres.find((c) => c.id === id)?.label ?? id
   }
+  function typeName(id: string): string {
+    return productTypes.find((t) => t.id === id)?.name ?? id
+  }
 
   const derived = computeDashboardDerived(snapshot, ledger, selectedTypeIds, calibres)
 
   const oldWashedSeries = [...derived.stockByCalibre, ...derived.stockKn].map((r) => ({ label: calibreLabel(r.calibreId), kg: r.kg }))
+  // Fix 3 (2026-09-19) -- mirrors Rahbar's own oldWashedByTypeSeries.
+  const oldWashedByTypeSeries = derived.stockByType.map((r) => ({ label: typeName(r.typeId), kg: r.kg }))
   const oldKnSeries = snapshot ? snapshot.oldKnByType.map((t) => ({ label: t.typeName, kg: t.kg })) : []
 
   return (
@@ -152,10 +157,17 @@ export function ClientPanelTab() {
         <p className="text-sm text-slate-400">Загрузка…</p>
       ) : scope === 'eski' ? (
         <HeroTiles
-          className="grid grid-cols-2 gap-3"
+          className="grid grid-cols-2 gap-3 lg:grid-cols-3"
           tiles={[
             { key: 'oldWashed', label: 'Эски ювилган', value: derived.stockTotal, unit: 'кг', caption: 'Текущий остаток · промытая продукция', ...tileStyle('oldWashed') },
             { key: 'oldKn', label: 'Старый склад Кондитерка', value: snapshot.oldKnKg, unit: 'кг', caption: 'Текущий остаток · из бассейна', ...tileStyle('oldKn') },
+            // Fix 4 (2026-09-19) — old opening-stock raw material, investigated
+            // and confirmed genuine (see docs/decisions/0199): already
+            // correctly excluded from Новое's snapshot.rawKg, but until now had
+            // no tile anywhere on the client screen at all (unlike Rahbar's
+            // dashboard, where it was at least visible, relabeled, under the
+            // always-present "Xom" tile). Mirrors Rahbar's own new 7th tile.
+            { key: 'oldRaw', label: 'Старое сырьё', value: snapshot.rawKg, unit: 'кг', caption: 'Текущий остаток · старое сырьё', ...tileStyle('raw') },
           ]}
         />
       ) : (
@@ -191,7 +203,11 @@ export function ClientPanelTab() {
       {scope === 'eski' && snapshot && !snapLoading && (
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
           <div className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">Старый склад — подробно</div>
-          <OldStockDrilldown oldWashed={{ totalKg: derived.stockTotal, series: oldWashedSeries }} oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }} />
+          <OldStockDrilldown
+            oldWashed={{ totalKg: derived.stockTotal, series: oldWashedSeries }}
+            oldWashedByType={oldWashedByTypeSeries}
+            oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }}
+          />
         </div>
       )}
 

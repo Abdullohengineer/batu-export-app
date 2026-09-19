@@ -30,6 +30,13 @@ export interface OldStockSection {
 
 export interface OldStockDrilldownProps {
   oldWashed: OldStockSection
+  // Fix 3 (2026-09-19) -- Эski (ювилган) per-product-type breakdown, same
+  // shape/idea Старый склад Кондитерка already had (oldKn.series is itself
+  // by-type). Optional, stacked BELOW the existing per-calibre series within
+  // the same "Эski (ювилган)" card (option (a): both views visible at once,
+  // no extra click) rather than a second side-by-side card, since it's a
+  // second slicing of the identical oldWashed.totalKg, not a separate total.
+  oldWashedByType?: OldStockSeriesPoint[]
   oldKn: OldStockSection
 }
 
@@ -37,38 +44,60 @@ function fmt(v: number): string {
   return Math.round(v).toLocaleString()
 }
 
-function Section({ title, totalKg, series, color }: { title: string; totalKg: number; series: OldStockSeriesPoint[]; color: string }) {
+function BarStack({ series, totalKg, max, color }: { series: OldStockSeriesPoint[]; totalKg: number; max: number; color: string }) {
+  return (
+    <div className="space-y-2.5">
+      {series.map((p) => (
+        <HorizontalBar
+          key={p.label}
+          label={p.label}
+          value={p.kg}
+          max={max}
+          color={color}
+          pctOfLabel={totalKg > 0 ? `${Math.round((p.kg / totalKg) * 100)}%` : undefined}
+        />
+      ))}
+    </div>
+  )
+}
+
+function Section({
+  title,
+  totalKg,
+  series,
+  color,
+  byType,
+}: {
+  title: string
+  totalKg: number
+  series: OldStockSeriesPoint[]
+  color: string
+  byType?: OldStockSeriesPoint[]
+}) {
   const max = Math.max(1, ...series.map((p) => p.kg))
+  const byTypeMax = byType ? Math.max(1, ...byType.map((p) => p.kg)) : 0
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</div>
       <div className="mb-3 text-2xl font-extrabold tabular-nums" style={{ color }}>
         {fmt(totalKg)} <span className="text-sm font-semibold opacity-60">кг</span>
       </div>
-      {series.length === 0 ? (
-        <p className="text-sm text-slate-400">Нет данных.</p>
-      ) : (
-        <div className="space-y-2.5">
-          {series.map((p) => (
-            <HorizontalBar
-              key={p.label}
-              label={p.label}
-              value={p.kg}
-              max={max}
-              color={color}
-              pctOfLabel={totalKg > 0 ? `${Math.round((p.kg / totalKg) * 100)}%` : undefined}
-            />
-          ))}
-        </div>
+      {series.length === 0 ? <p className="text-sm text-slate-400">Нет данных.</p> : <BarStack series={series} totalKg={totalKg} max={max} color={color} />}
+      {byType && byType.length > 0 && (
+        <>
+          <div className="my-4 h-px bg-slate-100 dark:bg-slate-800" />
+          <div className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">По видам сырья</div>
+          <BarStack series={byType} totalKg={totalKg} max={byTypeMax} color={color} />
+        </>
       )}
     </div>
   )
 }
 
-export function OldStockDrilldown({ oldWashed, oldKn }: OldStockDrilldownProps) {
+export function OldStockDrilldown({ oldWashed, oldWashedByType, oldKn }: OldStockDrilldownProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <Section title="Эски (ювилган)" totalKg={oldWashed.totalKg} series={oldWashed.series} color="#059669" />
+      <Section title="Эски (ювилган)" totalKg={oldWashed.totalKg} series={oldWashed.series} color="#059669" byType={oldWashedByType} />
       <Section title="Старый склад Кондитерка" totalKg={oldKn.totalKg} series={oldKn.series} color="#78716c" />
     </div>
   )

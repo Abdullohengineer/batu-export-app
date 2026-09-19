@@ -6,9 +6,15 @@ export interface CalibreKgRow {
   kg: number
 }
 
+export interface TypeKgRow {
+  typeId: string
+  kg: number
+}
+
 export interface DashboardDerived {
   stockByCalibre: CalibreKgRow[]
   stockKn: CalibreKgRow[]
+  stockByType: TypeKgRow[]
   stockMax: number
   stockCalibredTotal: number
   stockKnTotal: number
@@ -50,6 +56,12 @@ export function computeDashboardDerived(
     return [...map.entries()].map(([calibreId, kg]) => ({ calibreId, kg })).sort((a, b) => b.kg - a.kg)
   }
 
+  function regroupByType(rows: ByCalibreTypeRow[]): TypeKgRow[] {
+    const map = new Map<string, number>()
+    for (const r of sliceByType(rows)) map.set(r.typeId, (map.get(r.typeId) ?? 0) + r.kg)
+    return [...map.entries()].map(([typeId, kg]) => ({ typeId, kg })).sort((a, b) => b.kg - a.kg)
+  }
+
   const dispatchedKalibrliPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => !isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
   const dispatchedKnPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
 
@@ -63,6 +75,11 @@ export function computeDashboardDerived(
   // -- the same view Ombor qoldig'i reads, so the two screens cannot disagree.
   const stockByCalibre = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => !isKn(r.calibreId)) : []
   const stockKn = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => isKn(r.calibreId)) : []
+  // Fix 3 (2026-09-19) — same underlying rows as stockByCalibre+stockKn
+  // combined (both numbered and KN calibres of washed stock), just regrouped
+  // by product type instead of calibre. Feeds the Эski (ювилган) drill-down's
+  // second, per-type breakdown -- see OldStockDrilldown.tsx.
+  const stockByType = snapshot ? regroupByType(snapshot.byCalibre) : []
   const stockMax = Math.max(1, ...stockByCalibre.map((r) => r.kg), ...stockKn.map((r) => r.kg))
   // 2026-08-31: split out explicitly, and derived from the SAME filtered
   // arrays the bars are drawn from (never from snapshot.finishedCalibredKg,
@@ -82,6 +99,7 @@ export function computeDashboardDerived(
   return {
     stockByCalibre,
     stockKn,
+    stockByType,
     stockMax,
     stockCalibredTotal,
     stockKnTotal,

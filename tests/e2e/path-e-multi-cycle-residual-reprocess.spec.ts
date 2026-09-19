@@ -372,6 +372,172 @@ test('Path E: full residual-reprocess lifecycle — two cycles, correct scoping 
 // at all — so this test manipulates the row directly (service client,
 // bypassing the RPC) purely to exercise the defense-in-depth branch, not
 // to simulate a reachable business scenario.
+// Path E prompt (c) — period-safety pass. The lifecycle test above proves
+// the two-cycle FLOW works; this one proves the loss/moyka REPORTING
+// functions stay period-bounded once a second cycle exists — the exact
+// gap 0127 closed (see docs/decisions/0127-... for the full rewrite list).
+//
+// Cycle 1 is closed for real, then backdated (service client, same
+// RLS-bypass pattern as the audit_log teardown above) into a fixed August
+// window so its send/output rows land in a period distinct from cycle 2's
+// real "today" (September) rows — without backdating, both cycles would
+// close in the same calendar month and the two bugs this migration fixed
+// (a cycle closed in an earlier period leaking into a later period's
+// query; kirim_line_moyka_asof staying zeroed forever once ANY cycle had
+// closed) would not be distinguishable from correct behavior.
+//
+// Scope note: only the three kirim_line_* functions and client_serial_
+// ledger get exact numeric assertions here — they're callable directly by
+// serial/date, so the two-cycle arithmetic (40kg Aug + 10kg Sep = 50kg)
+// checks cleanly. get_client_report/rahbar_dashboard_ledger/rahbar_stock_
+// snapshot/client_panel_summary read across an owner's or the whole
+// project's ENTIRE line set, not just this fixture's one serial, so an
+// exact-value Playwright assertion on them would be comparing against
+// unrelated real production data and would break the moment that data
+// changes — those four were instead verified via live shadow-function
+// diffing against production during the migration's own before/after
+// step (see the decisions doc), not re-asserted here.
+test('Path E prompt (c): kirim_line_loss_range/moyka_asof/loss_asof stay cycle-window-bounded across periods', async ({ page }) => {
+  test.setTimeout(300_000)
+
+  const { serial } = await seedRawSerial(page, 1000)
+
+  // --- Cycle 1: send 800/1000, receive 760, close (40kg loss) ---
+  await sendToMoyka(page, serial, 800)
+  await passLabTest(page, serial)
+  await receivePallet(page, serial, 'Kalibr 4', 760)
+
+  await switchRole(page, 'OMBOR')
+  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await expect(page.getByRole('button', { name: 'Yakunlash', exact: true })).toBeVisible({ timeout: 20_000 })
+  const [closeResponse] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/rpc/close_wash_cycle_serial')),
+    page.getByRole('button', { name: 'Yakunlash', exact: true }).click(),
+  ])
+  expect(closeResponse.ok(), `cycle 1 close_wash_cycle_serial must succeed: ${await closeResponse.text()}`).toBe(true)
+
+  // --- Backdate cycle 1's own rows into a fixed August window ---
+  const db = adminClient()
+  const { data: cycle1, error: cycle1Err } = await db.from('wash_cycles').select('id').eq('serial', serial).eq('cycle_no', 1).single()
+  expect(cycle1Err).toBeNull()
+  auditedWashCycleIds.push(cycle1!.id)
+  {
+    const { error } = await db.from('wash_cycles').update({ opened_at: '2026-08-01T06:00:00Z', closed_at: '2026-08-10T09:00:00Z' }).eq('id', cycle1!.id)
+    expect(error).toBeNull()
+  }
+  {
+    const { error } = await db.from('moyka_sends').update({ sent_date: '2026-08-05' }).eq('serial', serial)
+    expect(error).toBeNull()
+  }
+  {
+    const { error } = await db.from('finished_pallets').update({ received_date: '2026-08-08' }).eq('serial', serial)
+    expect(error).toBeNull()
+  }
+
+  // --- Baseline, before cycle 2 exists: August owns the 40kg, September
+  // has nothing, and the "as of" cumulative already reflects cycle 1. ---
+  const baseline = await page.evaluate(
+    async ({ serial }) => {
+      const w = window as unknown as { supabase: { rpc: (fn: string, args: any) => any } }
+      const call = (fn: string, args: any) => w.supabase.rpc(fn, args).then((r: any) => { if (r.error) throw new Error(`${fn}: ${r.error.message}`); return r.data })
+      return {
+        augustLoss: await call('kirim_line_loss_range', { p_serial: serial, p_from: '2026-08-01', p_to: '2026-08-31' }),
+        septLoss: await call('kirim_line_loss_range', { p_serial: serial, p_from: '2026-09-01', p_to: '2026-09-30' }),
+        lifetimeLoss: await call('kirim_line_loss_range', { p_serial: serial, p_from: '2026-08-01', p_to: '2026-09-30' }),
+        moykaAsofAugust: await call('kirim_line_moyka_asof', { p_serial: serial, p_to: '2026-08-31' }),
+        lossAsofAugust: await call('kirim_line_loss_asof', { p_serial: serial, p_to: '2026-08-31' }),
+      }
+    },
+    { serial },
+  )
+  expect(baseline.augustLoss, 'cycle 1 loss recognized in the August period it actually closed in').toBe(40)
+  expect(baseline.septLoss, 'no cycle has closed in September yet').toBeNull()
+  expect(baseline.lifetimeLoss, 'wide period sums the one closed cycle').toBe(40)
+  expect(baseline.moykaAsofAugust, 'cycle 1 already closed by Aug 31 -> nothing in process').toBe(0)
+  expect(baseline.lossAsofAugust, 'cumulative as-of August = cycle 1 only').toBe(40)
+
+  // --- Admin opens cycle 2 (real "today", September) and sends the 200kg remainder ---
+  const opened = await db.rpc('open_second_wash_cycle', { p_serial: serial })
+  expect(opened.error, `open_second_wash_cycle must succeed: ${opened.error?.message}`).toBeNull()
+  auditedWashCycleIds.push(opened.data[0].id)
+
+  await switchRole(page, 'OMBOR')
+  await sendToMoyka(page, serial, 200)
+
+  // --- Mid-cycle-2 (sent, not yet received): this is the exact bug
+  // kirim_line_moyka_asof had — the old `exists(closed_at<=p_to) -> 0`
+  // check would stay true forever once cycle 1 closed, hiding cycle 2's
+  // very real 200kg in-process balance. Also re-check August is UNCHANGED
+  // now that a second, still-open cycle exists — the exact leak
+  // kirim_line_loss_range had via the old unconditional client_serial_
+  // loss_kg call. ---
+  const midCycle2 = await page.evaluate(
+    async ({ serial }) => {
+      const w = window as unknown as { supabase: { rpc: (fn: string, args: any) => any } }
+      const call = (fn: string, args: any) => w.supabase.rpc(fn, args).then((r: any) => { if (r.error) throw new Error(`${fn}: ${r.error.message}`); return r.data })
+      const today = new Date().toISOString().slice(0, 10)
+      return {
+        moykaAsofToday: await call('kirim_line_moyka_asof', { p_serial: serial, p_to: today }),
+        augustLossStillUnchanged: await call('kirim_line_loss_range', { p_serial: serial, p_from: '2026-08-01', p_to: '2026-08-31' }),
+      }
+    },
+    { serial },
+  )
+  expect(midCycle2.moykaAsofToday, 'cycle 2 sent 200kg, received 0 so far -> 200kg genuinely in process, not 0').toBe(200)
+  expect(midCycle2.augustLossStillUnchanged, "August's already-reported 40kg must not move just because cycle 2 exists").toBe(40)
+
+  await passLabTest(page, serial)
+  await receivePallet(page, serial, 'Kalibr 4', 190)
+
+  await switchRole(page, 'OMBOR')
+  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await expect(page.getByRole('button', { name: 'Yakunlash', exact: true })).toBeVisible({ timeout: 20_000 })
+  const [close2Response] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/rpc/close_wash_cycle_serial')),
+    page.getByRole('button', { name: 'Yakunlash', exact: true }).click(),
+  ])
+  expect(close2Response.ok(), `cycle 2 close_wash_cycle_serial must succeed: ${await close2Response.text()}`).toBe(true)
+
+  // --- Final: both cycles closed, each in its own period, nothing leaked ---
+  const final = await page.evaluate(
+    async ({ serial }) => {
+      const w = window as unknown as { supabase: { rpc: (fn: string, args: any) => any } }
+      const call = (fn: string, args: any) => w.supabase.rpc(fn, args).then((r: any) => { if (r.error) throw new Error(`${fn}: ${r.error.message}`); return r.data })
+      const today = new Date().toISOString().slice(0, 10)
+      return {
+        augustLoss: await call('kirim_line_loss_range', { p_serial: serial, p_from: '2026-08-01', p_to: '2026-08-31' }),
+        septLoss: await call('kirim_line_loss_range', { p_serial: serial, p_from: '2026-09-01', p_to: '2026-09-30' }),
+        lifetimeLoss: await call('kirim_line_loss_range', { p_serial: serial, p_from: '2026-08-01', p_to: '2026-09-30' }),
+        moykaAsofToday: await call('kirim_line_moyka_asof', { p_serial: serial, p_to: today }),
+        lossAsofToday: await call('kirim_line_loss_asof', { p_serial: serial, p_to: today }),
+      }
+    },
+    { serial },
+  )
+  expect(final.augustLoss, "cycle 2 closing must not retroactively change August's own 40kg").toBe(40)
+  expect(final.septLoss, "cycle 2's own loss, recognized in the September period it closed in").toBe(10)
+  expect(final.lifetimeLoss, 'wide period correctly sums both independently-windowed cycles').toBe(50)
+  expect(final.moykaAsofToday, 'both cycles closed -> nothing in process').toBe(0)
+  expect(final.lossAsofToday, 'cumulative as-of today = both cycles').toBe(50)
+
+  // --- client_serial_ledger integration: the new asof-based columns read
+  // through correctly end to end for a real owner-scoped, period-scoped
+  // report call (item 6 of the migration). ---
+  await switchRole(page, 'CLIENT')
+  const ledgerRow = await page.evaluate(
+    async ({ serial }) => {
+      const w = window as unknown as { supabase: { rpc: (fn: string, args: any) => any } }
+      const { data, error } = await w.supabase.rpc('client_serial_ledger', { p_from_date: '2026-01-01', p_to_date: '2026-09-30', p_product_type_id: null })
+      if (error) throw new Error(`client_serial_ledger: ${error.message}`)
+      return (data.rows as any[]).find((r) => r.serial === serial)
+    },
+    { serial },
+  )
+  expect(ledgerRow, 'this fixture serial must appear in the client ledger for the period it arrived in').toBeTruthy()
+  expect(ledgerRow.poteryaKg, 'client_serial_ledger poteryaKg = kirim_line_loss_asof = both cycles').toBe(50)
+  expect(ledgerRow.vPererabotkeKg, 'client_serial_ledger vPererabotkeKg = kirim_line_moyka_asof = 0 (both closed), never null').toBe(0)
+})
+
 test('Path E: reject open_second_wash_cycle when the parent lab verdict was not a pass', async ({ page }) => {
   test.setTimeout(120_000)
   const { serial } = await seedRawSerial(page, 300)

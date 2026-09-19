@@ -144,6 +144,7 @@ export function RahbarHome() {
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : (
         <HeroTiles
+          className={scope === 'yangi' ? 'grid grid-cols-2 gap-3 lg:grid-cols-5' : 'grid grid-cols-2 gap-3 lg:grid-cols-6'}
           tiles={[
             { key: 'jami', label: 'Jami yuvilgan va yuvilmagan mahsulot', value: derived.grandTotal, unit: 'kg', caption: 'Hozirgi holat — xom, moykada va tayyor', ...tileStyle('neutral') },
             { key: 'xom', label: 'Xom · yuvilmagan', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi holat — yuvishga tayyor', ...tileStyle('raw') },
@@ -173,13 +174,18 @@ export function RahbarHome() {
               ...tileStyle('kn'),
             },
             // 6th tile (2026-09-08) — Старый склад Кондитерка, the old-KN pool
-            // balance. Deliberately NOT gated by `scope` (unlike the drill-
-            // down section below it): this is real client stock, always
-            // relevant, not something that should vanish/read 0 just because
-            // Yangi is selected — snapshot.oldKnKg is now scope-independent
-            // (migration 0120) specifically so this tile reads the same
-            // 81,915 kg regardless of the Zaxira toggle.
-            { key: 'oldKn', label: 'Старый склад Кондитерка', value: snapshot.oldKnKg, unit: 'kg', caption: 'Hozirgi qoldiq · havzadan', ...tileStyle('oldKn') },
+            // balance. snapshot.oldKnKg is itself scope-independent (migration
+            // 0120 — the pool's real total, not zeroed out by the 'yangi'
+            // filter), but the TILE's own visibility is not: this is old-stock
+            // information, and showing an "old stock" number on the "new
+            // stock" view read as if new production somehow includes it —
+            // corrected 2026-09-19 to hide at scope='yangi', matching every
+            // other old-stock-only element on this page (the Эski drill-down
+            // below already only renders at scope='eski'). Still shown at
+            // 'eski' and 'hammasi', where an old-stock figure belongs.
+            ...(scope !== 'yangi'
+              ? [{ key: 'oldKn', label: 'Старый склад Кондитерка', value: snapshot.oldKnKg, unit: 'kg', caption: 'Hozirgi qoldiq · havzadan', ...tileStyle('oldKn') }]
+              : []),
           ]}
         />
       )}

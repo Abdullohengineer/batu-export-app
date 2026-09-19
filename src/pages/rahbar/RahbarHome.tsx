@@ -81,19 +81,14 @@ export function RahbarHome() {
 
   const derived = computeDashboardDerived(snapshot, ledger, selectedTypeIds, calibres)
 
-  // Eski drill-down (2026-09-08): two separate graphs, only at scope='eski'
-  // -- see docs/DECISIONS.md "Rahbar Eski drill-down: old KN reintroduced,
-  // scoped to Eski toggle only". oldWashed reuses the SAME stockByCalibre/
-  // stockKn arrays the "Omborda hozir" bars already compute (already
-  // is_old_stock-scoped by rahbar_stock_snapshot at scope='eski' -- no new
-  // arithmetic). oldKn is new: snapshot.oldKnByType (migration 0111),
+  // Eski drill-down (2026-09-08): two cards, only at scope='eski' -- see
+  // docs/DECISIONS.md "Rahbar Eski drill-down: old KN reintroduced, scoped
+  // to Eski toggle only". Эski (ювилган) is a type x calibre cross-tab
+  // (Fix 3, 2026-09-19) fed directly by derived.stockByCalibreType --
+  // already is_old_stock-scoped by rahbar_stock_snapshot at scope='eski',
+  // no new arithmetic. oldKn is snapshot.oldKnByType (migration 0111),
   // naturally empty at scope != 'eski' since old_kn rows never pass the
   // 'yangi' scope filter -- never re-added to the main/Yangi dashboard.
-  const oldWashedSeries = [...derived.stockByCalibre, ...derived.stockKn].map((r) => ({ label: calibreLabel(r.calibreId), kg: r.kg }))
-  // Fix 3 (2026-09-19) -- same rows as oldWashedSeries, regrouped by product
-  // type instead of calibre (derived.stockByType), for the drill-down's
-  // second, stacked breakdown.
-  const oldWashedByTypeSeries = derived.stockByType.map((r) => ({ label: typeName(r.typeId), kg: r.kg }))
   const oldKnSeries = snapshot ? snapshot.oldKnByType.map((t) => ({ label: t.typeName, kg: t.kg })) : []
 
   return (
@@ -227,8 +222,8 @@ export function RahbarHome() {
           <SectionHeading>Эski zaxira</SectionHeading>
           <p className="mb-4 text-xs text-slate-400">Jonli qoldiq — ювилган mahsulot va Старый склад Кондитерка havzasi alohida</p>
           <OldStockDrilldown
-            oldWashed={{ totalKg: derived.stockTotal, series: oldWashedSeries }}
-            oldWashedByType={oldWashedByTypeSeries}
+            oldWashedRows={derived.stockByCalibreType}
+            typeName={typeName}
             oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }}
           />
         </div>

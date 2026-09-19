@@ -97,9 +97,6 @@ export function ClientPanelTab() {
 
   const derived = computeDashboardDerived(snapshot, ledger, selectedTypeIds, calibres)
 
-  const oldWashedSeries = [...derived.stockByCalibre, ...derived.stockKn].map((r) => ({ label: calibreLabel(r.calibreId), kg: r.kg }))
-  // Fix 3 (2026-09-19) -- mirrors Rahbar's own oldWashedByTypeSeries.
-  const oldWashedByTypeSeries = derived.stockByType.map((r) => ({ label: typeName(r.typeId), kg: r.kg }))
   const oldKnSeries = snapshot ? snapshot.oldKnByType.map((t) => ({ label: t.typeName, kg: t.kg })) : []
 
   return (
@@ -206,8 +203,8 @@ export function ClientPanelTab() {
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
           <div className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">Старый склад — подробно</div>
           <OldStockDrilldown
-            oldWashed={{ totalKg: derived.stockTotal, series: oldWashedSeries }}
-            oldWashedByType={oldWashedByTypeSeries}
+            oldWashedRows={derived.stockByCalibreType}
+            typeName={typeName}
             oldKn={{ totalKg: snapshot.oldKnKg, series: oldKnSeries }}
           />
         </div>

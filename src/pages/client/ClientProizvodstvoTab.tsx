@@ -18,6 +18,12 @@ import { todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 // period. A serial with zero output in the period is simply absent from
 // `rows` (the RPC only returns serials with output) rather than hidden
 // client-side, matching the task's own "hidden" instruction exactly.
+//
+// All 9 calibre columns (K1-K8 + Кондитерка) always render, in fixed
+// order -- PRODUCTION_CALIBRE_CODES, corrected 2026-09-19 from a 6-code
+// subset that permanently excluded K5/K7/K8 (see that constant's own
+// comment). A calibre with no data for a given serial/period renders "—",
+// never a hidden column.
 
 const pillClass =
   'rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
@@ -31,7 +37,10 @@ const COLUMN_LABEL: Record<(typeof PRODUCTION_CALIBRE_CODES)[number], string> = 
   '02': 'K2',
   '03': 'K3',
   '04': 'K4',
+  '05': 'K5',
   '06': 'K6',
+  '07': 'K7',
+  '08': 'K8',
   KN: 'Кондитерка',
 }
 

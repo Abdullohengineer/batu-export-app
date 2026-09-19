@@ -6,15 +6,16 @@ export interface CalibreKgRow {
   kg: number
 }
 
-export interface TypeKgRow {
+export interface TypeCalibreCodeKgRow {
   typeId: string
+  calibreCode: string
   kg: number
 }
 
 export interface DashboardDerived {
   stockByCalibre: CalibreKgRow[]
   stockKn: CalibreKgRow[]
-  stockByType: TypeKgRow[]
+  stockByCalibreType: TypeCalibreCodeKgRow[]
   stockMax: number
   stockCalibredTotal: number
   stockKnTotal: number
@@ -42,6 +43,9 @@ export function computeDashboardDerived(
   selectedTypeIds: string[] | null,
   calibres: Calibre[],
 ): DashboardDerived {
+  function calibreCode(id: string): string {
+    return calibres.find((c) => c.id === id)?.code ?? id
+  }
   function isKn(id: string): boolean {
     return calibres.find((c) => c.id === id)?.is_numberless ?? false
   }
@@ -56,10 +60,24 @@ export function computeDashboardDerived(
     return [...map.entries()].map(([calibreId, kg]) => ({ calibreId, kg })).sort((a, b) => b.kg - a.kg)
   }
 
-  function regroupByType(rows: ByCalibreTypeRow[]): TypeKgRow[] {
+  // Fix 3 (2026-09-19) -- per (type, calibre) rows for the Эski (ювилган)
+  // cross-tab table (OldStockDrilldown.tsx), replacing the earlier
+  // per-type-only bars. Resolved straight to calibre CODE ('01'..'08') so
+  // the table doesn't need its own calibre lookup; KN excluded here since
+  // the cross-tab's columns are the fixed K1-K8 set (see that component's
+  // own header comment for the currently-inapplicable KN-old-washed edge
+  // case this leaves out).
+  function regroupByTypeCalibreCode(rows: ByCalibreTypeRow[]): TypeCalibreCodeKgRow[] {
     const map = new Map<string, number>()
-    for (const r of sliceByType(rows)) map.set(r.typeId, (map.get(r.typeId) ?? 0) + r.kg)
-    return [...map.entries()].map(([typeId, kg]) => ({ typeId, kg })).sort((a, b) => b.kg - a.kg)
+    for (const r of sliceByType(rows)) {
+      if (isKn(r.calibreId)) continue
+      const key = `${r.typeId}::${r.calibreId}`
+      map.set(key, (map.get(key) ?? 0) + r.kg)
+    }
+    return [...map.entries()].map(([key, kg]) => {
+      const [typeId, calibreId] = key.split('::')
+      return { typeId, calibreCode: calibreCode(calibreId), kg }
+    })
   }
 
   const dispatchedKalibrliPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => !isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
@@ -75,11 +93,7 @@ export function computeDashboardDerived(
   // -- the same view Ombor qoldig'i reads, so the two screens cannot disagree.
   const stockByCalibre = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => !isKn(r.calibreId)) : []
   const stockKn = snapshot ? regroupByCalibre(snapshot.byCalibre).filter((r) => isKn(r.calibreId)) : []
-  // Fix 3 (2026-09-19) — same underlying rows as stockByCalibre+stockKn
-  // combined (both numbered and KN calibres of washed stock), just regrouped
-  // by product type instead of calibre. Feeds the Эski (ювилган) drill-down's
-  // second, per-type breakdown -- see OldStockDrilldown.tsx.
-  const stockByType = snapshot ? regroupByType(snapshot.byCalibre) : []
+  const stockByCalibreType = snapshot ? regroupByTypeCalibreCode(snapshot.byCalibre) : []
   const stockMax = Math.max(1, ...stockByCalibre.map((r) => r.kg), ...stockKn.map((r) => r.kg))
   // 2026-08-31: split out explicitly, and derived from the SAME filtered
   // arrays the bars are drawn from (never from snapshot.finishedCalibredKg,
@@ -99,7 +113,7 @@ export function computeDashboardDerived(
   return {
     stockByCalibre,
     stockKn,
-    stockByType,
+    stockByCalibreType,
     stockMax,
     stockCalibredTotal,
     stockKnTotal,

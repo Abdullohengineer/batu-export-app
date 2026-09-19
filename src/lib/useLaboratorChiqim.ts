@@ -102,7 +102,13 @@ export function useLaboratorChiqim() {
     setLoading(true)
     try {
       const [{ data: cycles }, { data: sends }] = await Promise.all([
-        supabase.from('wash_cycles').select('id, serial'),
+        // Path E cheat version (see DECISIONS.md "Path E cheat: multi-cycle
+        // wash_cycles scoping") — cycle_no/opened_at added. This loop
+        // already iterates one row per wash_cycles row (not per serial),
+        // so a twice-processed serial already produces two queue rows for
+        // free; what needed fixing is sentKg/sentDate below, which used to
+        // be an unbounded whole-serial sum shared identically by both rows.
+        supabase.from('wash_cycles').select('id, serial, cycle_no, opened_at').order('cycle_no'),
         supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
       ])
       if (!cycles || cycles.length === 0) {
@@ -114,12 +120,34 @@ export function useLaboratorChiqim() {
         return
       }
 
-      const sentBySerial = new Map<string, number>()
-      const earliestSentDateBySerial = new Map<string, string>()
-      for (const s of sends ?? []) {
-        sentBySerial.set(s.serial, (sentBySerial.get(s.serial) ?? 0) + s.qty_kg)
-        const prev = earliestSentDateBySerial.get(s.serial)
-        if (!prev || s.sent_date < prev) earliestSentDateBySerial.set(s.serial, s.sent_date)
+      // Same cycle-window boundary rule as useMoykaOutput.ts: each cycle
+      // owns [opened_at, next cycle's opened_at) — never closed_at, which
+      // is "when Yakunlash was clicked," not "when the next cycle's
+      // material actually started arriving."
+      const cyclesBySerial = new Map<string, { id: string; openedAt: string; nextOpenedAt: string | null }[]>()
+      for (const c of cycles) {
+        const list = cyclesBySerial.get(c.serial) ?? []
+        list.push({ id: c.id, openedAt: c.opened_at, nextOpenedAt: null })
+        cyclesBySerial.set(c.serial, list)
+      }
+      for (const list of cyclesBySerial.values()) {
+        for (let i = 0; i < list.length - 1; i++) list[i].nextOpenedAt = list[i + 1].openedAt
+      }
+      const sentByCycleId = new Map<string, number>()
+      const earliestSentDateByCycleId = new Map<string, string>()
+      for (const list of cyclesBySerial.values()) {
+        for (const w of list) {
+          const windowSends = (sends ?? []).filter(
+            (s) =>
+              s.sent_date >= w.openedAt.slice(0, 10) && (w.nextOpenedAt === null || s.sent_date < w.nextOpenedAt.slice(0, 10)),
+          )
+          sentByCycleId.set(
+            w.id,
+            windowSends.reduce((sum, s) => sum + s.qty_kg, 0),
+          )
+          const earliest = windowSends.reduce<string | null>((min, s) => (!min || s.sent_date < min ? s.sent_date : min), null)
+          if (earliest) earliestSentDateByCycleId.set(w.id, earliest)
+        }
       }
 
       const serials = [...new Set(cycles.map((c) => c.serial))]
@@ -197,8 +225,8 @@ export function useLaboratorChiqim() {
             target_moisture_pct: line.target_moisture_pct,
             target_so2_mg_kg: line.target_so2_mg_kg,
             is_sulfured: line.is_sulfured,
-            sentKg: sentBySerial.get(cycle.serial) ?? 0,
-            sentDate: earliestSentDateBySerial.get(cycle.serial) ?? '',
+            sentKg: sentByCycleId.get(cycle.id) ?? 0,
+            sentDate: earliestSentDateByCycleId.get(cycle.id) ?? '',
             rejected: !!result,
             kirimMoisturePct: kirimResult?.moisture_pct ?? null,
             kirimSo2MgKg: kirimResult?.so2_mg_kg ?? null,

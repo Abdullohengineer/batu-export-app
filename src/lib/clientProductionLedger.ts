@@ -40,14 +40,17 @@ export function defaultClientProductionFilters(from: string, to: string): Client
   return { from, to, typeId: '' }
 }
 
-// The task's own fixed column set (Серия | Вид сырья | Всего произведено |
-// K1 | K2 | K3 | K4 | K6 | Кондитерка) -- deliberately narrower than every
-// calibre this app has (K5/K7/K8 exist but aren't in the task's own table
-// header); on-screen sticks to exactly these 6 calibre columns, the Excel
-// export widens to every calibre actually present instead (see
-// clientProductionLedgerExport.ts) so nothing produced is silently lost
-// from the download even though the screen doesn't show it.
-export const PRODUCTION_CALIBRE_CODES = ['01', '02', '03', '04', '06', 'KN'] as const
+// Fixed column set (Серия | Вид сырья | Всего произведено | K1..K8 |
+// Кондитерка) -- all 9 always render, regardless of whether a given
+// calibre has any data in the filtered period (an empty cell shows "—",
+// the column itself is never hidden). Corrected 2026-09-19 (see
+// docs/decisions/) -- the original build hardcoded a narrower 6-code
+// subset (K1/K2/K3/K4/K6/KN) that permanently excluded K5/K7/K8 from the
+// table no matter what the data held, which read as "some calibres go
+// missing." client_production_ledger() itself already returns every
+// calibre actually present, unfiltered -- this list was always a
+// frontend-only restriction, never an RPC limitation.
+export const PRODUCTION_CALIBRE_CODES = ['01', '02', '03', '04', '05', '06', '07', '08', 'KN'] as const
 
 export function calibreKgByCode(calibres: ClientProductionCalibre[], code: string): number {
   return calibres.find((c) => c.code === code)?.kg ?? 0

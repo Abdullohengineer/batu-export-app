@@ -2,11 +2,11 @@ import ExcelJS from 'exceljs'
 import type { ClientProductionLedger } from './clientProductionLedger'
 
 // Производство sub-tab Excel export. One row per serial, one column per
-// calibre actually present in the filtered set (a superset of the
-// on-screen fixed K1/K2/K3/K4/K6/Кондитерка columns -- see
-// clientProductionLedger.ts's PRODUCTION_CALIBRE_CODES comment: nothing
-// produced is silently dropped from the download even if the screen
-// doesn't have a column for it).
+// calibre actually present in the filtered set -- unlike the on-screen
+// table (fixed K1-K8 + Кондитерка always visible, see
+// clientProductionLedger.ts's PRODUCTION_CALIBRE_CODES comment), the
+// export only widens to calibres with real data, so a period with no
+// Кондитерка output doesn't carry an all-zero column downstream.
 const KG_FMT = '#,##0'
 
 export async function buildClientProductionLedgerWorkbook(

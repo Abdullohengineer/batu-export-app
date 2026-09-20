@@ -149,6 +149,75 @@ per request. If the tail does not collapse proportionally, the next suspect
 is `rahbar_stock_snapshot`/`stock_on_hand_rows` (deliberately out of scope
 above), not this rewrite.
 
+## 4b. PRE-SWAP VERIFICATION ALREADY RUN (2026-09-20, in rolled-back transactions)
+
+Built `kirim_line_report_bundle_set` as a throwaway (`zz_bundle_set`) inside
+`BEGIN … ROLLBACK`, so nothing was applied to the schema, and ran levels 1
+and 2 against the live function.
+
+**Level 1 — per-serial, per-field, full history window: PASS.**
+All 20 fields × 33 serials, compared with `IS DISTINCT FROM`:
+
+```
+serials 33 | d_qabul 0 | d_omborda 0 | d_sent 0 | d_moykada 0 | d_out 0
+| d_xom 0 | d_departed 0 | d_asof 0 | d_rto 0 | d_rfrom 0
+| d_calibres 0 | d_loss 0
+```
+
+**Level 2 — seven period windows: PASS.** 0 mismatched serials in every
+window (231 row comparisons, 20 fields each). Windows built from the real
+cycle dates of the multi-cycle serials (`290726-068/069/072`: cycle 1 opened
+2026-08-14 closed 08-29, cycle 2 opened 09-15 closed 09-16):
+
+| window | mismatches | `loss_range` non-null |
+|---|---|---|
+| a full history | 0 | 18 |
+| b current month | 0 | 13 |
+| c contains close 08-29 | 0 | 11 |
+| d between cycles (08-30→09-14) | 0 | 8 |
+| e ends mid-cycle (09-15) | 0 | 0 |
+| f empty window (2020) | 0 | 0 |
+| g cycle-2 close (09-16) | 0 | 3 |
+
+The `loss_range` non-null spread matters: it proves the windows actually
+exercise different cycle states rather than all being vacuously NULL.
+Window (g) isolates exactly the 3 multi-cycle serials, and (e)/(f)
+correctly produce none.
+
+Levels 3 and 4 still to run — they need the rewritten
+`report_query_page`/`report_totals`, so they happen at swap time per §3.
+
+### ⚠️ Correction to §4's estimate — I was wrong
+
+The draft set-based function measures **780ms** for all 33 serials, not the
+**400–600ms** §4 predicted. Reporting the miss rather than quietly restating
+the target.
+
+Component probes locate the gap, and it is **not** where I first guessed:
+
+| component, all serials | elapsed |
+|---|---|
+| `kirim_line_effective_qty` ×33 | **6.7ms** (my first hypothesis — wrong) |
+| `report_moyka_output_rows` scan | 62ms |
+| `departed` (incl. `chiqim_departed_at` per request) | 40ms |
+| `finished_pallets` filtered scan | 28ms |
+| **sum of identified components** | **~137ms** |
+
+So ~640ms is unaccounted for by the scans. The remaining suspect, from the
+draft's own shape: `moykada`, `asof` and `loss` still use **correlated
+subqueries** against the materialized CTEs — roughly 62 subquery executions
+(33 serials + 8 open cycles + 21 closed cycles), each a seq scan over a
+tuplestore with no index, ≈124 CTE scans in total. That is the same
+per-row-re-execution pattern this whole phase exists to remove, just at a
+smaller scale.
+
+**Implementation refinement (before swap):** convert those three CTEs from
+correlated subqueries to plain joins + `GROUP BY serial`. Revised expectation
+**~400–600ms stands only if that refinement lands**; without it the honest
+number is ~780ms, still a 2.4x improvement on today's 1,850ms but not the
+4x §4 claimed. The `< 3,000ms` max-under-load target is unchanged and remains
+the real acceptance criterion.
+
 ## 5. Verification environment gap
 
 Levels 1–4 are all SQL and run fine from here. What still cannot be checked

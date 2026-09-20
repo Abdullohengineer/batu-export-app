@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { usePersistentState } from '../../lib/FilterState'
+import { useDebouncedValue } from '../../lib/useDebouncedValue'
+import { queryKeys } from '../../lib/queryClient'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
 import {
@@ -66,29 +69,22 @@ export function ClientProizvodstvoTab() {
     'clientHisobot.proizvodstvo.filters',
     defaultClientProductionFilters(defaultRange.from, defaultRange.to),
   )
-  const [ledger, setLedger] = useState<ClientProductionLedger | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetchClientProductionLedger(filters)
-      .then((data) => {
-        if (!cancelled) setLedger(data)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message ?? 'Ошибка загрузки')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [filters])
+  // 2026-09-19 (Phase 1B): same treatment as ClientRashodTab — debounced
+  // filters and a cached, cancellable query instead of an unguarded
+  // useEffect that re-fired on every filter change.
+  const debouncedFilters = useDebouncedValue(filters)
+  const filterKey = JSON.stringify(debouncedFilters)
+  const {
+    data: ledger = null,
+    isPending: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: queryKeys.clientProductionLedger(filterKey),
+    queryFn: () => fetchClientProductionLedger(debouncedFilters),
+  })
+  const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : null
 
   function typeName(id: string): string {
     return productTypes.find((t) => t.id === id)?.name ?? '—'

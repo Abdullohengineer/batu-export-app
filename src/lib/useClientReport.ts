@@ -1,46 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import type { ClientReport } from './clientReport'
 
 // §3.2.7 -- thin client over get_client_report, one RPC round trip returning
 // the whole nested document (same shape convention as get_serial_passport).
+//
+// 2026-09-19 (Phase 1B): moved onto React Query for caching and request
+// cancellation. `enabled` reproduces the previous early-return: with no owner
+// selected the RPC never fires and the report stays null.
 export function useClientReport(ownerId: string | null, from: string, to: string) {
-  const [report, setReport] = useState<ClientReport | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { data, isPending, error } = useQuery({
+    queryKey: queryKeys.clientReport(ownerId ?? '', from, to),
+    enabled: Boolean(ownerId),
+    queryFn: async ({ signal }) => {
+      const { data: rpcData, error: rpcError } = await supabase
+        .rpc('get_client_report', { p_owner_id: ownerId, p_from: from, p_to: to })
+        .abortSignal(signal)
+      if (rpcError) throw new Error(rpcError.message)
+      return rpcData as ClientReport
+    },
+  })
 
-  useEffect(() => {
-    if (!ownerId) {
-      setReport(null)
-      setError(null)
-      return
-    }
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const { data, error: rpcError } = await supabase.rpc('get_client_report', {
-          p_owner_id: ownerId,
-          p_from: from,
-          p_to: to,
-        })
-        if (rpcError) throw rpcError
-        if (!cancelled) setReport(data as ClientReport)
-      } catch (err) {
-        if (!cancelled) {
-          setReport(null)
-          setError(err instanceof Error ? err.message : 'Hisobotni yuklashda xatolik yuz berdi.')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [ownerId, from, to])
-
-  return { report, loading, error }
+  return {
+    report: data ?? null,
+    // A disabled query (no owner picked) is `pending` in React Query terms,
+    // but the old hook reported loading=false there — nothing is in flight.
+    loading: Boolean(ownerId) && isPending,
+    error: error ? error.message : null,
+  }
 }

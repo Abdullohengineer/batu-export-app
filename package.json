@@ -20,6 +20,7 @@
     "@capacitor/preferences": "^8.0.1",
     "@capgo/capacitor-updater": "^8.51.2",
     "@supabase/supabase-js": "^2.110.2",
+    "@tanstack/react-query": "^5.103.1",
     "barcode-detector": "^3.2.1",
     "exceljs": "^4.4.0",
     "qrcode": "^1.5.4",

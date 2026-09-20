@@ -70,7 +70,11 @@ function tileStyle(tone: TileTone): { bg: string; fg: string } {
 
 export function ClientPanelTab() {
   const [scope, setScope] = usePersistentState<ClientScope>('client.panel.scope', 'yangi')
-  const [preset, setPreset] = usePersistentState<PeriodPreset>('client.panel.preset', 'boshidan')
+  // 'bu_oy', not 'boshidan' — mirrors RahbarHome's own Phase 1A change (see
+  // its comment): the all-time default made every mount issue the widest
+  // possible rahbar_dashboard_ledger query automatically. 'С начала' remains
+  // one click away.
+  const [preset, setPreset] = usePersistentState<PeriodPreset>('client.panel.preset', 'bu_oy')
   const [customFrom, setCustomFrom] = usePersistentState('client.panel.customFrom', BOSHIDAN)
   const [customTo, setCustomTo] = usePersistentState('client.panel.customTo', () => todayInTashkent())
   const [selectedTypeIds, setSelectedTypeIds] = usePersistentState<string[] | null>('client.panel.types', null) // null = все

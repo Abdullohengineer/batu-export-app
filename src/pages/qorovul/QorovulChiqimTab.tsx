@@ -11,6 +11,7 @@ import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
+import { StatusNote } from '../../components/ui/StatusNote'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { FuraBadge } from '../../components/ui/FuraBadge'
 import { GatePhoto } from '../../components/GatePhoto'
@@ -63,7 +64,7 @@ export function QorovulChiqimTab() {
   // §3.3: includeInactive=true -- resolves names on historical trip lines.
   const { productTypes } = useProductTypes(true)
   const { owners } = useOwners(true)
-  const { trips, loading, refresh } = useChiqimTrips()
+  const { trips, loading, refreshing, error: loadError, refresh } = useChiqimTrips()
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [activeStage, setActiveStage] = useState<1 | 2 | 'kirdi' | 'chiqdi' | null>(null)
 
@@ -203,6 +204,7 @@ export function QorovulChiqimTab() {
 
   return (
     <div className="space-y-6">
+      {loadError && <StatusNote tone="problem">{loadError}</StatusNote>}
       <div className="grid grid-cols-3 gap-3">
         <Stat value={notStarted.length + furaAwaitingKirdi.length} label="Kutilmoqda" />
         <Stat
@@ -212,6 +214,7 @@ export function QorovulChiqimTab() {
         />
         <Stat value={completed.length} label="Yakunlandi" tone="ok" />
       </div>
+      {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
 
       <div>
         <SectionHeading>1 · Faol yuklar</SectionHeading>

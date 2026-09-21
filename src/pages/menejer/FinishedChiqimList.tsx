@@ -63,7 +63,7 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
   const { names } = useProfileNames()
-  const { requests, loading, refresh } = useFinishedChiqimRequests(refreshKey)
+  const { requests, loading, refreshing, error: loadError, refresh } = useFinishedChiqimRequests(refreshKey)
   const [expanded, setExpanded] = useState<string | null>(null)
   const { lines: manifestLines, loading: manifestLoading } = useDispatchManifestLines(expanded)
   const { collections: oldKnCollections } = useOldKnCollectionsByRequest(expanded)
@@ -189,8 +189,10 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   return (
     <div>
       <SectionHeading>Yuborilgan CHIQIM so'rovlari</SectionHeading>
+      {loadError && <StatusNote tone="problem">{loadError}</StatusNote>}
       <div className="mt-2 space-y-2">
         {requests.length === 0 && <p className="text-sm text-slate-400">Hali so'rov yo'q.</p>}
+        {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
         {requests.map((request) => {
           const isExpanded = expanded === request.id
           const w = request.weighing

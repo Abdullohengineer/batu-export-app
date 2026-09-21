@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 
 // Derived status (task step 3): gate_weighings has no stored status enum —
 // it's derived from the weights/completion, per Step 2's design. A gate row
@@ -36,9 +37,10 @@ export interface GateHistoryFilters {
 // SCHEMA LIMITATION (flagged, not fixed — no migration this step): gate_weighings
 // has no own timestamp (only a nullable completed_at) and a random-uuid PK, so
 // it can't be time-ordered or date-bounded server-side. We therefore fetch with
-// a hard .limit() cap and filter/sort client-side on the parent trip's sana. If
-// gate history ever grows large this wants a created_at on gate_weighings (or
-// a parent-anchored query) — see PR/DECISIONS.
+// a hard .limit() cap (now server-ordered newest-completed-first, 2026-09-21
+// Phase 2 step 8 — see that commit) and filter/sort client-side on the parent
+// trip's sana. If gate history ever grows large this wants a created_at on
+// gate_weighings (or a parent-anchored query) — see PR/DECISIONS.
 //
 // Queried direction-agnostically from gate_weighings (embedding BOTH possible
 // parents) so nothing hardcodes KIRIM; CHIQIM rows just don't exist yet.
@@ -72,77 +74,74 @@ interface RawGateRow {
   chiqim_requests: ChiqimParent | null
 }
 
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query. Query key includes
+// every filter param -- a filter change is genuinely a different query.
 export function useGateHistory(filters: GateHistoryFilters) {
-  const [rows, setRows] = useState<GateHistoryRow[]>([])
-  const [loading, setLoading] = useState(true)
-
   const { from, to, plate, status } = filters
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      setLoading(true)
-      try {
-        const { data } = await supabase
-          .from('gate_weighings')
-          .select(
-            'id, dir, gruzheny_kg, pustoy_kg, net_kg, completed_at, ' +
-              'kirim_orders(order_date, plate, driver, owner_id, declared_total, origin), ' +
-              'chiqim_requests(request_date, plate, driver, owner_id)',
-          )
-          .limit(FETCH_CAP)
-
-        // Opening stock (Stage 1) and internal_reprocess (Stage 3) never
-        // arrived by a real truck -- neither has a real gate event for this
-        // history view to report. Same positive allowlist as
-        // useKirimTrips/useIntakeLines/useLaboratorKirim/useIntakeHistory;
-        // without it, widening the date filter back to 2025-01-01 would
-        // render the opening-stock seed's fabricated gate row as a real
-        // completed trip. CHIQIM-direction rows have no kirim_orders parent
-        // and are unaffected (dispatch is origin-agnostic by design).
-        const gateRows = ((data ?? []) as unknown as RawGateRow[]).filter(
-          (w) => w.dir !== 'kirim' || w.kirim_orders?.origin === 'delivery',
+  const { data, isPending, isFetching, error } = useQuery({
+    queryKey: queryKeys.gateHistory(from, to, plate, status),
+    queryFn: async ({ signal }): Promise<GateHistoryRow[]> => {
+      const { data, error } = await supabase
+        .from('gate_weighings')
+        .select(
+          'id, dir, gruzheny_kg, pustoy_kg, net_kg, completed_at, ' +
+            'kirim_orders(order_date, plate, driver, owner_id, declared_total, origin), ' +
+            'chiqim_requests(request_date, plate, driver, owner_id)',
         )
+        // Newest-completed-first (2026-09-21, Phase 2 step 8, universal sort
+        // rule) -- nulls (still in-progress) first, since an unfinished
+        // weighing is the freshest activity, ahead of anything completed.
+        .order('completed_at', { ascending: false, nullsFirst: true })
+        .limit(FETCH_CAP)
+        .abortSignal(signal)
+      if (error) throw new Error(error.message)
 
-        const mapped: GateHistoryRow[] = gateRows.map((w) => {
-          const kirim = w.kirim_orders
-          const chiqim = w.chiqim_requests
-          const parent = kirim ?? chiqim
-          return {
-            id: w.id,
-            direction: w.dir,
-            sana: kirim?.order_date ?? chiqim?.request_date ?? null,
-            plate: parent?.plate ?? null,
-            driver: parent?.driver ?? null,
-            ownerId: parent?.owner_id ?? null,
-            declaredTotal: kirim?.declared_total ?? null,
-            gruzheny_kg: w.gruzheny_kg,
-            pustoy_kg: w.pustoy_kg,
-            net_kg: w.net_kg,
-            completed_at: w.completed_at,
-            status: w.completed_at ? 'yakunlandi' : 'kirdi_boshatilmoqda',
-          }
-        })
+      // Opening stock (Stage 1) and internal_reprocess (Stage 3) never
+      // arrived by a real truck -- neither has a real gate event for this
+      // history view to report. Same positive allowlist as
+      // useKirimTrips/useIntakeLines/useLaboratorKirim/useIntakeHistory;
+      // without it, widening the date filter back to 2025-01-01 would
+      // render the opening-stock seed's fabricated gate row as a real
+      // completed trip. CHIQIM-direction rows have no kirim_orders parent
+      // and are unaffected (dispatch is origin-agnostic by design).
+      const gateRows = ((data ?? []) as unknown as RawGateRow[]).filter(
+        (w) => w.dir !== 'kirim' || w.kirim_orders?.origin === 'delivery',
+      )
 
-        const plateQ = plate.trim().toLowerCase()
-        const filtered = mapped
-          .filter((r) => (r.sana ? r.sana >= from && r.sana <= to : false))
-          .filter((r) => (plateQ ? (r.plate ?? '').toLowerCase().includes(plateQ) : true))
-          .filter((r) => (status ? r.status === status : true))
-          .sort((a, b) => (b.sana ?? '').localeCompare(a.sana ?? ''))
+      const mapped: GateHistoryRow[] = gateRows.map((w) => {
+        const kirim = w.kirim_orders
+        const chiqim = w.chiqim_requests
+        const parent = kirim ?? chiqim
+        return {
+          id: w.id,
+          direction: w.dir,
+          sana: kirim?.order_date ?? chiqim?.request_date ?? null,
+          plate: parent?.plate ?? null,
+          driver: parent?.driver ?? null,
+          ownerId: parent?.owner_id ?? null,
+          declaredTotal: kirim?.declared_total ?? null,
+          gruzheny_kg: w.gruzheny_kg,
+          pustoy_kg: w.pustoy_kg,
+          net_kg: w.net_kg,
+          completed_at: w.completed_at,
+          status: w.completed_at ? 'yakunlandi' : 'kirdi_boshatilmoqda',
+        }
+      })
 
-        if (!cancelled) setRows(filtered)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
+      const plateQ = plate.trim().toLowerCase()
+      return mapped
+        .filter((r) => (r.sana ? r.sana >= from && r.sana <= to : false))
+        .filter((r) => (plateQ ? (r.plate ?? '').toLowerCase().includes(plateQ) : true))
+        .filter((r) => (status ? r.status === status : true))
+        .sort((a, b) => (b.sana ?? '').localeCompare(a.sana ?? ''))
+    },
+  })
 
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [from, to, plate, status])
-
-  return { rows, loading }
+  return {
+    rows: data ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+  }
 }

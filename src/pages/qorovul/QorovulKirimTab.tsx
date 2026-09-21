@@ -10,6 +10,7 @@ import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
+import { StatusNote } from '../../components/ui/StatusNote'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { formatDate } from '../../lib/formatDate'
@@ -37,7 +38,7 @@ export function QorovulKirimTab() {
   // name rather than falling back to a raw uuid.
   const { productTypes } = useProductTypes(true)
   const { owners } = useOwners(true)
-  const { trips, loading, refresh } = useKirimTrips()
+  const { trips, loading, refreshing, error: loadError, refresh } = useKirimTrips()
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
   const [activeStage, setActiveStage] = useState<1 | 2 | null>(null)
 
@@ -133,11 +134,13 @@ export function QorovulKirimTab() {
 
   return (
     <div className="space-y-6">
+      {loadError && <StatusNote tone="problem">{loadError}</StatusNote>}
       <div className="grid grid-cols-3 gap-3">
         <Stat value={notStarted.length} label="Kutilmoqda" />
         <Stat value={inProgress.length} label="Bo'shatilmoqda" tone={inProgress.length > 0 ? 'problem' : 'neutral'} />
         <Stat value={completed.length} label="Yakunlandi" tone="ok" />
       </div>
+      {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
 
       <div>
         <SectionHeading>1 · Faol yuklar</SectionHeading>

@@ -42,7 +42,7 @@ export function StockOnHandTab() {
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
-  const { rows, turnaroundAvgDays, loading, error } = useStockOnHand()
+  const { rows, turnaroundAvgDays, loading, refreshing, error } = useStockOnHand()
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -121,6 +121,7 @@ export function StockOnHandTab() {
       <StockOnHandHeader totals={totals} turnaroundAvgDays={turnaroundAvgDays} />
 
       {error && <StatusNote tone="problem">{error}</StatusNote>}
+      {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
 
       {loading ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>

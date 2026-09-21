@@ -30,7 +30,7 @@ export function QorovulHisobotlar() {
   // silently swallowing a deactivated client's real name, not just a
   // missing one.
   const { owners } = useOwners(true)
-  const { rows, loading } = useGateHistory(filters)
+  const { rows, loading, refreshing, error } = useGateHistory(filters)
 
   function ownerName(id: string | null) {
     return owners.find((o) => o.id === id)?.name ?? '—'
@@ -42,6 +42,8 @@ export function QorovulHisobotlar() {
   return (
     <HistoryView
       loading={loading}
+      refreshing={refreshing}
+      error={error}
       isEmpty={rows.length === 0}
       emptyText="Reys topilmadi."
       resultCount={rows.length}

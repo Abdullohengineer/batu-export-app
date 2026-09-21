@@ -78,6 +78,27 @@ export const queryKeys = {
   profileNames: () => ['profile_names'] as const,
   laboratorKirim: () => ['laborator_kirim'] as const,
   laboratorChiqim: () => ['laborator_chiqim'] as const,
+  kirimTrips: () => ['kirim_trips'] as const,
+  chiqimTrips: () => ['chiqim_trips'] as const,
+  yieldRows: (ownerId: string | null, typeId: string | null, from: string, to: string) =>
+    ['yield_rows', ownerId, typeId, from, to] as const,
+  stockOnHand: () => ['stock_on_hand'] as const,
+  gateHistory: (from: string, to: string, plate: string, status: string) =>
+    ['gate_history', from, to, plate, status] as const,
+  intakeHistory: (from: string, to: string, typeId: string, ownerId: string, seriya: string) =>
+    ['intake_history', from, to, typeId, ownerId, seriya] as const,
+  laboratorHistory: (
+    from: string,
+    to: string,
+    scope: string,
+    ownerId: string,
+    typeId: string,
+    calibreId: string,
+    seriya: string,
+    verdict: string,
+  ) => ['laborator_history', from, to, scope, ownerId, typeId, calibreId, seriya, verdict] as const,
+  finishedChiqimRequests: () => ['finished_chiqim_requests'] as const,
+  chiqimRequestById: (requestId: string) => ['chiqim_request_by_id', requestId] as const,
 }
 
 // Master-data staleTime: 10 minutes, not the client's 30s default -- these

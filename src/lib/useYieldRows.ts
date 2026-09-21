@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import type { YieldRow, YieldCalibreMixEntry } from './yield'
 
 interface YieldDbRow {
@@ -64,32 +65,29 @@ function mapRow(r: YieldDbRow): YieldRow {
 // One row per finished serial (not per event), so unlike report_rows this
 // stays small even at years of real business scale — no pagination RPC
 // warranted (see the design discussion before this migration was applied).
+//
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query. Query key includes
+// every param (ownerId/typeId/from/to) -- a filter change is genuinely a
+// different query, not a refetch of the same one.
 export function useYieldRows(ownerId: string | null, typeId: string | null, from: string, to: string) {
-  const [rows, setRows] = useState<YieldRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, isPending, isFetching, error } = useQuery({
+    queryKey: queryKeys.yieldRows(ownerId, typeId, from, to),
+    queryFn: async ({ signal }): Promise<YieldRow[]> => {
+      let query = supabase.from('yield_rows').select('*').gte('completed_date', from).lte('completed_date', to).abortSignal(signal)
+      if (ownerId) query = query.eq('owner_id', ownerId)
+      if (typeId) query = query.eq('type_id', typeId)
+      const { data, error } = await query
+      if (error) throw new Error(error.message)
+      const mapped = ((data ?? []) as YieldDbRow[]).map(mapRow)
+      mapped.sort((a, b) => b.completedDate.localeCompare(a.completedDate))
+      return mapped
+    },
+  })
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        let query = supabase.from('yield_rows').select('*').gte('completed_date', from).lte('completed_date', to)
-        if (ownerId) query = query.eq('owner_id', ownerId)
-        if (typeId) query = query.eq('type_id', typeId)
-        const { data } = await query
-        if (cancelled) return
-        const mapped = ((data ?? []) as YieldDbRow[]).map(mapRow)
-        mapped.sort((a, b) => b.completedDate.localeCompare(a.completedDate))
-        setRows(mapped)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [ownerId, typeId, from, to])
-
-  return { rows, loading }
+  return {
+    rows: data ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+  }
 }

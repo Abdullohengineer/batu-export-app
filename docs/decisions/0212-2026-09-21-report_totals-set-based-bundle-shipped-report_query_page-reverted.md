@@ -115,6 +115,39 @@ flag rather than chase blindly on a live financial-reporting path — Hisobot
 `report_query_page` directly, and 8–16s per page load would have been a
 severe regression for all four.
 
+## User impact of the regression window, measured after the fact
+
+The migration table gives the exact window: applied `20260921094201`
+(09:42:01 UTC), reverted `20260921095335` (09:53:35 UTC) — **11.5 minutes
+live**, mid-afternoon Tashkent time (14:42–14:54 local), with real users
+on. `edge_logs` for the 09:00 UTC hour:
+
+| | requests | 5xx | success |
+|---|---|---|---|
+| inside 09:38–09:57 | 430 | **62** | 85.6% |
+| rest of the hour | 449 | 0 | 100% |
+
+All 62 of the hour's failures fall inside the window; none outside it.
+Per 5-minute bucket, `report_query_page`+`report_totals` went 4/6, 4/6,
+7/8 failed with p50 latency 14–25s and max 45s; the 09:55 bucket recovers
+to 7/8 OK, p50 1.5s. The blast radius was wider than Hisobot: with each
+`report_query_page` call holding a pool connection for 10–16s, the
+10-connection PostgREST pool saturated and the 09:50 bucket shows 28
+collateral **503s on `/profiles`, `/product_types`, `/calibres`** —
+cheap reads that had nothing to do with the change and failed only
+because no slot was free. That is exactly the pool-ceiling mechanism
+0213 describes, reproduced by this session's own mistake.
+
+This is a genuine incident caused by this session, owned here rather
+than folded into "reverted." It also changes the verification standard
+for anything touching these RPCs: a byte-identity check on the function's
+OUTPUT (which passed, 0/198 mismatches) is not a check on its PLAN. The
+`EXPLAIN ANALYZE` that caught this was run only *after* applying; it
+should have been run against a test-named copy of the *calling* function
+(`report_query_page_test`) before touching the live one — the set
+function alone was benchmarked in isolation (80ms) and looked fine. Next
+time: benchmark the full call path under a test name first, apply second.
+
 ## What was reverted
 
 `kirim_line_report_bundle(p_serial, from, to)` restored to its exact

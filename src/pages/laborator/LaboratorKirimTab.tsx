@@ -32,7 +32,7 @@ export function LaboratorKirimTab() {
   // §3.3: includeInactive=true -- resolves names on historical serials.
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
-  const { awaiting, sulfurPending, finished, loading, refresh } = useLaboratorKirim()
+  const { awaiting, sulfurPending, finished, loading, refreshing, error: loadError, refresh } = useLaboratorKirim()
 
   const [activeTahlil, setActiveTahlil] = useState<string | null>(null)
   const [tahlilError, setTahlilError] = useState<string | null>(null)
@@ -187,11 +187,13 @@ export function LaboratorKirimTab() {
 
   return (
     <div className="space-y-6">
+      {loadError && <StatusNote tone="problem">{loadError}</StatusNote>}
       <div className="grid grid-cols-3 gap-3">
         <Stat value={awaiting.length} label="Tahlil kutilmoqda" />
         <Stat value={sulfurPending.length} label="Sera kutilmoqda" tone={sulfurPending.length > 0 ? 'pending' : 'neutral'} />
         <Stat value={finished.length} label="Yakunlandi" tone="ok" />
       </div>
+      {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
 
       <div>
         <SectionHeading>1 · Tahlil kutilmoqda — namuna oling</SectionHeading>

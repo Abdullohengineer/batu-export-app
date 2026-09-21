@@ -73,6 +73,11 @@ export const queryKeys = {
   moykaSerials: () => ['moyka_serials'] as const,
   moykaOutput: () => ['moyka_output'] as const,
   omborChiqimRequests: () => ['ombor_chiqim_requests'] as const,
+  // Phase 2 step 5 -- remaining unbounded-growth reads, no params.
+  wipRows: () => ['wip_rows'] as const,
+  profileNames: () => ['profile_names'] as const,
+  laboratorKirim: () => ['laborator_kirim'] as const,
+  laboratorChiqim: () => ['laborator_chiqim'] as const,
 }
 
 // Master-data staleTime: 10 minutes, not the client's 30s default -- these

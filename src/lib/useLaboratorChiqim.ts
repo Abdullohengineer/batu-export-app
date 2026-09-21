@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import { sortByDateDesc } from './sortByDate'
 
 // §5.5.3 Laborator CHIQIM (decisive check). Trigger changed (2026-07-28,
@@ -85,39 +86,37 @@ export interface ChiqimLabResultRow {
   kirimSo2MgKg: number | null
 }
 
-export function useLaboratorChiqim() {
-  const [awaiting, setAwaiting] = useState<AwaitingSerial[]>([])
-  const [sulfurPending, setSulfurPending] = useState<ChiqimLabResultRow[]>([])
-  const [finished, setFinished] = useState<ChiqimLabResultRow[]>([])
-  const [loading, setLoading] = useState(true)
-  // 🔒 See useMoykaOutput.ts's identical guard for the full explanation --
-  // refresh is exposed for mutation handlers (handleTahlil/handleSera) to
-  // call too, so a per-effect `cancelled` closure can't cover every call
-  // site. A monotonic request id ensures only the most-recently-started
-  // call ever commits state, regardless of resolution order.
-  const requestIdRef = useRef(0)
+interface LaboratorChiqimData {
+  awaiting: AwaitingSerial[]
+  sulfurPending: ChiqimLabResultRow[]
+  finished: ChiqimLabResultRow[]
+}
 
-  const refresh = useCallback(async () => {
-    const requestId = ++requestIdRef.current
-    setLoading(true)
-    try {
-      const [{ data: cycles }, { data: sends }] = await Promise.all([
+const EMPTY_LABORATOR_CHIQIM: LaboratorChiqimData = { awaiting: [], sulfurPending: [], finished: [] }
+
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query, no query params
+// (one shared key). The old monotonic request-id guard (refresh() is also
+// called by mutation handlers handleTahlil/handleSera, so a per-effect
+// `cancelled` closure couldn't cover every call site) is dropped -- React
+// Query already serializes fetches per query key.
+export function useLaboratorChiqim() {
+  const { data, isPending, isFetching, error, refetch } = useQuery({
+    queryKey: queryKeys.laboratorChiqim(),
+    queryFn: async ({ signal }): Promise<LaboratorChiqimData> => {
+      const [{ data: cycles, error: cyclesErr }, { data: sends, error: sendsErr }] = await Promise.all([
         // Path E cheat version (see DECISIONS.md "Path E cheat: multi-cycle
         // wash_cycles scoping") — cycle_no/opened_at added. This loop
         // already iterates one row per wash_cycles row (not per serial),
         // so a twice-processed serial already produces two queue rows for
         // free; what needed fixing is sentKg/sentDate below, which used to
         // be an unbounded whole-serial sum shared identically by both rows.
-        supabase.from('wash_cycles').select('id, serial, cycle_no, opened_at').order('cycle_no'),
-        supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
+        supabase.from('wash_cycles').select('id, serial, cycle_no, opened_at').order('cycle_no').abortSignal(signal),
+        supabase.from('moyka_sends').select('serial, qty_kg, sent_date').abortSignal(signal),
       ])
+      if (cyclesErr) throw new Error(cyclesErr.message)
+      if (sendsErr) throw new Error(sendsErr.message)
       if (!cycles || cycles.length === 0) {
-        if (requestIdRef.current === requestId) {
-          setAwaiting([])
-          setSulfurPending([])
-          setFinished([])
-        }
-        return
+        return EMPTY_LABORATOR_CHIQIM
       }
 
       // Same cycle-window boundary rule as useMoykaOutput.ts: each cycle
@@ -151,11 +150,16 @@ export function useLaboratorChiqim() {
       }
 
       const serials = [...new Set(cycles.map((c) => c.serial))]
-      const [{ data: lines }, { data: results }, { data: kirimResults }] = await Promise.all([
+      const [
+        { data: lines, error: linesErr },
+        { data: results, error: resultsErr },
+        { data: kirimResults, error: kirimResultsErr },
+      ] = await Promise.all([
         supabase
           .from('kirim_lines')
           .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no')
-          .in('serial', serials),
+          .in('serial', serials)
+          .abortSignal(signal),
         supabase
           .from('lab_results')
           .select(
@@ -166,16 +170,26 @@ export function useLaboratorChiqim() {
             'wash_cycle_id',
             cycles.map((c) => c.id),
           )
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .abortSignal(signal),
         supabase
           .from('lab_results')
           .select('parent_serial, moisture_pct, so2_mg_kg, created_at')
           .eq('scope', 'kirim')
           .in('parent_serial', serials)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .abortSignal(signal),
       ])
+      if (linesErr) throw new Error(linesErr.message)
+      if (resultsErr) throw new Error(resultsErr.message)
+      if (kirimResultsErr) throw new Error(kirimResultsErr.message)
       const orderIds = [...new Set((lines ?? []).map((l) => l.order_id))]
-      const { data: orders } = await supabase.from('kirim_orders').select('order_id, owner_id').in('order_id', orderIds)
+      const { data: orders, error: ordersErr } = await supabase
+        .from('kirim_orders')
+        .select('order_id, owner_id')
+        .in('order_id', orderIds)
+        .abortSignal(signal)
+      if (ordersErr) throw new Error(ordersErr.message)
 
       const lineBySerial = new Map((lines ?? []).map((l) => [l.serial, l]))
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
@@ -262,18 +276,21 @@ export function useLaboratorChiqim() {
 
       // FIFO for W1 (arrival queue, universal-sort-rule exemption); W2/W3
       // newest-first like every other stage/history list.
-      if (requestIdRef.current !== requestId) return
-      setAwaiting([...awaitingRows].sort((a, b) => a.sentDate.localeCompare(b.sentDate)))
-      setSulfurPending(sortByDateDesc(sulfurRows, (r) => r.created_at))
-      setFinished(sortByDateDesc(finishedRows, (r) => r.created_at))
-    } finally {
-      if (requestIdRef.current === requestId) setLoading(false)
-    }
-  }, [])
+      return {
+        awaiting: [...awaitingRows].sort((a, b) => a.sentDate.localeCompare(b.sentDate)),
+        sulfurPending: sortByDateDesc(sulfurRows, (r) => r.created_at),
+        finished: sortByDateDesc(finishedRows, (r) => r.created_at),
+      }
+    },
+  })
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { awaiting, sulfurPending, finished, loading, refresh }
+  return {
+    awaiting: data?.awaiting ?? [],
+    sulfurPending: data?.sulfurPending ?? [],
+    finished: data?.finished ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+    refresh: refetch,
+  }
 }

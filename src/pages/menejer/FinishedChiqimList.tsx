@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
@@ -104,6 +105,9 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
       if (error) throw error
       setConfirmingVoid(null)
       refresh()
+      // 0211: CHIQIM dispatch -- a voided request drops out of every ledger
+      // aggregate that report_query_page et al. compute.
+      invalidateReportData()
     } catch (err) {
       setVoidError(err instanceof Error ? err.message : 'Bekor qilishda xatolik yuz berdi.')
     } finally {
@@ -169,6 +173,9 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
       ])
 
       setEditingId(null)
+      // 0211: CHIQIM dispatch -- request_date re-buckets which report window
+      // this dispatch's rows fall in.
+      invalidateReportData()
       refresh()
     } catch (err) {
       setEditError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')

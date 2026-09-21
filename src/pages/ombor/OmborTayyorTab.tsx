@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
@@ -136,6 +137,9 @@ export function OmborTayyorTab() {
     if (closeErr) throw closeErr
 
     refresh()
+    // 0211: Finished pallet / wash cycle close -- weight_kg received and any
+    // closed_at flip both feed report_query_page et al.
+    invalidateReportData()
   }
 
   // Manual close (Yakunlash) — see this file's header + DECISIONS.md
@@ -150,6 +154,9 @@ export function OmborTayyorTab() {
     }
     setConfirmingClose(null)
     refresh()
+    // 0211: Wash cycle close -- closed_at flips this serial from unrealized
+    // (Moykada) to realized (Yo'qotish), which report_query_page et al. read.
+    invalidateReportData()
   }
 
   if (loading) return null

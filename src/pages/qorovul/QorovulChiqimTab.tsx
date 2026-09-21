@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
@@ -114,6 +115,8 @@ export function QorovulChiqimTab() {
 
     closeForm()
     refresh()
+    // 0211: Gate weighing -- pustoy_kg feeds this trip's effective_qty.
+    invalidateReportData()
   }
 
   async function handleStage2(trip: ChiqimTrip, values: GateStageValues) {
@@ -136,6 +139,9 @@ export function QorovulChiqimTab() {
 
     closeForm()
     refresh()
+    // 0211: Gate weighing -- gruzheny_kg (net, reversed from KIRIM) is the
+    // effective_qty basis report_query_page et al. read.
+    invalidateReportData()
   }
 
   // Fura capture. Writes ONE append-only row; nothing else moves. It does

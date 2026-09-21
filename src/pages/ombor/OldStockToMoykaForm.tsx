@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -110,6 +111,9 @@ export function OldStockToMoykaForm({ onCancel, onSaved }: { onCancel: () => voi
         p_weighed_kg: weighedNum,
       })
       if (rpcErr) throw rpcErr
+      // 0211: Moyka send -- consumes old-stock pallets, mints a serial and
+      // records a send, all ledger-affecting.
+      invalidateReportData()
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { formatDate } from '../../lib/formatDate'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
@@ -105,6 +106,8 @@ export function LaboratorChiqimTab() {
 
     setActiveTahlil(null)
     refresh()
+    // 0211: Lab result -- moisture_pct is a Hisobot column.
+    invalidateReportData()
   }
 
   function seraClassificationFor(row: ChiqimLabResultRow): SulfurChoice {
@@ -148,6 +151,9 @@ export function LaboratorChiqimTab() {
         return next
       })
       refresh()
+      // 0211: Lab result -- so2_mg_kg/verdict is a Hisobot column and a
+      // dispatch gate.
+      invalidateReportData()
     } catch (err) {
       setSeraError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {
@@ -193,6 +199,9 @@ export function LaboratorChiqimTab() {
 
     setEditingFinished(null)
     refresh()
+    // 0211: Lab result -- a superseding lab_results row is a corrected
+    // Hisobot column value.
+    invalidateReportData()
   }
 
   if (loading) return null

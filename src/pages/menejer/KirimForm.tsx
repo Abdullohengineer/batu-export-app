@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { compressImage, formatBytes } from '../../lib/imageCompress'
@@ -155,6 +156,10 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
       setRows([newRow()])
       setPhotoFile(null)
       setPhotoSizes(null)
+      // 0211: KIRIM intake -- both the order and its lines land a new
+      // delivery on the ledger (declared_qty), which report_query_page,
+      // rahbar_stock_snapshot etc. all read.
+      invalidateReportData()
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')

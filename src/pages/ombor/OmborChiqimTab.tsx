@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
@@ -352,6 +353,9 @@ export function OmborChiqimTab() {
         return
       }
       await refreshManifest()
+      // 0211: CHIQIM dispatch -- undoing a FIFO attribution reverses stock
+      // movement report_query_page et al. read.
+      invalidateReportData()
     } finally {
       setUndoingId(null)
     }
@@ -474,6 +478,10 @@ export function OmborChiqimTab() {
       setConfirming(null)
       setExpandedOpen(null)
       refresh()
+      // 0211: CHIQIM dispatch / Old stock -- FIFO attribution, raw/old_kn
+      // draws and ombor_finished_at all move ledger figures report_query_page
+      // et al. read.
+      invalidateReportData()
     } catch (err) {
       setFinishError(err instanceof Error ? err.message : 'Yakunlashda xatolik yuz berdi.')
     } finally {

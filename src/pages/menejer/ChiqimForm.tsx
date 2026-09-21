@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
@@ -277,6 +278,9 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
       setDriver('')
       setOwnerId('')
       setRows([newRow()])
+      // 0211: CHIQIM dispatch -- the new request/lines' declared qty_kg is a
+      // Hisobot-visible figure the moment it's created.
+      invalidateReportData()
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')

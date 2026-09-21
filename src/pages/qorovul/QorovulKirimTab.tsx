@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
@@ -96,6 +97,8 @@ export function QorovulKirimTab() {
 
     closeForm()
     refresh()
+    // 0211: Gate weighing -- gruzheny_kg feeds effective_qty pending net.
+    invalidateReportData()
   }
 
   async function handleStage2(trip: KirimTrip, values: GateStageValues) {
@@ -114,6 +117,9 @@ export function QorovulKirimTab() {
 
     closeForm()
     refresh()
+    // 0211: Gate weighing -- net_kg (generated from pustoy_kg) is the
+    // effective_qty basis report_query_page et al. read.
+    invalidateReportData()
   }
 
   if (loading) return null

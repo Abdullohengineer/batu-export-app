@@ -61,6 +61,18 @@ export const queryKeys = {
   owners: (includeInactive: boolean) => ['owners', includeInactive] as const,
   calibres: (includeInactive: boolean) => ['calibres', includeInactive] as const,
   productCategories: (includeInactive: boolean) => ['product_categories', includeInactive] as const,
+  // Ombor section reads (2026-09-21, Phase 2 step 2) -- no params, one key
+  // per hook. OmborHome's nav badges and each section's own tab
+  // (OmborIntakeTab/OmborMoykaTab/OmborTayyorTab/OmborChiqimTab) call the
+  // SAME hook for the SAME data; sharing a key is what lets React Query
+  // dedupe the two mounts into one request instead of two, and what makes a
+  // section's own write-triggered refresh() also update the nav badge
+  // without a second fetch. See OmborHome.tsx's own comment for why this
+  // used to be a raw setInterval.
+  intakeLines: () => ['intake_lines'] as const,
+  moykaSerials: () => ['moyka_serials'] as const,
+  moykaOutput: () => ['moyka_output'] as const,
+  omborChiqimRequests: () => ['ombor_chiqim_requests'] as const,
 }
 
 // Master-data staleTime: 10 minutes, not the client's 30s default -- these

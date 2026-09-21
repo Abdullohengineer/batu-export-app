@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import { sortByDateDesc } from './sortByDate'
 import { fetchEffectiveQty, type EffectiveQtyInfo } from './effectiveQty'
 import type { QtyVariance, WeightAuthorityBasis } from './weightAuthority'
@@ -71,19 +72,23 @@ export interface MoykaSerial {
 // this hook's own `available` to a second exit — built once here so the
 // Moyka send screen and the new CHIQIM raw picker (ChiqimForm.tsx) can never
 // compute two different numbers for the same serial's raw balance.
+//
+// 2026-09-21 (Phase 2 step 2) -- moved onto React Query, no query params
+// (one shared key, see queryClient.ts) -- this is the hook OmborHome's nav
+// badge, OmborIntakeTab, OmborMoykaTab and menejer's ChiqimForm all call
+// independently; sharing a key collapses every simultaneous mount into one
+// request. The old monotonic request-id guard existed only to stop an
+// earlier, still-in-flight manual refresh() from clobbering a later one's
+// result -- React Query already serializes this per query key (a refetch
+// while one is in flight is deduped/cancelled internally), so it's dropped
+// rather than carried forward as dead code.
 export function useMoykaSerials() {
-  const [serials, setSerials] = useState<MoykaSerial[]>([])
-  const [loading, setLoading] = useState(true)
-  // 🔒 See useMoykaOutput.ts's identical guard for the full explanation --
-  // refresh is exposed for mutation handlers to call too, so a per-effect
-  // `cancelled` closure can't cover every call site; a monotonic request id
-  // ensures only the most-recently-started call ever commits state.
-  const requestIdRef = useRef(0)
-
-  const refresh = useCallback(async () => {
-    const requestId = ++requestIdRef.current
-    setLoading(true)
-    try {
+  const { data, isPending, refetch } = useQuery({
+    queryKey: queryKeys.moykaSerials(),
+    // 60s, visible-tab-only -- see useIntakeLines.ts's identical comment.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    queryFn: async (): Promise<MoykaSerial[]> => {
       const [{ data: intakes }, { data: sends }, { data: rawDispatches }, { data: rezkaSends }, { data: closeouts }] = await Promise.all([
         supabase.from('storage_intake').select('serial, actual_qty, box_mass_kg'),
         supabase.from('moyka_sends').select('id, serial, sent_date, qty_kg'),
@@ -106,8 +111,7 @@ export function useMoykaSerials() {
 
       const serialList = (intakes ?? []).map((i) => i.serial)
       if (serialList.length === 0) {
-        if (requestIdRef.current === requestId) setSerials([])
-        return
+        return []
       }
 
       // §5.1's own "Kam chiqdi" threshold, reused as the §2.15.2 materiality
@@ -209,16 +213,9 @@ export function useMoykaSerials() {
       // the batch's own arrival date, meaningful whether or not it's been
       // sent yet. Sorted once at the hook so §5.2 Window 1 ("Yuborish
       // uchun", filtered from this same array) inherits it automatically.
-      if (requestIdRef.current !== requestId) return
-      setSerials(sortByDateDesc(combined, (s) => s.order_date))
-    } finally {
-      if (requestIdRef.current === requestId) setLoading(false)
-    }
-  }, [])
+      return sortByDateDesc(combined, (s) => s.order_date)
+    },
+  })
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { serials, loading, refresh }
+  return { serials: data ?? [], loading: isPending, refresh: refetch }
 }

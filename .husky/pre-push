@@ -18,3 +18,10 @@
 # it once per push, not on every commit while iterating locally.
 echo "pre-push: running npm run build (tsc -b && vite build) -- same command Netlify runs..."
 npm run build
+
+# check-rpc-wrapper (2026-09-21, Phase 2 step 7): blocks a NEW direct
+# supabase.rpc()/supabase.from() call site outside src/lib/rpc.ts's
+# run()/callRpc() wrapper from being pushed -- see that file and
+# scripts/check-rpc-wrapper.mjs for the rule and its allowlist.
+echo "pre-push: running npm run lint:rpc-wrapper..."
+npm run lint:rpc-wrapper

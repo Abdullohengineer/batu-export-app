@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "build:native": "tsc -b && vite build --mode capacitor",
     "lint": "oxlint",
+    "lint:rpc-wrapper": "node scripts/check-rpc-wrapper.mjs",
     "preview": "vite preview",
     "test": "node --test src/**/*.test.ts",
     "test:e2e": "playwright test",

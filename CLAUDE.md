@@ -83,6 +83,41 @@ Read both, relevant sections only, before every task.
   timelines (Qaydlar/notes, per-serial send-history) and raw FIFO arrival
   queues (pending trucks/gate trips) — see the named invariant for why.
 
+## Data access
+- 🚩 **Every new read hook goes on React Query** (`useQuery`, query key in
+  `src/lib/queryClient.ts`'s `queryKeys`), never a bare `useEffect`+
+  `useState` fetch. A raw `useEffect` fetch dedupes with nothing (two
+  simultaneous mounts of the same hook fire two requests, not one — the
+  exact bug `OmborIconNav`'s badges had before Phase 2 step 2) and never
+  shows last-good data during a background refetch.
+- Every hook's `queryFn` must: include every filter param in the query key
+  (a filter change is a different query, not a refetch of the same one),
+  pass the query's own `signal` to `.abortSignal(signal)` on every Supabase
+  call inside it, and **throw on `.error`** rather than falling through to
+  an empty/default value. The last one is not optional: `useProductTypes`'s
+  missing `.error` check is the confirmed root cause of the "pererabotano
+  renders without product type" bug (docs/decisions/ 2026-09-21 "Phase 2
+  step 1") — a failed fetch silently rendered as "this id has no type"
+  instead of a visible error, on a client-facing screen.
+- **New `supabase.rpc()`/`supabase.from()` calls go through
+  `src/lib/rpc.ts`'s `run()`/`callRpc()`** — the same throw-on-error,
+  signal-aware wrapper as the rule above, for code that isn't itself a
+  React Query `queryFn` (a write path, an RPC called from an event
+  handler, etc.). Enforced by `npm run lint:rpc-wrapper`
+  (`scripts/check-rpc-wrapper.mjs`), wired into `.husky/pre-push` alongside
+  the build — it fails on a NEW raw call site outside a file on that
+  script's allowlist. The allowlist is this project's entire pre-wrapper
+  data-access layer, grandfathered in on 2026-09-21; it exists to SHRINK
+  as each file migrates onto the wrapper, never to grow — add a file to it
+  only when you are incidentally touching genuinely pre-existing code, and
+  never as a way to let a new call site skip the wrapper.
+- A hook mounted by more than one component on the same screen must be
+  React-Query-backed for that reason alone, even if nothing else about it
+  changes — see `useNotes`/`EntityNotes` (mounted once per visible row in
+  `LaboratorChiqimTab`'s awaiting list) for a currently-un-migrated example
+  of the class of bug this causes: N simultaneous, uncached, undeduped
+  reads instead of one.
+
 ## Workflow
 - Feature branch off `main` per task. Open PR. Never merge — user reviews.
 - If Supabase MCP is available: ask before applying migrations to the live

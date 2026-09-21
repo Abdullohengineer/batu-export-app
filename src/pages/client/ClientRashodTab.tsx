@@ -5,6 +5,7 @@ import { useDebouncedValue } from '../../lib/useDebouncedValue'
 import { queryKeys } from '../../lib/queryClient'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
+import { StatusNote } from '../../components/ui/StatusNote'
 import {
   TIP_OPTIONS,
   TIP_COLOR,
@@ -117,7 +118,8 @@ function TotalsBlock({ totals }: { totals: ClientChiqimLedger['totals'] }) {
 }
 
 export function ClientRashodTab() {
-  const { productTypes } = useProductTypes(true)
+  // 2026-09-21 (Phase 2 step 1) -- error folded into the query error below.
+  const { productTypes, error: productTypesError } = useProductTypes(true)
   const defaultRange = { from: firstOfMonthInTashkent(), to: todayInTashkent() }
   const [filters, setFilters] = usePersistentState<ClientChiqimLedgerFilters>(
     'clientHisobot.rashod.filters',
@@ -141,7 +143,7 @@ export function ClientRashodTab() {
     queryKey: queryKeys.clientChiqimLedger(filterKey),
     queryFn: () => fetchClientChiqimLedger(debouncedFilters),
   })
-  const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : null
+  const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : productTypesError
 
   function typeName(id: string): string {
     return productTypes.find((t) => t.id === id)?.name ?? '—'
@@ -217,7 +219,7 @@ export function ClientRashodTab() {
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {!loading && !error && ledger && <TotalsBlock totals={ledger.totals} />}

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys, MASTER_DATA_STALE_TIME_MS } from './queryClient'
 
 export interface Calibre {
   id: string
@@ -19,29 +20,32 @@ export interface Calibre {
 // data, must pass includeInactive: true (see useOwners.ts for the full
 // rationale) — this matters more here than elsewhere, since is_numberless
 // also drives re-wash logic (OmborTayyorTab.handleRewash), not just display.
-// `refetch` lets the Sozlamalar admin screen reload after a mutation.
+//
+// 2026-09-21 (Phase 2 step 1) -- moved onto React Query, same reasoning as
+// useProductTypes.ts. `refetch` is React Query's own, kept in the return
+// shape so the Sozlamalar admin screen's existing `await refetch()` calls
+// keep working unchanged.
 export function useCalibres(includeInactive = false) {
-  const [calibres, setCalibres] = useState<Calibre[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    try {
+  const { data, isPending, error, refetch } = useQuery({
+    queryKey: queryKeys.calibres(includeInactive),
+    staleTime: MASTER_DATA_STALE_TIME_MS,
+    queryFn: async ({ signal }) => {
       let query = supabase
         .from('calibres')
         .select('id, category_id, code, label, is_numberless, is_rezka_output, sort_order, active')
         .order('sort_order')
+        .abortSignal(signal)
       if (!includeInactive) query = query.eq('active', true)
-      const { data } = await query
-      setCalibres(data ?? [])
-    } finally {
-      setLoading(false)
-    }
-  }, [includeInactive])
+      const { data, error } = await query
+      if (error) throw new Error(error.message)
+      return (data ?? []) as Calibre[]
+    },
+  })
 
-  useEffect(() => {
-    refetch()
-  }, [refetch])
-
-  return { calibres, loading, refetch }
+  return {
+    calibres: data ?? [],
+    loading: isPending,
+    error: error ? error.message : null,
+    refetch,
+  }
 }

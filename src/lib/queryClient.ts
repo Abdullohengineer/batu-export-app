@@ -49,6 +49,44 @@ export const queryKeys = {
   clientReport: (ownerId: string, from: string, to: string) => ['get_client_report', ownerId, from, to] as const,
   clientChiqimLedger: (key: string) => ['client_chiqim_ledger', key] as const,
   clientProductionLedger: (key: string) => ['client_production_ledger', key] as const,
+  // Master data (2026-09-21, Phase 2 step 1) -- the `includeInactive` arg is
+  // part of the key (a resolution read and a new-entry-dropdown read are
+  // genuinely different queries), but every invalidate* helper below drops
+  // it to invalidate BOTH variants at once (React Query matches queryKey
+  // arrays by prefix when `exact` isn't set) -- a write to owners/
+  // product_types/calibres/product_categories must never leave the OTHER
+  // variant's cache stale just because nothing touched that specific arg
+  // combination.
+  productTypes: (includeInactive: boolean) => ['product_types', includeInactive] as const,
+  owners: (includeInactive: boolean) => ['owners', includeInactive] as const,
+  calibres: (includeInactive: boolean) => ['calibres', includeInactive] as const,
+  productCategories: (includeInactive: boolean) => ['product_categories', includeInactive] as const,
+}
+
+// Master-data staleTime: 10 minutes, not the client's 30s default -- these
+// four tables (owners/product_types/calibres/product_categories) change on
+// the order of "someone renames a product type in Sozlamalar," not on the
+// business's normal read/write cadence. Explicit invalidation (below, wired
+// into masterDataAdmin.ts's six write functions) is what actually bounds
+// staleness after an edit; the long staleTime just avoids a needless
+// background refetch every 30s for data that almost never moves.
+export const MASTER_DATA_STALE_TIME_MS = 10 * 60_000
+
+// Called from masterDataAdmin.ts after any write to the corresponding
+// table -- invalidates BOTH includeInactive variants (prefix match, see
+// queryKeys above) so every screen holding either variant re-fetches on its
+// next read rather than waiting out MASTER_DATA_STALE_TIME_MS.
+export function invalidateProductTypes(): void {
+  queryClient.invalidateQueries({ queryKey: ['product_types'] })
+}
+export function invalidateOwners(): void {
+  queryClient.invalidateQueries({ queryKey: ['owners'] })
+}
+export function invalidateCalibres(): void {
+  queryClient.invalidateQueries({ queryKey: ['calibres'] })
+}
+export function invalidateProductCategories(): void {
+  queryClient.invalidateQueries({ queryKey: ['product_categories'] })
 }
 
 // Call after any write that changes ledger/stock numbers, to drop the cached

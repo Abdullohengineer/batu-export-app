@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys, MASTER_DATA_STALE_TIME_MS } from './queryClient'
 
 export interface Owner {
   id: string
@@ -13,25 +14,29 @@ export interface Owner {
 // a historical row must never drop to a raw uuid just because that owner
 // was deactivated after the row was created (§3.3). Pass
 // includeInactive: true at any call site doing either of those things.
-// `refetch` (§3.3, new) lets the Sozlamalar/Mijozlar admin screens reload
-// the list after a create/rename/deactivate without a full page reload.
+//
+// 2026-09-21 (Phase 2 step 1) -- moved onto React Query, same reasoning as
+// useProductTypes.ts (this hook had the identical silent-`[]`-on-error
+// bug). `refetch` is React Query's own, kept in the return shape so the
+// Sozlamalar/Mijozlar admin screens' existing `await refetch()` calls keep
+// working unchanged.
 export function useOwners(includeInactive = false) {
-  const [owners, setOwners] = useState<Owner[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, isPending, error, refetch } = useQuery({
+    queryKey: queryKeys.owners(includeInactive),
+    staleTime: MASTER_DATA_STALE_TIME_MS,
+    queryFn: async ({ signal }) => {
+      let query = supabase.from('owners').select('id, name, active').order('name').abortSignal(signal)
+      if (!includeInactive) query = query.eq('active', true)
+      const { data, error } = await query
+      if (error) throw new Error(error.message)
+      return (data ?? []) as Owner[]
+    },
+  })
 
-  const refetch = useCallback(() => {
-    setLoading(true)
-    let query = supabase.from('owners').select('id, name, active').order('name')
-    if (!includeInactive) query = query.eq('active', true)
-    return query.then(({ data }) => {
-      setOwners(data ?? [])
-      setLoading(false)
-    })
-  }, [includeInactive])
-
-  useEffect(() => {
-    refetch()
-  }, [refetch])
-
-  return { owners, loading, refetch }
+  return {
+    owners: data ?? [],
+    loading: isPending,
+    error: error ? error.message : null,
+    refetch,
+  }
 }

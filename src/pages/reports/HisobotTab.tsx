@@ -72,15 +72,22 @@ export function HisobotTab() {
   // §3.3: includeInactive=true -- resolves ids on historical rows, and the
   // filter bar (ReportFilterBar, below) must still be able to select a
   // deactivated client/type/calibre to filter their history.
-  const { owners } = useOwners(true)
-  const { productTypes } = useProductTypes(true)
-  const { calibres } = useCalibres(true)
+  const { owners, error: ownersError } = useOwners(true)
+  const { productTypes, error: productTypesError } = useProductTypes(true)
+  const { calibres, error: calibresError } = useCalibres(true)
 
   // §requirement 3: totals are computed server-side (report_totals) over
   // the FULL filtered set, never summed from `rows` (which is only ever one
   // page). §requirement 1: filters are pushed into the query itself
   // (report_query_page/report_totals) — no client-side narrowing left here.
-  const { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading, error } = useReportQuery(filters)
+  const { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading, error: reportError } = useReportQuery(filters)
+  // 2026-09-21 (Phase 2 step 1) -- a failed owners/productTypes/calibres
+  // fetch used to silently render every row's label as '—' or a raw id
+  // (see useProductTypes.ts's own comment for the confirmed bug this was).
+  // Folded into the same banner reportError already renders below, first
+  // error wins (reportError takes priority since it means the row DATA
+  // itself is stale/missing, not just a label).
+  const error = reportError ?? productTypesError ?? ownersError ?? calibresError
   // CHIQIM truck type badge (2026-08-30) — a label resolver threaded like
   // ownerName/typeName/calibreLabel, not a row source. See
   // useChiqimTruckTypes.ts for why it is not threaded through report_rows_v2.

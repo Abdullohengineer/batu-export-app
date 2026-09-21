@@ -79,8 +79,12 @@ export function ClientPanelTab() {
   const [customTo, setCustomTo] = usePersistentState('client.panel.customTo', () => todayInTashkent())
   const [selectedTypeIds, setSelectedTypeIds] = usePersistentState<string[] | null>('client.panel.types', null) // null = все
 
-  const { productTypes } = useProductTypes(true)
-  const { calibres } = useCalibres(true)
+  // 2026-09-21 (Phase 2 step 1) -- errors surfaced below alongside
+  // snapError/ledgerError, same reasoning as useProductTypes.ts's own
+  // comment: a failed fetch here used to silently show '—'/raw-id labels
+  // instead of a visible error.
+  const { productTypes, error: productTypesError } = useProductTypes(true)
+  const { calibres, error: calibresError } = useCalibres(true)
 
   const { from, to } = useMemo(() => {
     if (preset === 'boshidan') return { from: BOSHIDAN, to: todayInTashkent() }
@@ -152,6 +156,8 @@ export function ClientPanelTab() {
 
       {snapError && <StatusNote tone="problem">{snapError}</StatusNote>}
       {ledgerError && <StatusNote tone="problem">{ledgerError}</StatusNote>}
+      {productTypesError && <StatusNote tone="problem">{productTypesError}</StatusNote>}
+      {calibresError && <StatusNote tone="problem">{calibresError}</StatusNote>}
 
       {/* Hero tiles */}
       {snapLoading || !snapshot ? (

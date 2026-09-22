@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
@@ -10,6 +11,7 @@ import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { Stat } from '../../components/ui/Stat'
+import { StatusNote } from '../../components/ui/StatusNote'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { FuraBadge } from '../../components/ui/FuraBadge'
 import { GatePhoto } from '../../components/GatePhoto'
@@ -62,7 +64,7 @@ export function QorovulChiqimTab() {
   // §3.3: includeInactive=true -- resolves names on historical trip lines.
   const { productTypes } = useProductTypes(true)
   const { owners } = useOwners(true)
-  const { trips, loading, refresh } = useChiqimTrips()
+  const { trips, loading, refreshing, error: loadError, refresh } = useChiqimTrips()
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [activeStage, setActiveStage] = useState<1 | 2 | 'kirdi' | 'chiqdi' | null>(null)
 
@@ -114,6 +116,8 @@ export function QorovulChiqimTab() {
 
     closeForm()
     refresh()
+    // 0211: Gate weighing -- pustoy_kg feeds this trip's effective_qty.
+    invalidateReportData()
   }
 
   async function handleStage2(trip: ChiqimTrip, values: GateStageValues) {
@@ -136,6 +140,9 @@ export function QorovulChiqimTab() {
 
     closeForm()
     refresh()
+    // 0211: Gate weighing -- gruzheny_kg (net, reversed from KIRIM) is the
+    // effective_qty basis report_query_page et al. read.
+    invalidateReportData()
   }
 
   // Fura capture. Writes ONE append-only row; nothing else moves. It does
@@ -197,6 +204,7 @@ export function QorovulChiqimTab() {
 
   return (
     <div className="space-y-6">
+      {loadError && <StatusNote tone="problem">{loadError}</StatusNote>}
       <div className="grid grid-cols-3 gap-3">
         <Stat value={notStarted.length + furaAwaitingKirdi.length} label="Kutilmoqda" />
         <Stat
@@ -206,6 +214,7 @@ export function QorovulChiqimTab() {
         />
         <Stat value={completed.length} label="Yakunlandi" tone="ok" />
       </div>
+      {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
 
       <div>
         <SectionHeading>1 · Faol yuklar</SectionHeading>

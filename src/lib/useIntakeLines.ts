@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 
 export interface IntakeRecord {
   actual_qty: number
@@ -36,30 +37,28 @@ export interface IntakeLine {
 // does not wait for stage 2 / net weight. One row per serial (line), since
 // a serial is single-type by construction (§2.1) and lines on the same
 // trip can be accepted independently.
+//
+// 2026-09-21 (Phase 2 step 2) -- moved onto React Query, no query params
+// (one shared key, see queryClient.ts). This is what lets OmborHome's nav
+// badge and OmborIntakeTab's own list -- two separate mounts of this same
+// hook -- collapse into one request instead of two, and what makes
+// OmborIntakeTab's own refresh() after an accept also update the badge for
+// free. `loading` (React Query's `isPending`) is true only while there is
+// no cached data at all, never during a background refetch -- the same
+// "must only gate the FIRST fetch" property the old hasLoadedOnce guard
+// existed to provide (see OmborIntakeTab.tsx's handleAccept comment for the
+// dropped-submit bug this originally fixed), now built in rather than
+// hand-rolled.
 export function useIntakeLines() {
-  const [lines, setLines] = useState<IntakeLine[]>([])
-  const [loading, setLoading] = useState(true)
-  // 🔒 Dropped-submit fix, part 2 of 2 (see DECISIONS.md "IntakeAcceptForm
-  // dropped submit" and OmborIntakeTab.tsx's own handleAccept comment).
-  // `loading` must only gate the FIRST fetch. OmborIntakeTab.tsx renders
-  // `if (loading) return null` -- a screen-blanking guard meant for "no
-  // data yet." OmborIntakeTab.handleAccept calls this refresh() again in
-  // the background after every accept (fire-and-forget, so a second line's
-  // form can legitimately still be open, mid-fill, while this runs) --
-  // without this guard, that refresh flips `loading` back to true, and the
-  // WHOLE TAB unmounts and remounts once it resolves, including any OTHER
-  // row's already-open IntakeAcceptForm. Its internal state (selected
-  // photo, comment) is lost silently -- a brand new component instance,
-  // not the same one -- even though `activeSerial` itself (part 1 of the
-  // fix) correctly still points at that row throughout. Confirmed via
-  // direct reproduction (mount/unmount tracing) that BOTH fixes are
-  // required together: part 1 alone left this second mechanism intact and
-  // the bug reproduced identically.
-  const hasLoadedOnce = useRef(false)
-
-  const refresh = useCallback(async () => {
-    if (!hasLoadedOnce.current) setLoading(true)
-    try {
+  const { data, isPending, refetch } = useQuery({
+    queryKey: queryKeys.intakeLines(),
+    // 60s, visible-tab-only (2026-09-21, Phase 2 step 2) -- replaces
+    // OmborHome's old standalone setInterval, which kept firing all 4
+    // section refreshes every 60s regardless of whether the tab was even
+    // visible. One query-level option now covers every mount of this hook.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    queryFn: async (): Promise<IntakeLine[]> => {
       const [{ data: orders }, { data: kLines }, { data: weighings }, { data: intakes }] = await Promise.all([
         supabase
           .from('kirim_orders')
@@ -116,16 +115,9 @@ export function useIntakeLines() {
         })
         .filter((l): l is IntakeLine => l !== null)
 
-      setLines(combined)
-    } finally {
-      setLoading(false)
-      hasLoadedOnce.current = true
-    }
-  }, [])
+      return combined
+    },
+  })
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { lines, loading, refresh }
+  return { lines: data ?? [], loading: isPending, refresh: refetch }
 }

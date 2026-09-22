@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { Card } from '../../components/ui/Card'
@@ -93,6 +94,9 @@ export function OldStockCloseoutTab() {
       })
       if (rpcErr) throw rpcErr
       setConfirming(null)
+      // 0211: Old stock -- closing a line excludes it from every raw/old_kn
+      // balance report_query_page et al. compute.
+      invalidateReportData()
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Yakunlashda xatolik yuz berdi.')

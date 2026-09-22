@@ -235,14 +235,19 @@ const CLIENT_PRIHOD_EXPORT_OVERRIDES: ExportTextOverrides = {
 }
 
 export function ClientPrihodTab() {
-  const { productTypes } = useProductTypes(true)
-  const { calibres } = useCalibres(true)
+  // 2026-09-21 (Phase 2 step 1) -- errors folded into `error` below,
+  // alongside useReportQuery's own (this screen never surfaced it at all
+  // before, a pre-existing gap from the 2026-09-19 Hisobot fix landing on
+  // useReportQuery.ts without every consumer picking up the new field).
+  const { productTypes, error: productTypesError } = useProductTypes(true)
+  const { calibres, error: calibresError } = useCalibres(true)
   const [filters, setFilters] = usePersistentState<ReportFilters>('clientHisobot.prihod.filters', defaultClientPrihodFilters)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
 
-  const { rows, totals, totalCount, page, pageCount, setPage, loading } = useReportQuery(filters)
+  const { rows, totals, totalCount, page, pageCount, setPage, loading, error: reportError } = useReportQuery(filters)
+  const error = reportError ?? productTypesError ?? calibresError
   const kirimRows = rows.filter((r): r is KirimReportRow => r.kind === 'kirim')
 
   function typeName(id: string): string {
@@ -358,6 +363,7 @@ export function ClientPrihodTab() {
       </div>
 
       {exportError && <StatusNote tone="problem">{exportError}</StatusNote>}
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
 
       <ClientTotalsStrip totals={totals} />
 

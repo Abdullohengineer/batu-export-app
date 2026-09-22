@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 
 export interface KirimLine {
   serial: string
@@ -35,15 +36,18 @@ export interface KirimTrip {
 
 // Qorovul's KIRIM tab (SPEC §4): the gate cares about the trip, not any one
 // serial on it — a trip may carry several serials (§2.1), display-only here.
+//
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query, no query params
+// (one shared key).
 export function useKirimTrips() {
-  const [trips, setTrips] = useState<KirimTrip[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-
-    try {
-      const [{ data: orders }, { data: lines }, { data: weighings }] = await Promise.all([
+  const { data, isPending, isFetching, error, refetch } = useQuery({
+    queryKey: queryKeys.kirimTrips(),
+    queryFn: async ({ signal }): Promise<KirimTrip[]> => {
+      const [
+        { data: orders, error: ordersErr },
+        { data: lines, error: linesErr },
+        { data: weighings, error: weighingsErr },
+      ] = await Promise.all([
         supabase
           .from('kirim_orders')
           // origin='delivery' only (2026-08-02) — the gate weighs TRUCKS.
@@ -58,29 +62,32 @@ export function useKirimTrips() {
           // construction — same reasoning as report_rows' own filter.
           .select('order_id, order_date, plate, driver, owner_id, declared_total, status')
           .eq('origin', 'delivery')
-          .order('created_at', { ascending: false }),
-        supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id, partiya_no'),
+          .order('created_at', { ascending: false })
+          .abortSignal(signal),
+        supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id, partiya_no').abortSignal(signal),
         supabase
           .from('gate_weighings')
           .select('id, order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')
-          .eq('dir', 'kirim'),
+          .eq('dir', 'kirim')
+          .abortSignal(signal),
       ])
+      if (ordersErr) throw new Error(ordersErr.message)
+      if (linesErr) throw new Error(linesErr.message)
+      if (weighingsErr) throw new Error(weighingsErr.message)
 
-      const combined: KirimTrip[] = (orders ?? []).map((order) => ({
+      return (orders ?? []).map((order) => ({
         order,
         lines: (lines ?? []).filter((l) => l.order_id === order.order_id),
         weighing: (weighings ?? []).find((w) => w.order_id === order.order_id) ?? null,
       }))
+    },
+  })
 
-      setTrips(combined)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { trips, loading, refresh }
+  return {
+    trips: data ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+    refresh: refetch,
+  }
 }

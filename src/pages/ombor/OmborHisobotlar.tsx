@@ -29,7 +29,7 @@ export function OmborHisobotlar() {
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
   const { limits } = useSettingsLimits()
-  const { rows, loading } = useIntakeHistory(filters)
+  const { rows, loading, refreshing, error } = useIntakeHistory(filters)
 
   const kamChiqdiPct = limits.kam_chiqdi_pct ?? 5
 
@@ -46,6 +46,8 @@ export function OmborHisobotlar() {
   return (
     <HistoryView
       loading={loading}
+      refreshing={refreshing}
+      error={error}
       isEmpty={rows.length === 0}
       emptyText="Serial topilmadi."
       resultCount={rows.length}

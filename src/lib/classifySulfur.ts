@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { invalidateReportData } from './queryClient'
 
 // Natural/sulphured classification moved from Menejer to Laborator
 // (2026-08-15) -- the lab physically observes the product, and because it's
@@ -34,6 +35,9 @@ export async function applySulfurClassification(serial: string, before: boolean 
   if (before === after) return
   const { error } = await supabase.rpc('classify_kirim_line_sulfur', { p_serial: serial, p_is_sulfured: after })
   if (error) throw error
+  // 0211: Lab result -- is_sulfured is a Hisobot column and a dispatch
+  // gate. One call here covers every save path that reaches this function.
+  invalidateReportData()
 }
 
 // '' | 'true' | 'false' is the shared select-value shape every classification

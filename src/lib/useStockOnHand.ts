@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import type { StockOnHandRow, StockBucket } from './stockOnHand'
 
 interface StockOnHandDbRow {
@@ -57,13 +58,14 @@ const CHUNK_MAX = 50
 
 export class StockOnHandTooLargeError extends Error {}
 
-async function fetchAllStockOnHandRows(): Promise<StockOnHandRow[]> {
+async function fetchAllStockOnHandRows(signal: AbortSignal): Promise<StockOnHandRow[]> {
   const all: StockOnHandRow[] = []
   for (let chunk = 0; chunk < CHUNK_MAX; chunk++) {
     const { data, error } = await supabase
       .from('stock_on_hand_rows')
       .select('*')
       .range(chunk * CHUNK_SIZE, chunk * CHUNK_SIZE + CHUNK_SIZE - 1)
+      .abortSignal(signal)
     if (error) throw error
     const batch = ((data ?? []) as StockOnHandDbRow[]).map(mapRow)
     all.push(...batch)
@@ -74,45 +76,50 @@ async function fetchAllStockOnHandRows(): Promise<StockOnHandRow[]> {
   )
 }
 
+interface StockOnHandData {
+  rows: StockOnHandRow[]
+  turnaroundAvgDays: number | null
+}
+
 // §3.2.6 — fetches the full row set once (see fetchAllStockOnHandRows for
 // why "once, in full" rather than paginated-for-display); filtering,
 // sorting, and totals all happen client-side against this array
 // (stockOnHand.ts) since it's already a bounded "right now" snapshot, not
 // an unbounded history. lab_turnaround_avg stays its own RPC — a single
 // header stat, unrelated to filtering.
+//
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query, no query params
+// (one shared key). Preserves the original's tolerant behaviour: a failed
+// lab_turnaround_avg RPC alone doesn't fail the whole query (rows still
+// load, the header stat just stays null) -- only a failed row fetch does.
 export function useStockOnHand() {
-  const [rows, setRows] = useState<StockOnHandRow[]>([])
-  const [turnaroundAvgDays, setTurnaroundAvgDays] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [rowsResult, avgResult] = await Promise.allSettled([fetchAllStockOnHandRows(), supabase.rpc('lab_turnaround_avg')])
-      if (rowsResult.status === 'fulfilled') {
-        setRows(rowsResult.value)
-      } else {
-        setRows([])
-        setError(
-          rowsResult.reason instanceof StockOnHandTooLargeError
-            ? rowsResult.reason.message
-            : "Ombor qoldig'ini yuklashda xatolik yuz berdi.",
-        )
+  const { data, isPending, isFetching, error, refetch } = useQuery({
+    queryKey: queryKeys.stockOnHand(),
+    queryFn: async ({ signal }): Promise<StockOnHandData> => {
+      const [rowsResult, avgResult] = await Promise.allSettled([
+        fetchAllStockOnHandRows(signal),
+        supabase.rpc('lab_turnaround_avg').abortSignal(signal),
+      ])
+      if (rowsResult.status === 'rejected') {
+        throw rowsResult.reason instanceof StockOnHandTooLargeError
+          ? rowsResult.reason
+          : new Error("Ombor qoldig'ini yuklashda xatolik yuz berdi.")
       }
+      let turnaroundAvgDays: number | null = null
       if (avgResult.status === 'fulfilled') {
         const v = avgResult.value.data
-        setTurnaroundAvgDays(v === null || v === undefined ? null : Number(v))
+        turnaroundAvgDays = v === null || v === undefined ? null : Number(v)
       }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      return { rows: rowsResult.value, turnaroundAvgDays }
+    },
+  })
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { rows, turnaroundAvgDays, loading, error, refresh }
+  return {
+    rows: data?.rows ?? [],
+    turnaroundAvgDays: data?.turnaroundAvgDays ?? null,
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+    refresh: refetch,
+  }
 }

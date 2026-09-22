@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { formatDate } from '../../lib/formatDate'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
@@ -176,6 +177,9 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
       ])
 
       setEditingId(null)
+      // 0211: KIRIM intake -- order_date re-buckets which report window a
+      // trip's rows fall in.
+      invalidateReportData()
       await load()
     } catch (err) {
       setEditError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')

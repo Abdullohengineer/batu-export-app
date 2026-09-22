@@ -40,9 +40,9 @@ export function ClientReportTab() {
   // §3.3: includeInactive=true throughout -- the owner select must still be
   // able to generate a report for a deactivated client, and typeName/
   // calibreLabel must resolve every historical line, not just active ones.
-  const { owners } = useOwners(true)
-  const { productTypes } = useProductTypes(true)
-  const { calibres } = useCalibres(true)
+  const { owners, error: ownersError } = useOwners(true)
+  const { productTypes, error: productTypesError } = useProductTypes(true)
+  const { calibres, error: calibresError } = useCalibres(true)
 
   // Client + period + language are the whole filter bar here, so all four
   // persist across a tab switch (§3.2.7 has no other browsable state). ownerId
@@ -58,7 +58,11 @@ export function ClientReportTab() {
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
-  const { report, loading, error } = useClientReport(ownerId || null, from, to)
+  const { report, loading, error: reportError } = useClientReport(ownerId || null, from, to)
+  // 2026-09-21 (Phase 2 step 1) -- folded in alongside reportError, same
+  // reasoning as HisobotTab.tsx's own comment: a failed owners/
+  // productTypes/calibres fetch used to silently render '—'/raw-id labels.
+  const error = reportError ?? productTypesError ?? ownersError ?? calibresError
   const t = CLIENT_REPORT_LABELS[locale]
 
   function typeName(id: string) {

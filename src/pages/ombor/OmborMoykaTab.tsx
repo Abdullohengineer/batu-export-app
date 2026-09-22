@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
@@ -88,6 +89,9 @@ export function OmborMoykaTab() {
     })
     if (error) throw error
     refresh()
+    // 0211: Moyka send -- qty_kg moves this serial's raw balance, read by
+    // report_query_page et al.
+    invalidateReportData()
   }
 
   if (loading || processingLoading) return null

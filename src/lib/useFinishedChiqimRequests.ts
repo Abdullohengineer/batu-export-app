@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import { sortByDateDesc } from './sortByDate'
 
 export interface FinishedChiqimLine {
@@ -127,33 +129,43 @@ const GATE_WEIGHING_SELECT =
 // has to sort correctly too now that it's shown at all).
 //
 // refreshKey: same live-refresh pattern as KirimOrdersList's own prop
-// (bumped by MenejerChiqimTab on ChiqimForm's onSaved) — now load-bearing,
-// not cosmetic: before this widen, a freshly saved request could never
-// reach 'olib_ketildi' within the same page load (it had to clear the
-// whole gate/scan chain first), so the missing refresh trigger was
-// invisible. Now it must appear on the same screen immediately after save.
+// (bumped by MenejerChiqimTab on ChiqimForm's onSaved). 2026-09-21 (Phase 2
+// step 5): moved onto React Query, no query params in the key itself (one
+// shared query for the whole list) -- ChiqimForm.tsx's own save path
+// already calls invalidateReportData() (Phase 2 step 3), which covers this
+// query too, but refreshKey is kept and still triggers an explicit
+// refetch() as a second, redundant path -- the prop is part of this hook's
+// public signature and MenejerChiqimTab still bumps it; dropping it would
+// be a silent behavior change for no benefit.
 export function useFinishedChiqimRequests(refreshKey?: number) {
-  const [requests, setRequests] = useState<FinishedChiqimRequest[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [{ data: reqs }, { data: lines }, { data: weighings }, { data: furaPhotoRows }] = await Promise.all([
+  const { data, isPending, isFetching, error, refetch } = useQuery({
+    queryKey: queryKeys.finishedChiqimRequests(),
+    queryFn: async ({ signal }): Promise<FinishedChiqimRequest[]> => {
+      const [
+        { data: reqs, error: reqsErr },
+        { data: lines, error: linesErr },
+        { data: weighings, error: weighingsErr },
+        { data: furaPhotoRows, error: furaPhotoErr },
+      ] = await Promise.all([
         supabase
           .from('chiqim_requests')
           .select(
             'id, request_date, plate, driver, owner_id, status, truck_type, created_by, created_at, ' +
               'ombor_finished_at, ombor_finished_by, voided_at',
-          ),
-        supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT),
-        supabase.from('gate_weighings').select(GATE_WEIGHING_SELECT).eq('dir', 'chiqim'),
+          )
+          .abortSignal(signal),
+        supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT).abortSignal(signal),
+        supabase.from('gate_weighings').select(GATE_WEIGHING_SELECT).eq('dir', 'chiqim').abortSignal(signal),
         // Bulk read, not one RPC call per request — chiqim_request_totals
         // already computes chiqim_fura_photo_paths(cr.id) for every row via
         // its own cross join lateral, so one plain select covers the whole
         // list in the same round trip shape as the two queries above.
-        supabase.from('chiqim_request_totals').select('request_id, kirdi_photo, chiqdi_photo'),
+        supabase.from('chiqim_request_totals').select('request_id, kirdi_photo, chiqdi_photo').abortSignal(signal),
       ])
+      if (reqsErr) throw new Error(reqsErr.message)
+      if (linesErr) throw new Error(linesErr.message)
+      if (weighingsErr) throw new Error(weighingsErr.message)
+      if (furaPhotoErr) throw new Error(furaPhotoErr.message)
 
       // Cast explicitly, same reason as useGateHistory.ts: without generated
       // DB types, a `select()` built from a concatenated string (not a
@@ -182,17 +194,26 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
           }
         })
 
-      setRequests(sortByDateDesc(combined, (r) => r.created_at))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      return sortByDateDesc(combined, (r) => r.created_at)
+    },
+  })
 
   useEffect(() => {
-    refresh()
-  }, [refresh, refreshKey])
+    if (refreshKey !== undefined) refetch()
+    // Deliberately only keyed on refreshKey -- refetch is React Query's own
+    // stable function, and re-running this on its identity would defeat the
+    // point (it's a new reference each render only in the sense any closure
+    // is, but React Query keeps it referentially stable per query).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
 
-  return { requests, loading, refresh }
+  return {
+    requests: data ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+    refresh: refetch,
+  }
 }
 
 // Single-request sibling of useFinishedChiqimRequests above, same three
@@ -204,62 +225,63 @@ export function useFinishedChiqimRequests(refreshKey?: number) {
 // bulk hook above does for Menejer's own (small, current-session-scale) W2
 // list. Not scoped to any status/line_kind — "all info" for the request,
 // whatever it turns out to contain.
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query, `enabled` gated on
+// requestId so a null id (modal not yet open) never fires a request.
 export function useChiqimRequestById(requestId: string | null) {
-  const [request, setRequest] = useState<FinishedChiqimRequest | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { data, isPending, error } = useQuery({
+    queryKey: queryKeys.chiqimRequestById(requestId ?? ''),
+    enabled: requestId !== null,
+    queryFn: async ({ signal }): Promise<FinishedChiqimRequest> => {
+      const [{ data: req, error: reqErr }, { data: lines, error: linesErr }, { data: weighings, error: weighingsErr }, { data: furaPhotoRow, error: furaPhotoErr }] =
+        await Promise.all([
+          supabase
+            .from('chiqim_requests')
+            .select(
+              'id, request_date, plate, driver, owner_id, status, truck_type, created_by, created_at, ' +
+                'ombor_finished_at, ombor_finished_by, voided_at',
+            )
+            .eq('id', requestId as string)
+            .abortSignal(signal)
+            .single(),
+          supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT).eq('request_id', requestId as string).abortSignal(signal),
+          supabase
+            .from('gate_weighings')
+            .select(GATE_WEIGHING_SELECT)
+            .eq('dir', 'chiqim')
+            .eq('request_id', requestId as string)
+            .abortSignal(signal),
+          // Same chiqim_request_totals view as the bulk hook above, scoped
+          // to one request — see FinishedChiqimRequest.furaPhotos's own
+          // comment.
+          supabase
+            .from('chiqim_request_totals')
+            .select('kirdi_photo, chiqdi_photo')
+            .eq('request_id', requestId as string)
+            .abortSignal(signal)
+            .maybeSingle(),
+        ])
+      if (reqErr) throw new Error(reqErr.message)
+      if (linesErr) throw new Error(linesErr.message)
+      if (weighingsErr) throw new Error(weighingsErr.message)
+      if (furaPhotoErr) throw new Error(furaPhotoErr.message)
 
-  useEffect(() => {
-    if (!requestId) {
-      setRequest(null)
-      return
-    }
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    ;(async () => {
-      try {
-        const [{ data: req, error: reqErr }, { data: lines }, { data: weighings }, { data: furaPhotoRow }] =
-          await Promise.all([
-            supabase
-              .from('chiqim_requests')
-              .select(
-                'id, request_date, plate, driver, owner_id, status, truck_type, created_by, created_at, ' +
-                  'ombor_finished_at, ombor_finished_by, voided_at',
-              )
-              .eq('id', requestId)
-              .single(),
-            supabase.from('chiqim_lines').select(CHIQIM_LINE_SELECT).eq('request_id', requestId),
-            supabase.from('gate_weighings').select(GATE_WEIGHING_SELECT).eq('dir', 'chiqim').eq('request_id', requestId),
-            // Same chiqim_request_totals view as the bulk hook above, scoped
-            // to one request — see FinishedChiqimRequest.furaPhotos's own
-            // comment.
-            supabase.from('chiqim_request_totals').select('kirdi_photo, chiqdi_photo').eq('request_id', requestId).maybeSingle(),
-          ])
-        if (reqErr) throw reqErr
-        if (cancelled) return
+      const reqRow = req as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing' | 'furaPhotos'>
+      const lineRows = (lines ?? []) as unknown as RawLine[]
+      const weighingRows = (weighings ?? []) as unknown as (FinishedChiqimWeighing & { request_id: string })[]
+      const fph = furaPhotoRow as unknown as { kirdi_photo: string | null; chiqdi_photo: string | null } | null
 
-        const reqRow = req as unknown as Omit<FinishedChiqimRequest, 'lines' | 'weighing' | 'furaPhotos'>
-        const lineRows = (lines ?? []) as unknown as RawLine[]
-        const weighingRows = (weighings ?? []) as unknown as (FinishedChiqimWeighing & { request_id: string })[]
-        const fph = furaPhotoRow as unknown as { kirdi_photo: string | null; chiqdi_photo: string | null } | null
-
-        setRequest({
-          ...reqRow,
-          lines: lineRows.map(toLine),
-          weighing: weighingRows[0] ?? null,
-          furaPhotos: { kirdi: fph?.kirdi_photo ?? null, chiqdi: fph?.chiqdi_photo ?? null },
-        })
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "So'rovni yuklashda xatolik yuz berdi.")
-      } finally {
-        if (!cancelled) setLoading(false)
+      return {
+        ...reqRow,
+        lines: lineRows.map(toLine),
+        weighing: weighingRows[0] ?? null,
+        furaPhotos: { kirdi: fph?.kirdi_photo ?? null, chiqdi: fph?.chiqdi_photo ?? null },
       }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [requestId])
+    },
+  })
 
-  return { request, loading, error }
+  return {
+    request: data ?? null,
+    loading: isPending && requestId !== null,
+    error: error ? error.message : null,
+  }
 }

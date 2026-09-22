@@ -39,7 +39,7 @@ export function LaboratorTarixTab() {
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
-  const { rows, loading } = useLaboratorHistory(filters)
+  const { rows, loading, refreshing, error } = useLaboratorHistory(filters)
 
   function typeName(id: string) {
     return productTypes.find((t) => t.id === id)?.name ?? id
@@ -57,6 +57,8 @@ export function LaboratorTarixTab() {
   return (
     <HistoryView
       loading={loading}
+      refreshing={refreshing}
+      error={error}
       isEmpty={rows.length === 0}
       emptyText="Tekshiruv topilmadi."
       resultCount={rows.length}

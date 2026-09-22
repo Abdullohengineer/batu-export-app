@@ -6,6 +6,7 @@ import { useWipRows } from '../../lib/useWipRows'
 import { WipTable } from './WipTable'
 import { SerialPassportModal } from './SerialPassportModal'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
+import { StatusNote } from '../../components/ui/StatusNote'
 
 // §3.2.9 Kutilayotgan ishlar (WIP/stuck) — an exceptions list, no filter bar
 // (§2.14 thresholds are configured in Administration, not here). Mounted at
@@ -19,7 +20,7 @@ export function WipTab() {
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
-  const { rows, loading } = useWipRows()
+  const { rows, loading, refreshing, error } = useWipRows()
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -37,6 +38,7 @@ export function WipTab() {
 
   return (
     <div className="space-y-4">
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
       {loading ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
       ) : rows.length === 0 ? (
@@ -51,7 +53,10 @@ export function WipTab() {
             typeName={typeName}
             onOpenPassport={setPassportSerial}
           />
-          <p className="text-xs text-slate-400">{rows.length} ta band</p>
+          <p className="text-xs text-slate-400">
+            {rows.length} ta band
+            {refreshing && ' · yangilanmoqda…'}
+          </p>
         </>
       )}
 

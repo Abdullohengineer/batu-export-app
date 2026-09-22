@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import { sortFinishedByOmborFinish } from './sortChiqimFinished'
 
 export interface ChiqimLine {
@@ -63,14 +64,23 @@ export interface ChiqimRequest {
 // that beyond the line's own declared qty_kg. No tara (2026-08-29, Prompt
 // 11, see DECISIONS.md "Menejer CHIQIM: quantity-only entry, no tara") —
 // declared_tara_kg was dropped from chiqim_lines entirely (migration 0103).
-export function useOmborChiqimRequests() {
-  const [open, setOpen] = useState<ChiqimRequest[]>([])
-  const [finished, setFinished] = useState<ChiqimRequest[]>([])
-  const [loading, setLoading] = useState(true)
+// 2026-09-21 (Phase 2 step 2) -- moved onto React Query, no query params
+// (one shared key, see queryClient.ts) -- OmborHome's nav badge and
+// OmborChiqimTab's own two windows are now the same underlying fetch.
+// queryFn returns both windows together (a single query can only return one
+// value) so a single fetch still produces both `open` and `finished`.
+interface ChiqimRequestWindows {
+  open: ChiqimRequest[]
+  finished: ChiqimRequest[]
+}
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    try {
+export function useOmborChiqimRequests() {
+  const { data, isPending, refetch } = useQuery({
+    queryKey: queryKeys.omborChiqimRequests(),
+    // 60s, visible-tab-only -- see useIntakeLines.ts's identical comment.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    queryFn: async (): Promise<ChiqimRequestWindows> => {
       const [{ data }, { data: weighings }] = await Promise.all([
         supabase
           .from('chiqim_requests')
@@ -133,16 +143,12 @@ export function useOmborChiqimRequests() {
         }
       })
 
-      setOpen(requests.filter((r) => r.ombor_finished_at === null))
-      setFinished(sortFinishedByOmborFinish(requests.filter((r) => r.ombor_finished_at !== null)))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      return {
+        open: requests.filter((r) => r.ombor_finished_at === null),
+        finished: sortFinishedByOmborFinish(requests.filter((r) => r.ombor_finished_at !== null)),
+      }
+    },
+  })
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { open, finished, loading, refresh }
+  return { open: data?.open ?? [], finished: data?.finished ?? [], loading: isPending, refresh: refetch }
 }

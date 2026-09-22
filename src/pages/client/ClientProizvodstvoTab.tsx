@@ -5,6 +5,7 @@ import { useDebouncedValue } from '../../lib/useDebouncedValue'
 import { queryKeys } from '../../lib/queryClient'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
+import { StatusNote } from '../../components/ui/StatusNote'
 import {
   PRODUCTION_CALIBRE_CODES,
   calibreKgByCode,
@@ -63,7 +64,13 @@ function TotalsBlock({ totals }: { totals: ClientProductionLedger['totals'] }) {
 }
 
 export function ClientProizvodstvoTab() {
-  const { productTypes } = useProductTypes(true)
+  // 2026-09-21 (Phase 2 step 1) -- productTypesError is surfaced below
+  // alongside the ledger's own error. Before this, a failed product_types
+  // fetch was invisible: useProductTypes silently returned `[]` and every
+  // row's typeName(id) rendered '—' as if that were the real data (the
+  // confirmed cause of the "pererabotano renders without product type"
+  // report) — now it shows a banner instead.
+  const { productTypes, error: productTypesError } = useProductTypes(true)
   const defaultRange = { from: firstOfMonthInTashkent(), to: todayInTashkent() }
   const [filters, setFilters] = usePersistentState<ClientProductionFilters>(
     'clientHisobot.proizvodstvo.filters',
@@ -84,7 +91,7 @@ export function ClientProizvodstvoTab() {
     queryKey: queryKeys.clientProductionLedger(filterKey),
     queryFn: () => fetchClientProductionLedger(debouncedFilters),
   })
-  const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : null
+  const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : productTypesError
 
   function typeName(id: string): string {
     return productTypes.find((t) => t.id === id)?.name ?? '—'
@@ -141,7 +148,7 @@ export function ClientProizvodstvoTab() {
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {!loading && !error && ledger && <TotalsBlock totals={ledger.totals} />}

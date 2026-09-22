@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
@@ -133,6 +134,9 @@ export function OmborIntakeTab() {
     // (found live: the "received" list showed the stale pre-accept snapshot,
     // including a stale 0kg reconciliation sum, until this was added).
     refreshEffectiveQty()
+    // 0211: KIRIM intake -- a storage_intake row is the material actually
+    // landing on the ledger (actual_qty), read by report_query_page et al.
+    invalidateReportData()
   }
 
   function startTaraEdit(line: IntakeLine & { intake: IntakeRecord }) {
@@ -184,6 +188,9 @@ export function OmborIntakeTab() {
       setEditingTaraSerial(null)
       refresh()
       refreshEffectiveQty()
+      // 0211: KIRIM intake -- box_mass_kg correction moves effective_qty,
+      // which report_query_page et al. read.
+      invalidateReportData()
     } catch (err) {
       setTaraError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {

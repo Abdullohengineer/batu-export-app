@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
@@ -62,7 +63,7 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
   const { names } = useProfileNames()
-  const { requests, loading, refresh } = useFinishedChiqimRequests(refreshKey)
+  const { requests, loading, refreshing, error: loadError, refresh } = useFinishedChiqimRequests(refreshKey)
   const [expanded, setExpanded] = useState<string | null>(null)
   const { lines: manifestLines, loading: manifestLoading } = useDispatchManifestLines(expanded)
   const { collections: oldKnCollections } = useOldKnCollectionsByRequest(expanded)
@@ -104,6 +105,9 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
       if (error) throw error
       setConfirmingVoid(null)
       refresh()
+      // 0211: CHIQIM dispatch -- a voided request drops out of every ledger
+      // aggregate that report_query_page et al. compute.
+      invalidateReportData()
     } catch (err) {
       setVoidError(err instanceof Error ? err.message : 'Bekor qilishda xatolik yuz berdi.')
     } finally {
@@ -169,6 +173,9 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
       ])
 
       setEditingId(null)
+      // 0211: CHIQIM dispatch -- request_date re-buckets which report window
+      // this dispatch's rows fall in.
+      invalidateReportData()
       refresh()
     } catch (err) {
       setEditError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
@@ -182,8 +189,10 @@ export function FinishedChiqimList({ refreshKey }: { refreshKey: number }) {
   return (
     <div>
       <SectionHeading>Yuborilgan CHIQIM so'rovlari</SectionHeading>
+      {loadError && <StatusNote tone="problem">{loadError}</StatusNote>}
       <div className="mt-2 space-y-2">
         {requests.length === 0 && <p className="text-sm text-slate-400">Hali so'rov yo'q.</p>}
+        {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
         {requests.map((request) => {
           const isExpanded = expanded === request.id
           const w = request.weighing

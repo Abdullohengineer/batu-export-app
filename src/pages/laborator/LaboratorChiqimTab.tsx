@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invalidateReportData } from '../../lib/queryClient'
 import { formatDate } from '../../lib/formatDate'
 import { useAuth } from '../../lib/AuthProvider'
 import { useOwners } from '../../lib/useOwners'
@@ -49,7 +50,7 @@ export function LaboratorChiqimTab() {
   // §3.3: includeInactive=true -- resolves names on historical/in-flight cycles.
   const { owners } = useOwners(true)
   const { productTypes } = useProductTypes(true)
-  const { awaiting, sulfurPending, finished, loading, refresh } = useLaboratorChiqim()
+  const { awaiting, sulfurPending, finished, loading, refreshing, error: loadError, refresh } = useLaboratorChiqim()
 
   const [activeTahlil, setActiveTahlil] = useState<string | null>(null)
   const [seraValue, setSeraValue] = useState<Record<string, string>>({})
@@ -105,6 +106,8 @@ export function LaboratorChiqimTab() {
 
     setActiveTahlil(null)
     refresh()
+    // 0211: Lab result -- moisture_pct is a Hisobot column.
+    invalidateReportData()
   }
 
   function seraClassificationFor(row: ChiqimLabResultRow): SulfurChoice {
@@ -148,6 +151,9 @@ export function LaboratorChiqimTab() {
         return next
       })
       refresh()
+      // 0211: Lab result -- so2_mg_kg/verdict is a Hisobot column and a
+      // dispatch gate.
+      invalidateReportData()
     } catch (err) {
       setSeraError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {
@@ -193,17 +199,22 @@ export function LaboratorChiqimTab() {
 
     setEditingFinished(null)
     refresh()
+    // 0211: Lab result -- a superseding lab_results row is a corrected
+    // Hisobot column value.
+    invalidateReportData()
   }
 
   if (loading) return null
 
   return (
     <div className="space-y-6">
+      {loadError && <StatusNote tone="problem">{loadError}</StatusNote>}
       <div className="grid grid-cols-3 gap-3">
         <Stat value={awaiting.length} label="Tahlil kutilmoqda" />
         <Stat value={sulfurPending.length} label="Sera kutilmoqda" tone={sulfurPending.length > 0 ? 'pending' : 'neutral'} />
         <Stat value={finished.length} label="Yakunlandi" tone="ok" />
       </div>
+      {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
 
       <div>
         <SectionHeading>1 · Tahlil kutilmoqda — namuna oling</SectionHeading>

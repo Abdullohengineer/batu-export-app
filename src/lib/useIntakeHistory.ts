@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import type { IntakeLine, IntakeRecord } from './useIntakeLines'
 
 export interface IntakeHistoryFilters {
@@ -22,111 +23,112 @@ export interface IntakeHistoryFilters {
 // than a deep PostgREST embed, for the same readability reason.
 type Row = IntakeLine & { intake: IntakeRecord }
 
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query. Query key includes
+// every filter param -- a filter change is genuinely a different query.
 export function useIntakeHistory(filters: IntakeHistoryFilters) {
-  const [rows, setRows] = useState<Row[]>([])
-  const [loading, setLoading] = useState(true)
-
   const { from, to, typeId, ownerId, seriya } = filters
 
-  useEffect(() => {
-    let cancelled = false
+  const { data, isPending, isFetching, error } = useQuery({
+    queryKey: queryKeys.intakeHistory(from, to, typeId, ownerId, seriya),
+    queryFn: async ({ signal }): Promise<Row[]> => {
+      // Upper bound exclusive: next day at 00:00, so the whole `to` day is
+      // included. (Compared against confirmed_at as UTC midnight — a small
+      // TZ simplification, fine for this history view.)
+      const toExclusive = new Date(to)
+      toExclusive.setDate(toExclusive.getDate() + 1)
+      const toExclusiveStr = toExclusive.toISOString().slice(0, 10)
 
-    async function load() {
-      setLoading(true)
-      try {
-        // Upper bound exclusive: next day at 00:00, so the whole `to` day is
-        // included. (Compared against confirmed_at as UTC midnight — a small
-        // TZ simplification, fine for this history view.)
-        const toExclusive = new Date(to)
-        toExclusive.setDate(toExclusive.getDate() + 1)
-        const toExclusiveStr = toExclusive.toISOString().slice(0, 10)
+      let q = supabase
+        .from('storage_intake')
+        .select('serial, actual_qty, box_mass_kg, pile_photo, komment, barcode1, status, confirmed_at, moisture_pct, so2_mg_kg')
+        .gte('confirmed_at', from)
+        .lt('confirmed_at', toExclusiveStr)
+        .order('confirmed_at', { ascending: false })
+        .limit(200)
+        .abortSignal(signal)
+      if (seriya.trim()) q = q.ilike('serial', `%${seriya.trim()}%`)
 
-        let q = supabase
-          .from('storage_intake')
-          .select('serial, actual_qty, box_mass_kg, pile_photo, komment, barcode1, status, confirmed_at, moisture_pct, so2_mg_kg')
-          .gte('confirmed_at', from)
-          .lt('confirmed_at', toExclusiveStr)
-          .order('confirmed_at', { ascending: false })
-          .limit(200)
-        if (seriya.trim()) q = q.ilike('serial', `%${seriya.trim()}%`)
-
-        const { data: intakes } = await q
-        const serials = (intakes ?? []).map((i) => i.serial)
-        if (serials.length === 0) {
-          if (!cancelled) setRows([])
-          return
-        }
-
-        const { data: kLines } = await supabase
-          .from('kirim_lines')
-          .select('serial, order_id, type_id, declared_qty, partiya_no')
-          .in('serial', serials)
-
-        const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
-        const [{ data: orders }, { data: weighings }] = await Promise.all([
-          supabase
-            .from('kirim_orders')
-            .select('order_id, order_date, plate, driver, owner_id, status, origin')
-            .in('order_id', orderIds)
-            // Opening stock (Stage 1) and internal_reprocess (Stage 3) never
-            // arrived by a real truck -- neither has a real storage_intake
-            // event for this history view to report. Same positive allowlist
-            // as useKirimTrips/useIntakeLines/useLaboratorKirim; without it,
-            // widening the date filter back to 2025-01-01 would render the
-            // opening-stock seed's fabricated intake as a real receipt.
-            .eq('origin', 'delivery'),
-          supabase
-            .from('gate_weighings')
-            .select('order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')
-            .eq('dir', 'kirim')
-            .in('order_id', orderIds),
-        ])
-
-        const lineBySerial = new Map((kLines ?? []).map((l) => [l.serial, l]))
-        const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
-        const weighingByOrder = new Map((weighings ?? []).map((w) => [w.order_id, w]))
-
-        const enriched: Row[] = (intakes ?? [])
-          .map((intake): Row | null => {
-            const line = lineBySerial.get(intake.serial)
-            if (!line) return null
-            const order = orderById.get(line.order_id)
-            if (!order) return null
-            const weighing = weighingByOrder.get(line.order_id) ?? null
-
-            return {
-              serial: intake.serial,
-              type_id: line.type_id,
-              partiyaNo: line.partiya_no,
-              declared_qty: line.declared_qty,
-              order_id: order.order_id,
-              order_date: order.order_date,
-              plate: order.plate,
-              driver: order.driver,
-              owner_id: order.owner_id,
-              order_status: order.status,
-              gruzheny_kg: weighing?.gruzheny_kg ?? null,
-              pustoy_kg: weighing?.pustoy_kg ?? null,
-              net_kg: weighing?.net_kg ?? null,
-              gate_completed_at: weighing?.completed_at ?? null,
-              intake,
-            }
-          })
-          .filter((r): r is Row => r !== null)
-          .filter((r) => (typeId ? r.type_id === typeId : true))
-          .filter((r) => (ownerId ? r.owner_id === ownerId : true))
-
-        if (!cancelled) setRows(enriched)
-      } finally {
-        if (!cancelled) setLoading(false)
+      const { data: intakes, error: intakesErr } = await q
+      if (intakesErr) throw new Error(intakesErr.message)
+      const serials = (intakes ?? []).map((i) => i.serial)
+      if (serials.length === 0) {
+        return []
       }
-    }
 
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [from, to, typeId, ownerId, seriya])
+      const { data: kLines, error: kLinesErr } = await supabase
+        .from('kirim_lines')
+        .select('serial, order_id, type_id, declared_qty, partiya_no')
+        .in('serial', serials)
+        .abortSignal(signal)
+      if (kLinesErr) throw new Error(kLinesErr.message)
 
-  return { rows, loading }
+      const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
+      const [
+        { data: orders, error: ordersErr },
+        { data: weighings, error: weighingsErr },
+      ] = await Promise.all([
+        supabase
+          .from('kirim_orders')
+          .select('order_id, order_date, plate, driver, owner_id, status, origin')
+          .in('order_id', orderIds)
+          // Opening stock (Stage 1) and internal_reprocess (Stage 3) never
+          // arrived by a real truck -- neither has a real storage_intake
+          // event for this history view to report. Same positive allowlist
+          // as useKirimTrips/useIntakeLines/useLaboratorKirim; without it,
+          // widening the date filter back to 2025-01-01 would render the
+          // opening-stock seed's fabricated intake as a real receipt.
+          .eq('origin', 'delivery')
+          .abortSignal(signal),
+        supabase
+          .from('gate_weighings')
+          .select('order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')
+          .eq('dir', 'kirim')
+          .in('order_id', orderIds)
+          .abortSignal(signal),
+      ])
+      if (ordersErr) throw new Error(ordersErr.message)
+      if (weighingsErr) throw new Error(weighingsErr.message)
+
+      const lineBySerial = new Map((kLines ?? []).map((l) => [l.serial, l]))
+      const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
+      const weighingByOrder = new Map((weighings ?? []).map((w) => [w.order_id, w]))
+
+      return (intakes ?? [])
+        .map((intake): Row | null => {
+          const line = lineBySerial.get(intake.serial)
+          if (!line) return null
+          const order = orderById.get(line.order_id)
+          if (!order) return null
+          const weighing = weighingByOrder.get(line.order_id) ?? null
+
+          return {
+            serial: intake.serial,
+            type_id: line.type_id,
+            partiyaNo: line.partiya_no,
+            declared_qty: line.declared_qty,
+            order_id: order.order_id,
+            order_date: order.order_date,
+            plate: order.plate,
+            driver: order.driver,
+            owner_id: order.owner_id,
+            order_status: order.status,
+            gruzheny_kg: weighing?.gruzheny_kg ?? null,
+            pustoy_kg: weighing?.pustoy_kg ?? null,
+            net_kg: weighing?.net_kg ?? null,
+            gate_completed_at: weighing?.completed_at ?? null,
+            intake,
+          }
+        })
+        .filter((r): r is Row => r !== null)
+        .filter((r) => (typeId ? r.type_id === typeId : true))
+        .filter((r) => (ownerId ? r.owner_id === ownerId : true))
+    },
+  })
+
+  return {
+    rows: data ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+  }
 }

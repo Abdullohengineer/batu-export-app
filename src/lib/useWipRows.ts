@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import { wipKindSortIndex, type WipRow, type WipKind } from './wip'
 
 interface WipDbRow {
@@ -31,33 +32,34 @@ function mapRow(r: WipDbRow): WipRow {
 // §3.2.9 — one exceptions list, seven kinds, sorted by the section's own
 // priority order (awaiting_lab first, per its own "highest-value row" note),
 // then most-overdue first within a kind.
+//
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query, no query params
+// (one shared key). No client-side limit added: `wip_rows` (the DB view)
+// is already exception-scoped server-side -- every branch of its UNION ALL
+// carries its own `days_waiting > threshold_days` predicate (confirmed by
+// reading the live view definition), so this is a bounded exceptions list
+// by construction, not an unbounded growing log.
 export function useWipRows() {
-  const [rows, setRows] = useState<WipRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, isPending, isFetching, error, refetch } = useQuery({
+    queryKey: queryKeys.wipRows(),
+    queryFn: async ({ signal }): Promise<WipRow[]> => {
+      const { data, error } = await supabase.from('wip_rows').select('*').abortSignal(signal)
+      if (error) throw new Error(error.message)
+      const mapped = ((data ?? []) as WipDbRow[]).map(mapRow)
+      mapped.sort((a, b) => {
+        const kindDiff = wipKindSortIndex(a.wipKind) - wipKindSortIndex(b.wipKind)
+        if (kindDiff !== 0) return kindDiff
+        return (b.daysWaiting ?? 0) - (a.daysWaiting ?? 0)
+      })
+      return mapped
+    },
+  })
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        const { data } = await supabase.from('wip_rows').select('*')
-        if (cancelled) return
-        const mapped = ((data ?? []) as WipDbRow[]).map(mapRow)
-        mapped.sort((a, b) => {
-          const kindDiff = wipKindSortIndex(a.wipKind) - wipKindSortIndex(b.wipKind)
-          if (kindDiff !== 0) return kindDiff
-          return (b.daysWaiting ?? 0) - (a.daysWaiting ?? 0)
-        })
-        setRows(mapped)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return { rows, loading }
+  return {
+    rows: data ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+    refetch,
+  }
 }

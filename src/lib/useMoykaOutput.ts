@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import { jarayonda, ortiqcha } from './tayyorCompletion'
 import { sortByDateDesc, maxDate } from './sortByDate'
 import { isInMoyka } from './stageMembership'
 import { currentLabStatus, type LabGateStatus } from './labVerdict'
+
+const EMPTY_SERIALS: OutputSerial[] = []
 
 export interface FinishedPallet {
   barcode2: string
@@ -90,25 +94,21 @@ export interface OutputSerial {
 // happens invisibly inside Moyka, so every send/pallet for a serial belongs
 // to the same single balance for its whole life — no more active-cycle
 // derivation (the old fetchActiveCycles/rewash.ts, both deleted).
+// 2026-09-21 (Phase 2 step 2) -- moved onto React Query, no query params
+// (one shared key, see queryClient.ts). This is also what replaces the old
+// monotonic request-id guard: that existed only because refresh() is called
+// both from the mount effect and from mutation handlers elsewhere
+// (handleSend/handleReceipt), and a plain per-effect `cancelled` closure
+// can't cover both call sites -- React Query already serializes fetches per
+// query key internally, so an in-flight fetch can never be clobbered by an
+// earlier one's late resolution.
 export function useMoykaOutput() {
-  const [allSerials, setAllSerials] = useState<OutputSerial[]>([])
-  const [loading, setLoading] = useState(true)
-  // 🔒 refresh is called both from the mount effect below AND from mutation
-  // handlers elsewhere (handleSend/handleReceipt) — a plain
-  // per-effect `cancelled` closure (this codebase's usual guard, e.g.
-  // useYieldRows.ts) can't cover both call sites. A monotonic request id
-  // does: only the most-recently-STARTED call is ever allowed to commit
-  // state, regardless of which one resolves first. Without this, React
-  // StrictMode's dev-only double-invoke of the mount effect (or a mutation's
-  // refresh() landing while the mount fetch is still in flight) can let an
-  // earlier, in-flight response overwrite a later, correct one with stale
-  // (sometimes empty) data.
-  const requestIdRef = useRef(0)
-
-  const refresh = useCallback(async () => {
-    const requestId = ++requestIdRef.current
-    setLoading(true)
-    try {
+  const { data, isPending, refetch } = useQuery({
+    queryKey: queryKeys.moykaOutput(),
+    // 60s, visible-tab-only -- see useIntakeLines.ts's identical comment.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    queryFn: async (): Promise<OutputSerial[]> => {
       const [{ data: sends }, { data: pallets }] = await Promise.all([
         supabase.from('moyka_sends').select('serial, qty_kg, sent_date'),
         supabase.from('finished_pallets').select('barcode2, serial, calibre_id, weight_kg, received_date, created_at, status'),
@@ -120,10 +120,7 @@ export function useMoykaOutput() {
       // simply doesn't surface here, same as a first-ever cycle never did.
       const serialList = [...new Set((sends ?? []).map((s) => s.serial))]
       if (serialList.length === 0) {
-        if (requestIdRef.current === requestId) {
-          setAllSerials([])
-        }
-        return
+        return []
       }
 
       const labStatusBySerial = await currentLabStatus(serialList)
@@ -244,16 +241,14 @@ export function useMoykaOutput() {
       // here, at the shared hook, so every consumer of `allSerials` (§5.2
       // Window 2, §5.3 Window 1, §5.3's new Window 2 — section mirroring)
       // inherits it without re-sorting.
-      if (requestIdRef.current !== requestId) return
-      setAllSerials(sortByDateDesc(combined, (s) => s.lastActivityDate))
-    } finally {
-      if (requestIdRef.current === requestId) setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+      return sortByDateDesc(combined, (s) => s.lastActivityDate)
+    },
+  })
+  // `?? EMPTY_SERIALS` (a stable module-level reference), not `?? []` -- a
+  // fresh literal on every render with no data yet would change identity on
+  // every render and defeat the useMemo below (flagged by
+  // react-hooks/exhaustive-deps).
+  const allSerials = data ?? EMPTY_SERIALS
 
   // Two filtered views of the one fetched/sorted set (2026-08-29, Prompt 9)
   // — see this hook's own header comment. `serials`: §5.3 Window 1's
@@ -265,5 +260,5 @@ export function useMoykaOutput() {
   const serials = useMemo(() => allSerials.filter((s) => isInMoyka(s.sent, s.received, s.closedAt)), [allSerials])
   const receivedSerials = useMemo(() => allSerials.filter((s) => s.received > 0), [allSerials])
 
-  return { serials, receivedSerials, loading, refresh }
+  return { serials, receivedSerials, loading: isPending, refresh: refetch }
 }

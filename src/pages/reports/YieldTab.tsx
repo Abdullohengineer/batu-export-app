@@ -12,6 +12,7 @@ import { YieldTable } from './YieldTable'
 import { SerialPassportModal } from './SerialPassportModal'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { Button } from '../../components/ui/Button'
+import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
 
 // §3.2.8 Moisture-adjusted yield — per serial/product/client/period, same
@@ -39,7 +40,7 @@ export function YieldTab() {
   const [passportSerial, setPassportSerial] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
-  const { rows, loading } = useYieldRows(ownerId || null, typeId || null, from, to)
+  const { rows, loading, refreshing, error } = useYieldRows(ownerId || null, typeId || null, from, to)
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -114,6 +115,9 @@ export function YieldTab() {
       </div>
 
       <p className="text-xs text-slate-400">{YIELD_LOSS_BASIS_NOTE}</p>
+
+      {error && <StatusNote tone="problem">{error}</StatusNote>}
+      {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
 
       {loading ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>

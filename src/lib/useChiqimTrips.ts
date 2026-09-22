@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 
 export interface ChiqimLine {
   type_id: string
@@ -59,30 +60,40 @@ export interface ChiqimTrip {
 // chiqim_requests + chiqim_lines + gate_weighings (dir='chiqim', keyed by
 // request_id instead of order_id). Same trip shape, same reasoning: the
 // gate cares about the request/truck, not any one line on it.
+//
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query, no query params
+// (one shared key).
 export function useChiqimTrips() {
-  const [trips, setTrips] = useState<ChiqimTrip[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-
-    try {
-      const [{ data: requests }, { data: lines }, { data: weighings }, { data: totals }] = await Promise.all([
+  const { data, isPending, isFetching, error, refetch } = useQuery({
+    queryKey: queryKeys.chiqimTrips(),
+    queryFn: async ({ signal }): Promise<ChiqimTrip[]> => {
+      const [
+        { data: requests, error: requestsErr },
+        { data: lines, error: linesErr },
+        { data: weighings, error: weighingsErr },
+        { data: totals, error: totalsErr },
+      ] = await Promise.all([
         supabase
           .from('chiqim_requests')
           .select('id, request_date, plate, driver, owner_id, status, truck_type')
-          .order('created_at', { ascending: false }),
-        supabase.from('chiqim_lines').select('type_id, calibre_id, line_kind, qty_kg, request_id'),
+          .order('created_at', { ascending: false })
+          .abortSignal(signal),
+        supabase.from('chiqim_lines').select('type_id, calibre_id, line_kind, qty_kg, request_id').abortSignal(signal),
         supabase
           .from('gate_weighings')
           .select('id, request_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')
-          .eq('dir', 'chiqim'),
-        supabase.from('chiqim_request_totals').select('request_id, loaded_kg, kirdi_photo, chiqdi_photo'),
+          .eq('dir', 'chiqim')
+          .abortSignal(signal),
+        supabase.from('chiqim_request_totals').select('request_id, loaded_kg, kirdi_photo, chiqdi_photo').abortSignal(signal),
       ])
+      if (requestsErr) throw new Error(requestsErr.message)
+      if (linesErr) throw new Error(linesErr.message)
+      if (weighingsErr) throw new Error(weighingsErr.message)
+      if (totalsErr) throw new Error(totalsErr.message)
 
       const totalsByRequest = new Map((totals ?? []).map((t) => [t.request_id, t]))
 
-      const combined: ChiqimTrip[] = (requests ?? []).map((request) => ({
+      return (requests ?? []).map((request) => ({
         request,
         lines: (lines ?? []).filter((l) => l.request_id === request.id),
         weighing: (weighings ?? []).find((w) => w.request_id === request.id) ?? null,
@@ -90,16 +101,14 @@ export function useChiqimTrips() {
         kirdiPhoto: totalsByRequest.get(request.id)?.kirdi_photo ?? null,
         chiqdiPhoto: totalsByRequest.get(request.id)?.chiqdi_photo ?? null,
       }))
+    },
+  })
 
-      setTrips(combined)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { trips, loading, refresh }
+  return {
+    trips: data ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+    refresh: refetch,
+  }
 }

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { queryKeys } from './queryClient'
 import { sortByDateDesc } from './sortByDate'
 
 // §5.5.2 Laborator KIRIM (descriptive check). W1 is a FIFO arrival queue —
@@ -69,26 +70,28 @@ export interface LabResultRow {
   is_sulfured: boolean | null
 }
 
-export function useLaboratorKirim() {
-  const [awaiting, setAwaiting] = useState<AwaitingLine[]>([])
-  const [sulfurPending, setSulfurPending] = useState<LabResultRow[]>([])
-  const [finished, setFinished] = useState<LabResultRow[]>([])
-  const [loading, setLoading] = useState(true)
-  // 🔒 See useMoykaOutput.ts's identical guard for the full explanation --
-  // refresh is exposed for mutation handlers to call too, so a per-effect
-  // `cancelled` closure can't cover every call site.
-  const requestIdRef = useRef(0)
+interface LaboratorKirimData {
+  awaiting: AwaitingLine[]
+  sulfurPending: LabResultRow[]
+  finished: LabResultRow[]
+}
 
-  const refresh = useCallback(async () => {
-    const requestId = ++requestIdRef.current
-    setLoading(true)
-    try {
-      const [{ data: lines }, { data: intakes }, { data: weighings }, { data: results }] = await Promise.all([
+// 2026-09-21 (Phase 2 step 5) -- moved onto React Query, no query params
+// (one shared key). The old monotonic request-id guard (refresh() is also
+// called by mutation handlers, so a per-effect `cancelled` closure
+// couldn't cover every call site) is dropped -- React Query already
+// serializes fetches per query key.
+export function useLaboratorKirim() {
+  const { data, isPending, isFetching, error, refetch } = useQuery({
+    queryKey: queryKeys.laboratorKirim(),
+    queryFn: async ({ signal }): Promise<LaboratorKirimData> => {
+      const [{ data: lines, error: linesErr }, { data: intakes }, { data: weighings }, { data: results }] = await Promise.all([
         supabase
           .from('kirim_lines')
-          .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no'),
-        supabase.from('storage_intake').select('serial, actual_qty'),
-        supabase.from('gate_weighings').select('order_id, gruzheny_kg').eq('dir', 'kirim'),
+          .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no')
+          .abortSignal(signal),
+        supabase.from('storage_intake').select('serial, actual_qty').abortSignal(signal),
+        supabase.from('gate_weighings').select('order_id, gruzheny_kg').eq('dir', 'kirim').abortSignal(signal),
         supabase
           .from('lab_results')
           .select('id, parent_serial, sample_date, moisture_pct, so2_mg_kg, sample_photo, note, status, created_at')
@@ -101,8 +104,10 @@ export function useLaboratorKirim() {
           // quality records that feed client reports) -- without this
           // ordering, a plain last-in-array Map build would resolve
           // non-deterministically between the original and the correction.
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .abortSignal(signal),
       ])
+      if (linesErr) throw new Error(linesErr.message)
 
       const intakeBySerial = new Map((intakes ?? []).map((i) => [i.serial, i]))
       const resultBySerial = new Map<string, RawLabResult>()
@@ -112,7 +117,7 @@ export function useLaboratorKirim() {
       const gruzhenyByOrder = new Map((weighings ?? []).map((w) => [w.order_id, w.gruzheny_kg]))
 
       const orderIds = [...new Set((lines ?? []).map((l) => l.order_id))]
-      const { data: orders } = await supabase
+      const { data: orders, error: ordersErr } = await supabase
         .from('kirim_orders')
         .select('order_id, order_date, plate, owner_id, origin')
         .in('order_id', orderIds)
@@ -125,6 +130,8 @@ export function useLaboratorKirim() {
         // with a live "Tahlil" button on fabricated stock. Same positive
         // allowlist as useKirimTrips/useIntakeLines.
         .eq('origin', 'delivery')
+        .abortSignal(signal)
+      if (ordersErr) throw new Error(ordersErr.message)
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
 
       const awaitingRows: AwaitingLine[] = []
@@ -173,18 +180,21 @@ export function useLaboratorKirim() {
       // FIFO — oldest ARRIVAL first (order_date), the arrival queue's own
       // exemption from the universal newest-first sort. No longer keyed to
       // intake confirmation, which may not have happened yet.
-      if (requestIdRef.current !== requestId) return
-      setAwaiting([...awaitingRows].sort((a, b) => a.order_date.localeCompare(b.order_date)))
-      setSulfurPending(sortByDateDesc(sulfurRows, (r) => r.created_at))
-      setFinished(sortByDateDesc(finishedRows, (r) => r.created_at))
-    } finally {
-      if (requestIdRef.current === requestId) setLoading(false)
-    }
-  }, [])
+      return {
+        awaiting: [...awaitingRows].sort((a, b) => a.order_date.localeCompare(b.order_date)),
+        sulfurPending: sortByDateDesc(sulfurRows, (r) => r.created_at),
+        finished: sortByDateDesc(finishedRows, (r) => r.created_at),
+      }
+    },
+  })
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { awaiting, sulfurPending, finished, loading, refresh }
+  return {
+    awaiting: data?.awaiting ?? [],
+    sulfurPending: data?.sulfurPending ?? [],
+    finished: data?.finished ?? [],
+    loading: isPending,
+    refreshing: isFetching && !isPending,
+    error: error ? error.message : null,
+    refresh: refetch,
+  }
 }

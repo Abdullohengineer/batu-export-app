@@ -44,19 +44,26 @@ alter role authenticated set statement_timeout = '12s';
 So: 0208 raised 8s→20s on 2026-09-19; 0136 stepped it back down 20s→12s on
 2026-09-21 at 08:23 UTC, ~1h15m before this session's Phase 2 work began.
 
-🚩 **Neither 0136 nor 0137 exists in `supabase/migrations/` on `main`**
-(verified: `git ls-tree origin/main supabase/migrations/` has nothing past
-0135; `origin/main` had not moved since this branch was cut). They were
-applied through the migration API (the same `apply_migration` path this
-session used) without being committed. The live schema is therefore
-ahead of the repo by two migrations — a live-schema-drift finding, logged
-here per the CLAUDE.md schema rule, NOT fixed here: they are not this
-session's changes and their author's intent (0137 rewrites
-`rahbar_stock_snapshot` set-based and splices a new `lines` CTE into
-`rahbar_dashboard_ledger` behind an md5 guard — "Phase 3 Stage A", a
-parallel effort) is not this session's to reconstruct. Whoever applied
-them should commit the files; until then any fresh `supabase db reset`
-or branch-from-migrations would silently lose both.
+🚩 **~~Neither 0136 nor 0137 exists in `supabase/migrations/` on `main`~~
+— RESOLVED 2026-09-22, both landed on `main` via PR #165.**
+
+True when written, and left struck rather than deleted per the CLAUDE.md
+rule on superseded text. As verified at the time: `git ls-tree origin/main
+supabase/migrations/` had nothing past 0135, and `origin/main` had not moved
+since this branch was cut. They had been applied through the migration API
+(the same `apply_migration` path this session used) without being committed,
+leaving the live schema two migrations ahead of the repo — a
+live-schema-drift finding, logged here per the CLAUDE.md schema rule and
+deliberately NOT fixed by this session: they were not this session's changes
+and their author's intent (0137 rewrites `rahbar_stock_snapshot` set-based
+and splices a new `lines` CTE into `rahbar_dashboard_ledger` behind an md5
+guard — "Phase 3 Stage A", a parallel effort) was not this session's to
+reconstruct.
+
+The drift is now closed. PR #165 committed both migration files alongside
+Stage A's own decision entries (`0212`–`0214`), so the repo and the live
+migration table agree again and a fresh `supabase db reset` or
+branch-from-migrations no longer loses either one.
 
 ## The `pg_stat_statements` reset at 08:39:41 UTC
 

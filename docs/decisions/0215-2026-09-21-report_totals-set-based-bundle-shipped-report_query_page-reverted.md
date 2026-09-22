@@ -136,7 +136,7 @@ to 7/8 OK, p50 1.5s. The blast radius was wider than Hisobot: with each
 collateral **503s on `/profiles`, `/product_types`, `/calibres`** —
 cheap reads that had nothing to do with the change and failed only
 because no slot was free. That is exactly the pool-ceiling mechanism
-0213 describes, reproduced by this session's own mistake.
+0216 describes, reproduced by this session's own mistake.
 
 This is a genuine incident caused by this session, owned here rather
 than folded into "reverted." It also changes the verification standard

@@ -3,7 +3,7 @@
 Branch `claude/data-layer-phase2`, 9 commits (one per build-order step;
 step 5 spans two, step 8 is folded into step 5's `useGateHistory`
 rewrite). No PR opened — Abdulloh opens it. Companion entries:
-`0212` (step 4, partial ship + incident), `0213` (statement_timeout).
+`0215` (step 4, partial ship + incident), `0216` (statement_timeout).
 
 ## What moved to React Query
 
@@ -22,7 +22,7 @@ indicator, `error` surfaced to a `StatusNote`.
 
 Step 3 wired `invalidateReportData()` after all 25 flow-level write
 completions covering 0211's 33-site inventory (several statement-level
-sites share one transaction/refresh, hence 25 calls). Step 4 is in 0212.
+sites share one transaction/refresh, hence 25 calls). Step 4 is in 0215.
 Step 7 added `src/lib/rpc.ts` + `scripts/check-rpc-wrapper.mjs`.
 
 **Not migrated (flagged, not silently skipped)** — the remaining
@@ -120,7 +120,7 @@ Busiest hour 09:00 at 92.9% (Phase 1 baseline: 81–87%), but the errors
 are not diffuse — they are three bursts, each a migration being applied:
 08:18–08:40 (0136 + 0137, not this session's: 53/418 failed, plus
 Cloudflare 521/522 = origin briefly unreachable, i.e. PostgREST
-reloading), 09:38–09:57 (this session's step 4, 0212: 62/430), and the
+reloading), 09:38–09:57 (this session's step 4, 0215: 62/430), and the
 05:10–06:50 cluster with no migration behind it — the **organic** pattern:
 `rahbar_stock_snapshot`, `rahbar_dashboard_ledger`, `report_query_page`,
 `report_totals` failing together with p95 25–125s, i.e. a dashboard and a
@@ -144,11 +144,11 @@ spent waiting for a connection; (5) the incident: 10–16s
 `/calibres` reads that cost milliseconds. Phase 2 attacks the queue
 length (fewer requests contending — the table above) and, for
 `report_totals`, the hold time (770ms → 217ms). It cannot shorten
-`report_query_page`'s ~1.5s hold (0212) and it cannot raise the ceiling.
+`report_query_page`'s ~1.5s hold (0215) and it cannot raise the ceiling.
 The number to watch after deploy is `over_12s` in steady state (47/1,174
 today): if it does not fall substantially once the frontend ships, the
 ceiling is the binding constraint and the remaining lever is
-`report_query_page` (0212's follow-up) or compute — Abdulloh's call, as
+`report_query_page` (0215's follow-up) or compute — Abdulloh's call, as
 agreed; not decided here.
 
 ## Verification done
@@ -158,7 +158,7 @@ agreed; not decided here.
   rpc check on every push (confirmed in push output).
 - Step 4: byte-identity 0/198 mismatches + md5 match before apply; live
   re-verification after apply; `EXPLAIN ANALYZE` before/after; revert
-  re-verified (~205–300ms). Full detail and the incident in 0212.
+  re-verified (~205–300ms). Full detail and the incident in 0215.
 - Pererabotano path, by code: `ClientProizvodstvoTab.tsx:94` merges
   `productTypesError` into `error`; `:151` renders the `StatusNote`;
   `:154`/`:156` gate both `TotalsBlock` and the rows table on `!error` —
@@ -167,7 +167,7 @@ agreed; not decided here.
   `ClientRashodTab`, `ClientPrihodTab` (which previously never read
   `useReportQuery`'s error at all) surface the same error.
 - statement_timeout live value, origin, and the stats-reset correlation
-  (0213). `max_connections` still 60.
+  (0216). `max_connections` still 60.
 
 ## Verification still owed (cannot be done from this sandbox — say so)
 
@@ -198,8 +198,10 @@ pre-existing, all recorded in 0209). Concrete steps for Abdulloh:
    history / the session transcript), compare `over_12s` and p95 to
    today's 47 and 6.6s.
 
-## Live-schema drift found, not fixed
+## Live-schema drift found, not fixed here — since resolved
 
-Migrations 0136 and 0137 are in the live migration table (applied
+Migrations 0136 and 0137 were in the live migration table (applied
 2026-09-21 08:23 and 08:39 UTC) but not in `supabase/migrations/` on
-`main`. Details and why they are not committed by this session in 0213.
+`main`. Details, and why they were not this session's to commit, in 0216.
+**Resolved 2026-09-22: both landed on `main` via PR #165**, so the repo and
+the live migration table agree again.

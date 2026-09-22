@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { usePersistentState } from '../../lib/FilterState'
-import { useDebouncedValue } from '../../lib/useDebouncedValue'
+import { useSearchTrigger } from '../../lib/useSearchTrigger'
+import { SearchTrigger, StaleResults } from '../../components/ui/SearchTrigger'
 import { queryKeys } from '../../lib/queryClient'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
@@ -81,15 +82,20 @@ export function ClientProizvodstvoTab() {
   // 2026-09-19 (Phase 1B): same treatment as ClientRashodTab — debounced
   // filters and a cached, cancellable query instead of an unguarded
   // useEffect that re-fired on every filter change.
-  const debouncedFilters = useDebouncedValue(filters)
-  const filterKey = JSON.stringify(debouncedFilters)
+  // 2026-09-22 (docs/decisions/0218): the 300ms debounce is replaced by an
+  // explicit Поиск. Debounce only delayed WHEN a request fired; it never
+  // stopped one that had already fired from running to completion on the
+  // database after the browser moved on, which is what filled the connection
+  // pool. `filters` is now the draft; `search.applied` is what runs.
+  const search = useSearchTrigger(filters)
+  const filterKey = JSON.stringify([search.applied, search.reloadToken])
   const {
     data: ledger = null,
     isPending: loading,
     error: queryError,
   } = useQuery({
     queryKey: queryKeys.clientProductionLedger(filterKey),
-    queryFn: () => fetchClientProductionLedger(debouncedFilters),
+    queryFn: ({ signal }) => fetchClientProductionLedger(search.applied, signal),
   })
   const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : productTypesError
 
@@ -109,7 +115,15 @@ export function ClientProizvodstvoTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        className="flex flex-wrap items-center gap-2"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            search.search()
+          }
+        }}
+      >
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Период</span>
         <button type="button" onClick={() => setFilters((f) => ({ ...f, from: todayInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Сегодня
@@ -149,6 +163,8 @@ export function ClientProizvodstvoTab() {
       </div>
 
       {error && <StatusNote tone="problem">{error}</StatusNote>}
+      <SearchTrigger isDirty={search.isDirty} loading={loading} onSearch={search.search} lang="ru" />
+      <StaleResults stale={search.isDirty}>
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {!loading && !error && ledger && <TotalsBlock totals={ledger.totals} />}
@@ -195,6 +211,7 @@ export function ClientProizvodstvoTab() {
           </table>
         </div>
       )}
+      </StaleResults>
     </div>
   )
 }

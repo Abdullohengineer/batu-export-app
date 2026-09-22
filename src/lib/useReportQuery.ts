@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
-import { queryClient } from './queryClient'
+import { queryClient, queryKeys } from './queryClient'
+import { callRpc } from './rpc'
 import { mapDbRowToReportRow, type ReportFilters, type ReportRow, type ChiqimReportRow, type ReportTotals, type ReportDbRow } from './reportQuery'
 
 // §3.2.1-3.2.4 — the shared query engine, now a thin client over the
@@ -94,7 +95,122 @@ async function fetchVoidedBarcodeMatch(barcode2Query: string, signal: AbortSigna
   return mapDbRowToReportRow(data as ReportDbRow) as ChiqimReportRow
 }
 
-export function useReportQuery(filters: ReportFilters) {
+// The 9 filter params the DISPATCH half of report_page_enrich depends on.
+// Not cosmetic: chiqim_dispatch_calibre_breakdown's is_match consumes every
+// one of them, so two pages with the same request_id but different filters
+// have genuinely different k1..kn. See queryKeys.reportDispatch.
+function dispatchFilterKey(params: RpcParams): string {
+  return JSON.stringify([
+    params.p_directions, params.p_type_id, params.p_calibre_id, params.p_serial,
+    params.p_barcode2, params.p_wash_cycle, params.p_lab_verdict, params.p_status,
+    params.p_partiya_no,
+  ])
+}
+
+type EnrichRow = { row_type: 'bundle' | 'dispatch'; key: string } & Record<string, unknown>
+// What one page-row's enrichment looks like once cached. `null` is a real,
+// cacheable answer meaning "the server returned no enrichment for this key" —
+// stored so a serial/request with genuinely no bundle row is not re-requested
+// on every single page render.
+type CachedEnrich = Record<string, unknown> | null
+
+// STEP 1c — fetch the page as TWO cheap statements instead of one ~2s one.
+//
+// (a) report_query_page_rows: filters/order/limit/offset only. Measured
+//     74-160ms as rahbar, against 303-621ms for the old combined call.
+// (b) report_page_enrich: both enrichment halves, set-based, in ONE call —
+//     and only for the keys not already cached.
+//
+// Joined here rather than in SQL. report_page_enrich's output columns are
+// named to match report_query_page's own output, so this is a plain merge:
+// the bundle->output remap (state_moykaga_yuborilgan <- moyka_range_to_moyka_kg
+// and friends) lives in the SQL, once, instead of being re-derived here.
+async function fetchPageWithEnrichment(
+  params: RpcParams,
+  limit: number,
+  offset: number,
+  signal: AbortSignal,
+): Promise<ReportDbRow[]> {
+  const rows = await callRpc<ReportDbRow[]>(
+    'report_query_page_rows',
+    { ...params, p_limit: limit, p_offset: offset },
+    signal,
+  )
+  const page = rows ?? []
+  if (page.length === 0) return page
+
+  const fKey = dispatchFilterKey(params)
+  const serials = [...new Set(page.map((r) => r.serial).filter((s): s is string => Boolean(s)))]
+  const dispatchKeys = [
+    ...new Set(
+      page
+        .filter((r) => r.kind === 'chiqim_dispatch')
+        .map((r) => r.request_id)
+        .filter((k): k is string => Boolean(k)),
+    ),
+  ]
+
+  const bundleKeyOf = (s: string) => queryKeys.reportBundle(s, params.p_from, params.p_to)
+  const dispatchKeyOf = (k: string) => queryKeys.reportDispatch(k, params.p_from, params.p_to, fKey)
+
+  const missingSerials = serials.filter((s) => queryClient.getQueryData(bundleKeyOf(s)) === undefined)
+  const missingDispatch = dispatchKeys.filter((k) => queryClient.getQueryData(dispatchKeyOf(k)) === undefined)
+
+  // Everything already cached — no second round trip at all. This is the case
+  // that makes re-searching a narrowed filter cheap.
+  if (missingSerials.length > 0 || missingDispatch.length > 0) {
+    const enriched = await callRpc<EnrichRow[]>(
+      'report_page_enrich',
+      {
+        p_serials: missingSerials,
+        p_dispatch_keys: missingDispatch,
+        p_from: params.p_from,
+        p_to: params.p_to,
+        p_directions: params.p_directions,
+        p_type_id: params.p_type_id,
+        p_calibre_id: params.p_calibre_id,
+        p_serial: params.p_serial,
+        p_barcode2: params.p_barcode2,
+        p_wash_cycle: params.p_wash_cycle,
+        p_lab_verdict: params.p_lab_verdict,
+        p_status: params.p_status,
+        p_partiya_no: params.p_partiya_no,
+      },
+      signal,
+    )
+
+    const byBundle = new Map<string, Record<string, unknown>>()
+    const byDispatch = new Map<string, Record<string, unknown>>()
+    for (const e of enriched ?? []) {
+      const { row_type, key, ...cols } = e
+      if (!key) continue
+      ;(row_type === 'dispatch' ? byDispatch : byBundle).set(key, cols)
+    }
+    // Write EVERY requested key, including the ones that came back empty, so
+    // "no enrichment for this key" is cached as null rather than re-requested
+    // forever.
+    for (const s of missingSerials) queryClient.setQueryData<CachedEnrich>(bundleKeyOf(s), byBundle.get(s) ?? null)
+    for (const k of missingDispatch) queryClient.setQueryData<CachedEnrich>(dispatchKeyOf(k), byDispatch.get(k) ?? null)
+  }
+
+  return page.map((row) => {
+    const bundle = row.serial ? queryClient.getQueryData<CachedEnrich>(bundleKeyOf(row.serial)) : null
+    const dispatch =
+      row.kind === 'chiqim_dispatch' && row.request_id
+        ? queryClient.getQueryData<CachedEnrich>(dispatchKeyOf(row.request_id))
+        : null
+    return { ...row, ...(bundle ?? {}), ...(dispatch ?? {}) } as ReportDbRow
+  })
+}
+
+// `reloadToken` (2026-09-22): bumped by useSearchTrigger on every Qidirish
+// press. It participates in filterKey so that pressing Enter mid-flight
+// aborts the in-flight request and re-runs even when the filters compare
+// equal, and so that an explicit press fires IMMEDIATELY rather than paying
+// the 300ms filter debounce — the debounce exists to collapse typing, and a
+// deliberate click is not typing. Defaulted, so the screens that have not
+// been moved onto the explicit-search pattern keep their old behaviour.
+export function useReportQuery(filters: ReportFilters, reloadToken = 0) {
   const [rows, setRows] = useState<ReportRow[]>([])
   const [voidedBarcodeMatch, setVoidedBarcodeMatch] = useState<ChiqimReportRow | null>(null)
   const [totals, setTotals] = useState<ReportTotals>({
@@ -144,10 +260,11 @@ export function useReportQuery(filters: ReportFilters) {
 
   // A new filter set always starts back at page 1 — the previous page
   // number almost never makes sense against a differently-filtered result.
-  const filterKey = JSON.stringify(filters)
+  const filterKey = JSON.stringify([filters, reloadToken])
   useEffect(() => {
     setPage(1)
   }, [filterKey])
+  const prevReloadTokenRef = useRef(reloadToken)
 
   // isInitialMount / prevFilterKeyRef (Change 1) — decide, per effect run,
   // whether this fetch is the first load (fire immediately), a filter
@@ -205,19 +322,22 @@ export function useReportQuery(filters: ReportFilters) {
         //
         // The `.error`-not-throw convention is preserved by resolving to the
         // same { data, error } shape the callers below already expect.
-        const pageKey = ['report_query_page', params, PAGE_SIZE, (page - 1) * PAGE_SIZE] as const
+        const pageKey = ['report_query_page_rows', params, PAGE_SIZE, (page - 1) * PAGE_SIZE] as const
         const totalsKey = ['report_totals', params] as const
         const [pageResult, totalsResult, voided] = await Promise.all([
           queryClient
             .fetchQuery({
               queryKey: pageKey,
-              queryFn: async () => {
-                const res = await supabase
-                  .rpc('report_query_page', { ...params, p_limit: PAGE_SIZE, p_offset: (page - 1) * PAGE_SIZE })
-                  .abortSignal(controller.signal)
-                if (res.error) throw res.error
-                return res.data
-              },
+              // 2026-09-22 (see docs/decisions/0218): this used to be a single
+              // report_query_page call that did filtering, per-serial bundle
+              // LATERALs and a per-row dispatch LATERAL in ONE ~2s statement.
+              // Aborting the HTTP request does not cancel that statement, so
+              // rapid filter changes left several of them holding connections
+              // out of PostgREST's 10-connection pool until the 6th request
+              // queued and died on statement_timeout. Split into a cheap rows
+              // query plus a cached, set-based enrichment pass.
+              queryFn: () =>
+                fetchPageWithEnrichment(params, PAGE_SIZE, (page - 1) * PAGE_SIZE, controller.signal),
             })
             .then((data) => ({ data, error: null as { message: string } | null }))
             .catch((err: { message?: string }) => ({ data: null, error: { message: err?.message ?? 'RPC error' } })),
@@ -356,10 +476,14 @@ export function useReportQuery(filters: ReportFilters) {
 
     const filterChanged = prevFilterKeyRef.current !== filterKey
     prevFilterKeyRef.current = filterKey
+    const searchPressed = prevReloadTokenRef.current !== reloadToken
+    prevReloadTokenRef.current = reloadToken
 
     if (isInitialMount.current) {
       isInitialMount.current = false
       load() // initial load — never debounced
+    } else if (searchPressed) {
+      load() // explicit Qidirish — deliberate intent, fire now, no debounce
     } else if (filterChanged) {
       debounceId = setTimeout(load, FILTER_DEBOUNCE_MS) // filter change — debounced
     } else {

@@ -99,6 +99,27 @@ export const queryKeys = {
   ) => ['laborator_history', from, to, scope, ownerId, typeId, calibreId, seriya, verdict] as const,
   finishedChiqimRequests: () => ['finished_chiqim_requests'] as const,
   chiqimRequestById: (requestId: string) => ['chiqim_request_by_id', requestId] as const,
+  // Hisobot page enrichment (2026-09-22, see docs/decisions/0218). TWO cache
+  // grains, deliberately, because the two halves of report_page_enrich do not
+  // depend on the same things:
+  //
+  //   reportBundle   -- per-serial ledger figures. Genuinely keyed on
+  //                     (serial, from, to) and nothing else, so the same
+  //                     serial re-appearing under a DIFFERENT filter set (a
+  //                     plate search, a calibre narrowing) reuses the cached
+  //                     row instead of refetching it.
+  //   reportDispatch -- the k1..kn dispatch breakdown. Looks like it should
+  //                     key on (request_id, from, to) too, but it must NOT:
+  //                     chiqim_dispatch_calibre_breakdown is filter-dependent.
+  //                     The same request_id returns (,10,,10,,10,,,) with no
+  //                     filters and all-NULL under p_calibre_id='01' or
+  //                     p_status='bekor_qilingan'. Caching it per request_id
+  //                     alone would serve one filter's numbers under another
+  //                     filter -- silently wrong, not merely stale. Hence the
+  //                     filterKey component.
+  reportBundle: (serial: string, from: string, to: string) => ['report_bundle', serial, from, to] as const,
+  reportDispatch: (requestId: string, from: string, to: string, filterKey: string) =>
+    ['report_dispatch', requestId, from, to, filterKey] as const,
 }
 
 // Master-data staleTime: 10 minutes, not the client's 30s default -- these

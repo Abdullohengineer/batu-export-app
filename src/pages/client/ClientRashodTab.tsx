@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { usePersistentState } from '../../lib/FilterState'
-import { useDebouncedValue } from '../../lib/useDebouncedValue'
+import { useSearchTrigger } from '../../lib/useSearchTrigger'
+import { SearchTrigger, StaleResults } from '../../components/ui/SearchTrigger'
 import { queryKeys } from '../../lib/queryClient'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { FilterField } from '../../components/report/ReportFilterBar'
@@ -133,15 +134,20 @@ export function ClientRashodTab() {
   // cancellation, no cache. Debounced so a date-picker tick doesn't fire an
   // RPC per change, and moved onto React Query so returning to this tab
   // within the cache window reuses the result instead of re-querying.
-  const debouncedFilters = useDebouncedValue(filters)
-  const filterKey = JSON.stringify(debouncedFilters)
+  // 2026-09-22 (docs/decisions/0218): the 300ms debounce is replaced by an
+  // explicit Поиск. Debounce only delayed WHEN a request fired; it never
+  // stopped one that had already fired from running to completion on the
+  // database after the browser moved on, which is what filled the connection
+  // pool. `filters` is now the draft; `search.applied` is what runs.
+  const search = useSearchTrigger(filters)
+  const filterKey = JSON.stringify([search.applied, search.reloadToken])
   const {
     data: ledger = null,
     isPending: loading,
     error: queryError,
   } = useQuery({
     queryKey: queryKeys.clientChiqimLedger(filterKey),
-    queryFn: () => fetchClientChiqimLedger(debouncedFilters),
+    queryFn: ({ signal }) => fetchClientChiqimLedger(search.applied, signal),
   })
   const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : productTypesError
 
@@ -170,7 +176,15 @@ export function ClientRashodTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        className="flex flex-wrap items-center gap-2"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            search.search()
+          }
+        }}
+      >
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Период</span>
         <button type="button" onClick={() => setFilters((f) => ({ ...f, from: todayInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Сегодня
@@ -220,6 +234,8 @@ export function ClientRashodTab() {
       </div>
 
       {error && <StatusNote tone="problem">{error}</StatusNote>}
+      <SearchTrigger isDirty={search.isDirty} loading={loading} onSearch={search.search} lang="ru" />
+      <StaleResults stale={search.isDirty}>
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {!loading && !error && ledger && <TotalsBlock totals={ledger.totals} />}
@@ -287,6 +303,7 @@ export function ClientRashodTab() {
           </table>
         </div>
       )}
+      </StaleResults>
     </div>
   )
 }

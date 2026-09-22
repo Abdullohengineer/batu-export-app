@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { usePersistentState } from '../../lib/FilterState'
+import { useSearchTrigger } from '../../lib/useSearchTrigger'
+import { SearchTrigger } from '../../components/ui/SearchTrigger'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarStockSnapshot, useRahbarDashboardLedger } from '../../lib/useRahbarDashboardV2'
@@ -68,12 +70,21 @@ export function RahbarHome() {
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
 
+  // Explicit Qidirish for the CUSTOM range only (2026-09-22,
+  // docs/decisions/0218). The three presets stay live: one click is one
+  // complete intent, and each is a single cheap change. The custom range is
+  // two inputs over rahbar_dashboard_ledger, so typing a from-date fires a
+  // query against a half-entered range that the to-date immediately
+  // supersedes -- exactly the pattern the button exists to stop. This is the
+  // period picker only; the dashboard itself stays live.
+  const customRange = useSearchTrigger({ customFrom, customTo })
+
   const { from, to } = useMemo(() => {
     if (preset === 'boshidan') return { from: BOSHIDAN, to: todayInTashkent() }
     if (preset === 'bu_oy') return { from: firstOfMonthInTashkent(), to: todayInTashkent() }
     if (preset === 'otgan_oy') return previousMonthRangeInTashkent()
-    return { from: customFrom, to: customTo }
-  }, [preset, customFrom, customTo])
+    return { from: customRange.applied.customFrom, to: customRange.applied.customTo }
+  }, [preset, customRange.applied])
 
   const { snapshot, loading: snapLoading, error: snapError } = useRahbarStockSnapshot(scope)
   const { ledger, loading: ledgerLoading, error: ledgerError } = useRahbarDashboardLedger(from, to, scope)
@@ -135,10 +146,19 @@ export function RahbarHome() {
             </button>
           ))}
           {preset === 'custom' && (
-            <span className="flex items-center gap-1 text-sm">
+            <span
+              className="flex flex-wrap items-center gap-1 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  customRange.search()
+                }
+              }}
+            >
               <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="rounded-full border border-slate-300 px-2.5 py-1 text-sm dark:border-slate-700 dark:bg-slate-900" />
               —
               <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="rounded-full border border-slate-300 px-2.5 py-1 text-sm dark:border-slate-700 dark:bg-slate-900" />
+              <SearchTrigger isDirty={customRange.isDirty} loading={ledgerLoading} onSearch={customRange.search} />
             </span>
           )}
         </div>

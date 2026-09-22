@@ -18,6 +18,8 @@ import { SerialPassportModal } from './SerialPassportModal'
 import { ChiqimRequestPassportModal } from './ChiqimRequestPassportModal'
 import { Button } from '../../components/ui/Button'
 import { StatusNote } from '../../components/ui/StatusNote'
+import { SearchTrigger, StaleResults } from '../../components/ui/SearchTrigger'
+import { useSearchTrigger } from '../../lib/useSearchTrigger'
 
 // Status taxonomy for THIS screen's filter only (event-level pallet
 // status, §3.2.2) — a different concept from §3.2.6's on-hand StockBucket,
@@ -80,7 +82,13 @@ export function HisobotTab() {
   // the FULL filtered set, never summed from `rows` (which is only ever one
   // page). §requirement 1: filters are pushed into the query itself
   // (report_query_page/report_totals) — no client-side narrowing left here.
-  const { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading, error: reportError } = useReportQuery(filters)
+  // Explicit Qidirish (2026-09-22, docs/decisions/0218). `filters` is now the
+  // DRAFT -- edited freely, fetching nothing. `search.applied` is what the
+  // query actually runs on, so six rapid filter edits cost zero statements
+  // instead of six.
+  const search = useSearchTrigger(filters)
+  const { rows, voidedBarcodeMatch, totals, totalCount, page, pageCount, setPage, loading, error: reportError } =
+    useReportQuery(search.applied, search.reloadToken)
   // 2026-09-21 (Phase 2 step 1) -- a failed owners/productTypes/calibres
   // fetch used to silently render every row's label as '—' or a raw id
   // (see useProductTypes.ts's own comment for the confirmed bug this was).
@@ -126,7 +134,9 @@ export function HisobotTab() {
   return (
     <ErrorBoundary label="Hisobot">
       <div className="space-y-4">
-        <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(filters.directions)} visibleColumnKeys={visibleColumnKeys} />
+        {/* applied, not draft: the label must describe the data on screen,
+            not the filters the user is midway through editing. */}
+        <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(search.applied.directions)} visibleColumnKeys={visibleColumnKeys} />
 
         {/* 2026-09-19 (post-debounce incident) -- report_query_page/
             report_totals failing (previously: silent, rendered as a false
@@ -145,6 +155,17 @@ export function HisobotTab() {
           emptyText="Natija topilmadi."
           resultCount={totalCount}
           filters={
+            <div
+              // Enter anywhere in the filter bar searches, matching the
+              // button. Not blocked while loading -- see SearchTrigger.
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  search.search()
+                }
+              }}
+              className="space-y-3"
+            >
             <ReportFilterBar
               from={filters.from}
               to={filters.to}
@@ -177,8 +198,16 @@ export function HisobotTab() {
               onPartiyaChange={(v) => setFilters({ ...filters, partiya: v })}
               onReset={() => setFilters(defaultReportFilters(filters.from, filters.to))}
             />
+            <SearchTrigger isDirty={search.isDirty} loading={loading} onSearch={search.search} />
+            </div>
           }
         >
+          {/* Dimmed, not hidden, while the on-screen filters no longer match
+              what produced these rows: they are still real numbers from a
+              real query. Blanking them would repeat the Phase 1 failure
+              where a superseded request rendered as a fabricated empty
+              result. */}
+          <StaleResults stale={search.isDirty}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
               <button
@@ -253,6 +282,7 @@ export function HisobotTab() {
             onOpenPassport={setPassportSerial}
             onOpenChiqimRequest={setChiqimRequestId}
           />
+          </StaleResults>
         </HistoryView>
 
         {passportSerial && (

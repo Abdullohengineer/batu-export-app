@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { callRpc } from './rpc'
 
 // Расход sub-tab (Отчёт), per-TRUCK (dispatch event) CHIQIM ledger for the
 // Global Export client portal — rewritten (CLAUDE.md task "Rebuild the
@@ -174,17 +174,26 @@ function parseKinds(s: string): ClientChiqimKind[] {
   return s.split(',').map((k) => k.trim()) as ClientChiqimKind[]
 }
 
-export async function fetchClientChiqimLedger(filters: ClientChiqimLedgerFilters): Promise<ClientChiqimLedger> {
+// `signal` (2026-09-22): required by CLAUDE.md's data-access rule -- a query
+// that is superseded must actually cancel its HTTP request rather than run to
+// completion and land late. Optional so non-React-Query callers (the Excel
+// export) can keep calling it without one.
+export async function fetchClientChiqimLedger(
+  filters: ClientChiqimLedgerFilters,
+  signal?: AbortSignal,
+): Promise<ClientChiqimLedger> {
   const tips = filters.tips.length > 0 ? filters.tips : TIP_OPTIONS.map((o) => o.value)
   const kinds = [...new Set(tips.flatMap((t) => TIP_TO_KINDS[t]))]
-  const { data, error } = await supabase.rpc('client_chiqim_ledger', {
-    p_from_date: filters.from,
-    p_to_date: filters.to,
-    p_kinds: kinds,
-    p_type_id: filters.typeId || null,
-  })
-  if (error) throw error
-  const d = data as RpcResponse
+  const d = await callRpc<RpcResponse>(
+    'client_chiqim_ledger',
+    {
+      p_from_date: filters.from,
+      p_to_date: filters.to,
+      p_kinds: kinds,
+      p_type_id: filters.typeId || null,
+    },
+    signal,
+  )
   return {
     period: d.period,
     rows: d.rows.map((r) => {

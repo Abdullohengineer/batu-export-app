@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { callRpc } from './rpc'
 
 // Производство sub-tab (Отчёт) — per-serial pack-output ledger for the
 // Global Export client portal. Reads client_production_ledger()
@@ -81,14 +81,20 @@ function mapCalibre(c: RpcCalibre): ClientProductionCalibre {
   return { calibreId: c.calibreId, label: c.label, code: c.code, kg: n(c.kg) }
 }
 
-export async function fetchClientProductionLedger(filters: ClientProductionFilters): Promise<ClientProductionLedger> {
-  const { data, error } = await supabase.rpc('client_production_ledger', {
-    p_from_date: filters.from,
-    p_to_date: filters.to,
-    p_product_type_id: filters.typeId || null,
-  })
-  if (error) throw error
-  const d = data as RpcResponse
+// `signal`: see fetchClientChiqimLedger's own note -- same rule, same reason.
+export async function fetchClientProductionLedger(
+  filters: ClientProductionFilters,
+  signal?: AbortSignal,
+): Promise<ClientProductionLedger> {
+  const d = await callRpc<RpcResponse>(
+    'client_production_ledger',
+    {
+      p_from_date: filters.from,
+      p_to_date: filters.to,
+      p_product_type_id: filters.typeId || null,
+    },
+    signal,
+  )
   return {
     period: d.period,
     rows: d.rows.map((r) => ({

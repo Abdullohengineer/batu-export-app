@@ -269,3 +269,27 @@ grant execute on function public.pgrst_statement_cap() to authenticator, authent
 --   drop function if exists public.pgrst_statement_cap();
 -- report_query_page and report_totals are untouched by this file, so the
 -- frontend reverts to the old path by reverting the app deploy alone.
+
+-- ---------------------------------------------------------------------------
+-- AS APPLIED, 2026-09-22
+-- ---------------------------------------------------------------------------
+--   0138_report_query_page_rows_split        -- function (a)
+--   0139_report_page_enrich_set_based        -- function (b)
+--   0140_pgrst_statement_cap_db_pre_request  -- the cap function
+--   alter role authenticator set pgrst.db_pre_request = 'public.pgrst_statement_cap';
+--   notify pgrst, 'reload config';
+--
+-- Byte-identity re-run against the APPLIED functions (not just the zz_ copies):
+-- 6/6 shapes identical -- 89 / 25 / 13 / 38 / 3 / 13 rows.
+--
+-- CORRECTION to this file's own reasoning: the cap function carries a
+-- `SET search_path` clause, and I expected that clause to push a GUC nest
+-- level and undo the inner SET LOCAL on return. Measured: it does not. Both
+-- the SET-carrying and the plain variant leave statement_timeout='5s' after
+-- returning, so the safer SECURITY DEFINER + fixed search_path form was kept.
+--
+-- STILL UNVERIFIED: that PostgREST populates request.path. No PostgREST
+-- traffic has occurred since the hook was wired, and this sandbox cannot
+-- issue HTTP to Supabase. The RAISE LOG lines settle it on the next real
+-- request -- see docs/decisions/0218 for the exact check and the reset to run
+-- if it comes back '<NULL>'.

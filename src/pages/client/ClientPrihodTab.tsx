@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { usePersistentState } from '../../lib/FilterState'
+import { useSearchTrigger } from '../../lib/useSearchTrigger'
+import { SearchTrigger, StaleResults } from '../../components/ui/SearchTrigger'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { FilterField } from '../../components/report/ReportFilterBar'
@@ -246,7 +248,12 @@ export function ClientPrihodTab() {
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
 
-  const { rows, totals, totalCount, page, pageCount, setPage, loading, error: reportError } = useReportQuery(filters)
+  // Explicit Поиск (2026-09-22, docs/decisions/0218): `filters` is the draft,
+  // `search.applied` is what actually runs. This tab shares useReportQuery
+  // with Hisobot, so it inherits the same rows+enrich split.
+  const search = useSearchTrigger(filters)
+  const { rows, totals, totalCount, page, pageCount, setPage, loading, error: reportError } =
+    useReportQuery(search.applied, search.reloadToken)
   const error = reportError ?? productTypesError ?? calibresError
   const kirimRows = rows.filter((r): r is KirimReportRow => r.kind === 'kirim')
 
@@ -275,7 +282,15 @@ export function ClientPrihodTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        className="flex flex-wrap items-center gap-2"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            search.search()
+          }
+        }}
+      >
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Период</span>
         <button type="button" onClick={() => setFilters((f) => ({ ...f, from: todayInTashkent(), to: todayInTashkent() }))} className={pillClass}>
           Сегодня
@@ -344,6 +359,8 @@ export function ClientPrihodTab() {
           className={`${inputClass} w-24`}
         />
 
+        <SearchTrigger isDirty={search.isDirty} loading={loading} onSearch={search.search} lang="ru" />
+
         <button
           type="button"
           onClick={() => setFilters(defaultClientPrihodFilters())}
@@ -367,6 +384,7 @@ export function ClientPrihodTab() {
 
       <ClientTotalsStrip totals={totals} />
 
+      <StaleResults stale={search.isDirty}>
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {!loading && (
@@ -524,6 +542,7 @@ export function ClientPrihodTab() {
           </button>
         </div>
       )}
+      </StaleResults>
     </div>
   )
 }

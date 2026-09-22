@@ -26,8 +26,6 @@ const SRC = join(ROOT, 'src')
 const ALLOWLIST = new Set([
   'src/lib/chiqimDispatchDetail.ts',
   'src/lib/classifySulfur.ts',
-  'src/lib/clientChiqimLedger.ts',
-  'src/lib/clientProductionLedger.ts',
   'src/lib/effectiveQty.ts',
   'src/lib/labVerdict.ts',
   'src/lib/masterDataAdmin.ts',

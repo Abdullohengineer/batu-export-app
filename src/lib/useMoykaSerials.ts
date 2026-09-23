@@ -36,6 +36,12 @@ export interface MoykaSerial {
   // sub-picker (includes only old stock) -- one balance, two entry points,
   // never both at once for the same serial.
   isOldStock: boolean
+  // kirim_lines.process (0141): which line this serial belongs to. Exposed,
+  // never filtered here -- the hook is shared by the Moyka send picker
+  // (excludes 'rezka') and the CHIQIM Xom raw-dispatch pool (keeps it: a
+  // client can take uncut Rezka raw back, same arithmetic as Moyka raw).
+  // Each consumer filters for itself.
+  process: 'moyka' | 'rezka'
   actual_qty: number // measured raw received at storage (§5.1)
   inputKg: number // §2.16 effective_qty -- the serial's raw input to Moyka. Was "cycleInputKg"
   // before wash cycles were removed (2026-07-28, Laborator v2) -- there is no cycle to scope it to anymore.
@@ -126,7 +132,7 @@ export function useMoykaSerials() {
       // pass them straight through instead of making fetchEffectiveQty
       // re-fetch both tables again, unfiltered, a second time.
       const [{ data: kLines }, effectiveQtyBySerial] = await Promise.all([
-        supabase.from('kirim_lines').select('serial, order_id, type_id, partiya_no').in('serial', serialList),
+        supabase.from('kirim_lines').select('serial, order_id, type_id, partiya_no, process').in('serial', serialList),
         fetchEffectiveQty(serialList, materialVariancePct, { intakes: intakes ?? [], sends: sends ?? [] }),
       ])
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]
@@ -192,6 +198,7 @@ export function useMoykaSerials() {
             order_date: order.order_date,
             plate: order.plate,
             isOldStock,
+            process: line.process === 'rezka' ? 'rezka' : 'moyka',
             actual_qty: intake.actual_qty,
             inputKg: input,
             provisional: eq?.provisional ?? false,

@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatLossKg, formatLossPct, computeLossDisplay } from './formatLoss.ts'
+import { formatLossKg, formatLossPct, computeLossDisplay, computeRezkaLossDisplay } from './formatLoss.ts'
 
 test('formatLossKg: real loss (positive signed) renders bare, no sign', () => {
   assert.equal(formatLossKg(50), '50 kg')
@@ -62,4 +62,20 @@ test('computeLossDisplay: closed serial with a surplus — Yo\'qotish is negativ
 
 test('computeLossDisplay: closed serial, exact match — Yo\'qotish is exactly 0, realized', () => {
   assert.deepEqual(computeLossDisplay(1000, 1000, '2026-08-29T00:00:00Z'), { moykadaKg: 0, yoqotishKg: 0, isRealized: true })
+})
+
+test('computeRezkaLossDisplay: open cycle, gain (30 received vs 25 sent) is signed -5, never clamped', () => {
+  assert.deepEqual(computeRezkaLossDisplay(25, 30, null), { rezkadaKg: -5, yoqotishKg: null, isRealized: false })
+})
+
+test('computeRezkaLossDisplay: open cycle, ordinary in-process balance', () => {
+  assert.deepEqual(computeRezkaLossDisplay(25, 20, null), { rezkadaKg: 5, yoqotishKg: null, isRealized: false })
+})
+
+test('computeRezkaLossDisplay: closed cycle books the signed gap as yoqotish (gain stays negative)', () => {
+  assert.deepEqual(computeRezkaLossDisplay(25, 30, '2026-09-23T00:00:00Z'), { rezkadaKg: 0, yoqotishKg: -5, isRealized: true })
+})
+
+test('computeLossDisplay (Moyka) is unchanged: open-cycle gain still floors Moykada at 0', () => {
+  assert.deepEqual(computeLossDisplay(25, 30, null), { moykadaKg: 0, yoqotishKg: null, isRealized: false })
 })

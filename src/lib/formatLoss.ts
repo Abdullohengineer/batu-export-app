@@ -65,3 +65,24 @@ export function computeLossDisplay(sent: number, received: number, closedAt: str
   }
   return { moykadaKg: 0, yoqotishKg: sent - received, isRealized: true }
 }
+
+// Rezka twin of computeLossDisplay (2026-09-23, Rezka Prompt 1 -- SPEC.md
+// "Rezka"). Signed on BOTH branches: Rezka has no floor anywhere, because
+// output > input (a gain) is a normal outcome, never an error, and must
+// never be clamped to 0. Open cycle: rezkadaKg = sent - received, negative
+// while more has come back than was sent; closed: the same gap is booked as
+// yoqotishKg, negative = gain. A separate function, not a flag on
+// computeLossDisplay, so the Moyka path's unrealized floor can never be
+// switched off by accident.
+export interface RezkaLossDisplay {
+  rezkadaKg: number
+  yoqotishKg: number | null
+  isRealized: boolean
+}
+
+export function computeRezkaLossDisplay(sent: number, received: number, closedAt: string | null): RezkaLossDisplay {
+  if (closedAt === null) {
+    return { rezkadaKg: sent - received, yoqotishKg: null, isRealized: false }
+  }
+  return { rezkadaKg: 0, yoqotishKg: sent - received, isRealized: true }
+}

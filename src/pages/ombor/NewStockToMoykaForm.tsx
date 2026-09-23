@@ -30,7 +30,10 @@ export function NewStockToMoykaForm({
   onCancel: () => void
   onSubmit: (serial: MoykaSerial, qtyKg: number) => Promise<void>
 }) {
-  const available = serials.filter((s) => s.available > 0)
+  // Rezka serials (kirim_lines.process='rezka') never go to Moyka -- the
+  // DB rejects it too (enforce_serial_process, 0141); this keeps them out
+  // of the chip list so Ombor is never offered a send that would fail.
+  const available = serials.filter((s) => s.process !== 'rezka' && s.available > 0)
   const [selectedSerial, setSelectedSerial] = useState<string | null>(null)
   const [weighedKg, setWeighedKg] = useState('')
   const [submitting, setSubmitting] = useState(false)

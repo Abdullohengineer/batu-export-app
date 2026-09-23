@@ -98,6 +98,9 @@ export function useLaboratorHistory(filters: LaboratorHistoryFilters) {
             .from('kirim_lines')
             .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, partiya_no')
             .in('serial', allSerials)
+            // History twin of useLaboratorKirim's process filter (CLAUDE.md:
+            // a history screen follows its live counterpart's rule).
+            .neq('process', 'rezka')
             .abortSignal(signal)
         : {
             data: [] as {

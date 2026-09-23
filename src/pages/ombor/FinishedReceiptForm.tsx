@@ -25,6 +25,7 @@ export function FinishedReceiptForm({
   typeName,
   ownerName,
   calibres,
+  rezka = false,
   onCancel,
   onSubmit,
 }: {
@@ -32,12 +33,16 @@ export function FinishedReceiptForm({
   typeName: string
   ownerName: string
   calibres: Calibre[]
+  // Rezka receive (SPEC.md "Rezka"): offer ONLY is_rezka_output calibres
+  // ("Standard"). Without it -- every Moyka path -- those calibres are
+  // hidden, so a Moyka serial can never be received as Rezka output.
+  rezka?: boolean
   onCancel: () => void
   onSubmit: (values: ReceiptValues) => Promise<void>
 }) {
   const categoryCalibres = useMemo(
-    () => calibres.filter((c) => c.category_id === serial.category_id),
-    [calibres, serial.category_id],
+    () => calibres.filter((c) => c.category_id === serial.category_id && c.is_rezka_output === rezka),
+    [calibres, serial.category_id, rezka],
   )
   const [calibreId, setCalibreId] = useState('')
   const [weight, setWeight] = useState('')

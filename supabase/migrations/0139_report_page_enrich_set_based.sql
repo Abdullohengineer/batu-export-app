@@ -1,0 +1,15 @@
+-- Historical record -- EXECUTES NOTHING.
+--
+-- Applied live on 2026-09-22 via the MCP apply_migration tool as
+-- schema_migrations version 20260922054224, name "0139_report_page_enrich_set_based", but never pulled into
+-- supabase/migrations/ -- found 2026-09-23 while reserving numbers for the
+-- Rezka build (docs/REZKA-AUDIT.md, docs/decisions/0219-*). No remote
+-- branch carries a file for it.
+--
+-- The SQL that was applied lives in
+-- docs/data-corrections/2026-09-22_hisobot_split_rows_enrich_and_request_cap.sql
+-- (section 2, report_page_enrich). It is NOT replayed here: the object(s) already exist live in this
+-- exact state, and re-running arbitrary DDL against a database already in
+-- the target state is not needed. Same comment-only "record" convention as
+-- 0069/0077/0078/0079. See docs/decisions/0218-* for the change itself.
+select 1 where false;

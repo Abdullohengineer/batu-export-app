@@ -74,3 +74,25 @@ Rezka delivery order `TEST-RZ-02`, serial `230926-002`, `process='rezka'`; CHIQI
 - T5 `rahbar_stock_snapshot('hammasi')`: rezkaKnKg **30**, rezkaRawKg 0, konditirskiyKg
   9,040 = baseline, rawKg 53,581 = baseline; the Standard pallet sits in bucket `available`.
 - Client report for the TEST owner: produced 1,470, rezkaDrawnKg 25, dispatched 0, closing 1,445.
+  Both "+1,445" figures (Ledger C and client) were captured **before** T3's dispatch.
+
+**Applied 2026-09-24.** `apply_migration` ×3: `0141_rezka_process_and_cycles` (version
+`20260924051834`), `0142_rezka_kn_draws` (`20260924052123`),
+`0143_rezka_ledger_c_and_snapshot_split` (`20260924052503`). Each stored `statements[1]` is
+md5-identical to the committed file (`6c7e6706…` 7,787 B, `420db29c…` 28,945 B, `13046f80…`
+51,045 B). schema_migrations holds 0138–0143 exactly once each (0138–0140 are the
+2026-09-22 applies the record files document).
+- Baselines: the same 11 reads (ledger ×3 scopes, snapshot ×3, client report ×3 owners,
+  stock_on_hand_rows, finished_pallet_availability) fingerprinted with an order-insensitive
+  canonical md5 at 05:17:53 UTC before the apply and 05:25:19 UTC after — **all 11 identical**
+  once the new keys are set aside; new keys present and all 0 (`rezkaDrawnKg` in the 3
+  ledgers and 3 client reports, incl. every `byCalibre` entry; `rezkaKnKg`/`rezkaRawKg` in the
+  3 snapshots).
+- Ledger C timing, re-run live in one ROLLBACK after the apply (hammasi, 2026-07-01 → today,
+  deltas vs the in-transaction baseline): after draw + 30 kg receive, before dispatch —
+  produced +1,470, rezkaDrawn +25, dispatched 0, **closing +1,445**; after FIFO loading the
+  30 kg but before the truck leaves — **still +1,445** (Ledger C counts a dispatch only once
+  `chiqim_departed_at` is set); after departure — dispatched +30, **closing +1,415**. The TEST
+  request was created as a fura so departure = `ombor_finished_at` (truck type is immutable
+  by trigger). Nothing persisted (0 TEST owners/orders/requests/pallets, 0 rows in
+  rezka_kn_draws/rezka_sends/rezka_cycles afterwards).

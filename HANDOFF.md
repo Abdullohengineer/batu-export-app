@@ -6,12 +6,15 @@ authoritative over the original brief). Rules: `docs/SPEC.md` §5.R. Decisions:
 
 ## Prompt 1 — data layer, blockers, regressions (branch `rezka-prompt-1`)
 
-**Status:** code + docs committed. Migrations `0141`–`0143` verified in one live
-`BEGIN … ROLLBACK` run on TEST- fixtures (values in `docs/decisions/0222`); **not yet applied
-to the live database** — waiting on the product owner's go-ahead after reviewing the
-ROLLBACK values. After applying: re-verify end-to-end, then run `full-chain.spec.ts`
-(test 6) — it needs `.env.test`, which is not present in the cloud container used for
-Prompt 1, so it has to run where `.env.test` exists.
+**Status:** code + docs committed; migrations `0141`–`0143` **applied to live on 2026-09-24**
+(schema_migrations versions `20260924051834`, `20260924052123`, `20260924052503`; stored
+statements md5-identical to the committed files). Post-apply: all 11 live baselines
+unchanged apart from the new keys, which are all 0; Ledger C re-verified live in a
+ROLLBACK run (`docs/decisions/0222`).
+
+**Test 6 pending, run locally:** `full-chain.spec.ts` needs `.env.test`, which the cloud
+container used for Prompt 1 does not have. The product owner runs it on their machine, then
+opens the PR for `rezka-prompt-1` (not opened by the agent).
 
 **Built**
 - `kirim_lines.process` (moyka/rezka) + `enforce_serial_process` guard on moyka_sends /

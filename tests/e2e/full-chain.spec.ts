@@ -369,24 +369,25 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await expect(page.getByText(barcode).first()).toBeVisible({ timeout: 20000 })
   }
   {
-    // Loss is live now (DECISIONS.md "Moyka loss becomes live; remove
-    // Tugallash") — no close/confirm action to trigger it. The serial's
-    // live in-Moyka balance is still positive (400kg of its 5,000kg sent
-    // hasn't been packed yet), and yield_rows already reads the correct
-    // live figure for it: (5000 - 4600) / 5000 = 8.0% — against Subxon's
-    // own 5,000kg intake figure, never the truck's 5,700kg gate net
-    // (multi-line, §2.16.1).
+    // Realized vs unrealized loss (0101, 2026-08-29 -- DECISIONS.md "Serial
+    // close-out (Yakunlash) + realized-vs-unrealized loss"): yield_rows is
+    // back to CLOSED cycles only (`closed_at IS NOT NULL`). This serial is
+    // still open -- 400kg of its 5,000kg sent hasn't been packed and nobody
+    // has run Yakunlash -- so that 400kg is in-Moyka balance (Moykada), not
+    // a loss yet, and yield_rows must have NO row for it. The 0086-era
+    // assertion here (a live 400kg / 8.0% row for an open serial) was
+    // superseded by 0101 and had been failing since. maybeSingle(), not
+    // single(): 0 rows is the expected answer, not an error.
     await page.getByRole('link', { name: 'KIRIM', exact: true }).click()
     await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Moykadan qabul qilish' })).toBeVisible({ timeout: 20000 })
     const yieldRow = await page.evaluate(async (serialArg) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
-      const { data, error } = await w.supabase.from('yield_rows').select('loss_kg, loss_pct').eq('serial', serialArg).single()
+      const { data, error } = await w.supabase.from('yield_rows').select('loss_kg, loss_pct').eq('serial', serialArg).maybeSingle()
       if (error) throw new Error(`yield_rows select: ${error.message}`)
       return data
     }, subxonSerial)
-    expect(yieldRow.loss_kg).toBe(400)
-    expect(yieldRow.loss_pct).toBe(8.0)
+    expect(yieldRow).toBeNull()
   }
 
   // --- Confirm availability directly (SPEC.md §8 "one derived truth, all consumers") ---

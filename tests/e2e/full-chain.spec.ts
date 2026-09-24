@@ -422,10 +422,11 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await chiqimSelects.nth(2).selectOption({ label: 'Kalibr 6' })
   // §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
   // dispatch: FIFO cascade, consumption table"): no more picker -- calibre
-  // + declared net kg + declared tara kg only. Which specific pallet(s)
-  // this draws from is decided by FIFO at Ombor's finalize click, not here.
+  // + declared net kg only. Which specific pallet(s) this draws from is
+  // decided by FIFO at Ombor's finalize click, not here. No tara field
+  // (2026-08-29, Prompt 11, DECISIONS.md "Menejer CHIQIM: quantity-only
+  // entry, no tara"; column dropped in 0103) -- box mass is Ombor's entry.
   await page.getByPlaceholder('Sof miqdor (kg)').fill('4600')
-  await page.getByPlaceholder('Tara (kg)').fill('0')
   await page.getByRole('button', { name: 'Saqlash' }).click()
   await expect(page.getByText('Subxon · Kalibr 6')).toBeVisible()
 

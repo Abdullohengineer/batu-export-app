@@ -4,17 +4,19 @@ Rezka is built in four prompts. Design audit: `docs/REZKA-AUDIT.md` (its wrong-p
 authoritative over the original brief). Rules: `docs/SPEC.md` §5.R. Decisions:
 `docs/decisions/0219`–`0223`.
 
-## Prompt 1 — data layer, blockers, regressions (branch `rezka-prompt-1`)
+## Prompt 1 — data layer, blockers, regressions (branch `rezka-prompt-1`) — COMPLETE
 
-**Status:** code + docs committed; migrations `0141`–`0143` **applied to live on 2026-09-24**
-(schema_migrations versions `20260924051834`, `20260924052123`, `20260924052503`; stored
-statements md5-identical to the committed files). Post-apply: all 11 live baselines
-unchanged apart from the new keys, which are all 0; Ledger C re-verified live in a
-ROLLBACK run (`docs/decisions/0222`).
+**Status: complete; merging to `main` via PR** (`main` rejects direct pushes). Migrations
+`0141`–`0143` **applied to live on 2026-09-24** (schema_migrations versions
+`20260924051834`, `20260924052123`, `20260924052503`; stored statements md5-identical to the
+committed files). Post-apply: all 11 live baselines unchanged apart from the new keys, which
+are all 0; Ledger C re-verified live in a ROLLBACK run (`docs/decisions/0222`).
 
-**Test 6 pending, run locally:** `full-chain.spec.ts` needs `.env.test`, which the cloud
-container used for Prompt 1 does not have. The product owner runs it on their machine, then
-opens the PR for `rezka-prompt-1` (not opened by the agent).
+**Test 6 passed:** `full-chain.spec.ts`, 1 passed (1.2m) on `b36918d`, run locally by the
+product owner. Getting there needed three spec-only fixes, all drift that predates Prompt 1
+(no app change): Ombor icon-nav link names (one-word labels since 2026-08-15),
+`yield_rows` has no row for an open serial (0101, 2026-08-29), and no Menejer CHIQIM tara
+input (Prompt 11, 2026-08-29).
 
 **Built**
 - `kirim_lines.process` (moyka/rezka) + `enforce_serial_process` guard on moyka_sends /
@@ -51,6 +53,21 @@ Frontend:
   Rezka serials in the Moyka badge.
 - `OmborMoykaTab` Window 1 list (built from the same hook) — Prompt 2's Moyka/Rezka pill
   must split it by `process`.
+
+## E2E test follow-ups (found while getting test 6 green)
+- Update the stale Ombor link names (`Moykaga Chiqarish` / `Tayyor Mahsulot` / `Skladga
+  KIRIM` / `Skladdan CHIQIM` → `Moykaga` / `Tayyor` / `KIRIM` / `CHIQIM`, `exact: true`) in
+  `tests/e2e/lab-packing-hard-gate.spec.ts`, `lab-relocation-loss-verification.spec.ts` and
+  `path-e-multi-cycle-residual-reprocess.spec.ts` — same drift `full-chain.spec.ts` had.
+  They may carry the other two drifts as well (`yield_rows` open-serial rows, CHIQIM tara).
+- Delete `tests/e2e/chiqim-undo-scan.spec.ts`: it tests the scan-to-load flow whose
+  `chiqimScan.ts` was removed with the 0087–0092 FIFO dispatch.
+- `full-chain.spec.ts` breaks two CLAUDE.md testing rules: it uses real-looking plates
+  (`uniqueRealLookingPlate()`), not the `TEST-` prefix, and its `afterEach` teardown
+  (`tests/e2e/helpers/teardown.ts`) **hard-deletes** its chain instead of voiding it. The
+  plates were chosen deliberately (several views exclude `TEST-%` plates, so a `TEST-` run
+  would be invisible to what it asserts), so fixing it needs a design decision, e.g. a
+  dedicated test-owner filter instead of plate prefixes. Not changed.
 
 ## Notes for the next prompts
 - **Prompt 2 (Ombor):** Tashqi send = `ensure_open_rezka_cycle` + a `rezka_sends` insert

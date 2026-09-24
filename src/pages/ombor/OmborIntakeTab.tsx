@@ -22,6 +22,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { RezkaBadge } from '../../components/ui/RezkaBadge'
 import { FormField, TextInput } from '../../components/ui/FormField'
 
 // Tara correction (2026-08-15) -- tara is the only figure Ombor enters
@@ -214,7 +215,13 @@ export function OmborIntakeTab() {
   // since). Falls back to 0 (nothing sent) if a serial is somehow missing
   // from moykaSerials — defensive only, should not happen since
   // useMoykaSerials fetches every storage_intake row unfiltered.
-  const sentBySerial = new Map(moykaSerials.map((s) => [s.serial, s.sent]))
+  //
+  // Rezka (§5.R, Rezka Prompt 2): a process='rezka' serial's exit is
+  // rezka_sends, not moyka_sends -- its "sent" here is rezkaSent, so a Tashqi
+  // Rezka truck leaves this window once it has all gone to Rezka, and is not
+  // counted as awaiting a Moyka send meanwhile.
+  const sentBySerial = new Map(moykaSerials.map((s) => [s.serial, s.process === 'rezka' ? s.rezkaSent : s.sent]))
+  const rezkaSerials = new Set(moykaSerials.filter((s) => s.process === 'rezka').map((s) => s.serial))
   // Newest-first by confirmed_at (DECISIONS "History list ordering") — the
   // underlying lines aren't reliably ordered (useIntakeLines builds them by
   // mapping over kirim_lines, which has no .order(), not over the
@@ -343,6 +350,7 @@ export function OmborIntakeTab() {
                   <div className="flex items-center gap-2">
                     <SerialChip variant="emphasized">{line.serial}</SerialChip>
                     <PartiyaBadge partiyaNo={line.partiyaNo} typeName={typeName(line.type_id)} />
+                    {rezkaSerials.has(line.serial) && <RezkaBadge provenance="tashqi" />}
                     <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                       {ownerName(line.owner_id)} · {typeName(line.type_id)}
                     </span>

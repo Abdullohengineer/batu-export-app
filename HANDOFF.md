@@ -2,7 +2,7 @@
 
 Rezka is built in four prompts. Design audit: `docs/REZKA-AUDIT.md` (its wrong-premises list is
 authoritative over the original brief). Rules: `docs/SPEC.md` §5.R. Decisions:
-`docs/decisions/0219`–`0223`.
+`docs/decisions/0219`–`0224`.
 
 ## Prompt 1 — data layer, blockers, regressions (branch `rezka-prompt-1`) — COMPLETE
 
@@ -35,7 +35,45 @@ input (Prompt 11, 2026-08-29).
   `process` (Moyka picker filters it; Xom raw pool keeps it); `isInRezka`,
   `computeRezkaLossDisplay`; `FinishedReceiptForm` `rezka` prop.
 
-## Reported, not patched — must also exclude / handle `process='rezka'` (for Prompts 2/3)
+## Prompt 2 — Ombor sections 2/3 with a Moyka/Rezka pill (branch `rezka-prompt-2`) — BUILT, NOT APPLIED
+
+**Status:** code complete on `rezka-prompt-2`; PR left for the product owner.
+- **Migration `0144` is NOT applied to live yet.** Its SQL was approved, and the ROLLBACK dry run
+  passed (`docs/decisions/0224`). Apply it only on the product owner's go.
+- Local checks: `tsc -b` clean, `oxlint` 2 old warnings, `node --test` 81/81,
+  `lint:rpc-wrapper` OK, build OK.
+
+**E2E — the product owner runs it locally, next to test 6:**
+`npx playwright test tests/e2e/rezka-ombor.spec.ts tests/e2e/full-chain.spec.ts`
+(needs `.env.test` including `SUPABASE_SERVICE_ROLE_KEY`, and `0144` applied first).
+- The spec uses the dedicated owner **TEST Rezka E2E** (created if missing) and TEST- plates.
+- It voids its pallets and closes its cycles afterwards. Nothing is deleted.
+- It could not run in the cloud container: there is no `.env.test`, and the proxy blocks
+  browser→Supabase.
+
+**Built**
+- `0144`:
+  - `rezka_kn_candidate_pallets` is the single Konditerka predicate, read by both
+    `send_kn_to_rezka` (rewritten) and `rezka_kn_available()` (the tile).
+  - Explicit Rezka exclusions in `yield_rows`, `wip_rows` and `lab_turnaround_avg`;
+    `classify_kirim_line_sulfur` rejects Rezka.
+- Pill (`ProcessPill`, persisted per tab):
+  - The Moyka bodies moved unchanged to `MoykaSendSection` / `MoykaReceiveSection`.
+  - The Rezka bodies are separate components.
+- Section 2 Rezka:
+  - Tashqaridan olish / Ichkaridan olish tiles.
+  - Window 2 "Rezkada" with signed Rezkada, badge, and Ichki parent barcode2s.
+- Section 3 Rezka:
+  - No-lab, no-print Standard receive.
+  - Window 2 with Yakunlash at any residual; the confirmation reads "Ortiqcha +X kg" on a gain.
+- `RezkaBadge`; combined nav badges; `OmborIntakeTab` Window 2 reads `rezkaSent` for Rezka.
+- `check-rpc-wrapper` accepts `run(supabase.from(...))` (it had rejected its own pattern).
+
+**Resolved from the Prompt 1 "reported, not patched" list:**
+- all four SQL items;
+- `OmborIntakeTab`, `OmborHome` badges, and the `OmborMoykaTab` Window 1 split.
+
+## Reported, not patched — must also exclude / handle `process='rezka'` (for Prompts 2/3) — ✅ all resolved in Prompt 2 (`0144` + frontend)
 
 SQL (each needs its origin-filter category stated when touched — CLAUDE.md):
 - `classify_kirim_line_sulfur` — Laborator sulfur classification; a Rezka line has no lab.

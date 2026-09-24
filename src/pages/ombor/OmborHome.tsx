@@ -5,6 +5,7 @@ import { KirimIcon, ChiqimIcon, MoykaIcon, TayyorIcon, HisobotlarIcon } from './
 import { useIntakeLines } from '../../lib/useIntakeLines'
 import { useMoykaSerials } from '../../lib/useMoykaSerials'
 import { useMoykaOutput } from '../../lib/useMoykaOutput'
+import { useRezkaOutput } from '../../lib/useRezkaOutput'
 import { useOmborChiqimRequests } from '../../lib/useOmborChiqimRequests'
 import { hasRawRemainder } from '../../lib/stageMembership'
 
@@ -46,6 +47,7 @@ export function OmborHome() {
   const { lines: intakeLines } = useIntakeLines()
   const { serials: moykaSerials } = useMoykaSerials()
   const { serials: inMoyka } = useMoykaOutput()
+  const { inRezka } = useRezkaOutput()
   const { open: openChiqim } = useOmborChiqimRequests()
 
   // "Items waiting" per section = that section's own Window 1 (the queue
@@ -76,14 +78,19 @@ export function OmborHome() {
       label: 'Moykaga',
       icon: <MoykaIcon />,
       tone: 'moyka',
-      count: moykaSerials.filter((s) => hasRawRemainder(s.inputKg, s.sent)).length,
+      // Combined Moyka + Rezka (§5.R, Rezka Prompt 2): each process counted
+      // by its own tile's predicate -- Moyka's hasRawRemainder, Rezka's
+      // Tashqi picker `available > 0` (TashqiToRezkaForm).
+      count:
+        moykaSerials.filter((s) => s.process !== 'rezka' && hasRawRemainder(s.inputKg, s.sent)).length +
+        moykaSerials.filter((s) => s.process === 'rezka' && s.available > 0).length,
     },
     {
       to: '/ombor/tayyor',
       label: 'Tayyor',
       icon: <TayyorIcon />,
       tone: 'moyka',
-      count: inMoyka.length,
+      count: inMoyka.length + inRezka.length, // combined: isInMoyka + isInRezka
     },
     {
       to: '/ombor/chiqim',

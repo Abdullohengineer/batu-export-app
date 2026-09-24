@@ -61,8 +61,11 @@ const ALLOWLIST = new Set([
   'src/pages/ombor/OldStockToMoykaForm.tsx',
   'src/pages/ombor/OmborChiqimTab.tsx',
   'src/pages/ombor/OmborIntakeTab.tsx',
-  'src/pages/ombor/OmborMoykaTab.tsx',
-  'src/pages/ombor/OmborTayyorTab.tsx',
+  // Renamed 2026-09-24 (Rezka Prompt 2, git mv, body unchanged): these two
+  // were OmborMoykaTab.tsx / OmborTayyorTab.tsx, which are now raw-call-free
+  // pill wrappers. A move, not growth -- allowlist size unchanged.
+  'src/pages/ombor/MoykaReceiveSection.tsx',
+  'src/pages/ombor/MoykaSendSection.tsx',
   'src/pages/qorovul/QorovulChiqimTab.tsx',
   'src/pages/qorovul/QorovulKirimTab.tsx',
   'src/pages/reports/ChiqimDispatchRowDetail.tsx',
@@ -73,6 +76,15 @@ const ALLOWLIST = new Set([
 const EXEMPT = new Set(['src/lib/rpc.ts', 'src/lib/supabase.ts'])
 
 const RAW_CALL = /supabase\.rpc\(|supabase\.from\(/
+// A builder passed straight into run() -- `run(supabase.from(...)...)`, the
+// exact shape rpc.ts documents for a chained query -- IS the wrapper, not a
+// raw call site; strip those before testing (Rezka Prompt 2, 2026-09-24:
+// before this, the check rejected the pattern its own wrapper prescribes,
+// so no new file could use run() on a .from() chain at all).
+const WRAPPED_CALL = /\brun(?:<[^>]*>)?\(\s*supabase\.(?:rpc|from)\(/g
+function hasRawCall(content) {
+  return RAW_CALL.test(content.replace(WRAPPED_CALL, 'run('))
+}
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -96,7 +108,7 @@ for (const file of files) {
   const rel = relative(ROOT, file).replaceAll('\\', '/')
   if (EXEMPT.has(rel)) continue
   const content = readFileSync(file, 'utf8')
-  const hasRaw = RAW_CALL.test(content)
+  const hasRaw = hasRawCall(content)
   if (hasRaw && !ALLOWLIST.has(rel)) violations.push(rel)
 }
 
@@ -108,7 +120,7 @@ for (const rel of ALLOWLIST) {
   const full = filesByRel.get(rel)
   if (!full) continue // file moved/deleted -- not this script's job to catch
   const content = readFileSync(full, 'utf8')
-  if (!RAW_CALL.test(content)) staleAllowlistEntries.push(rel)
+  if (!hasRawCall(content)) staleAllowlistEntries.push(rel)
 }
 
 if (staleAllowlistEntries.length > 0) {

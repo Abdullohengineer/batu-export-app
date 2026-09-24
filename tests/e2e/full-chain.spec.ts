@@ -290,7 +290,7 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     // not a button-label change, for the same reason the superseded
     // per-row version of this block already documented (React relabels the
     // button synchronously, before the write reaches the network).
-    await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
+    await page.getByRole('link', { name: 'Moykaga', exact: true }).click()
     await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
     const chip = page.getByRole('button', { name: new RegExp(`^${subxonSerial}\\b`) })
     await expect(chip).toBeVisible({ timeout: 20000 })
@@ -354,7 +354,7 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     await page.getByRole('button', { name: 'Chiqish' }).click()
     await page.waitForURL('**/login')
     await loginAs(page, 'OMBOR')
-    await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+    await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Moykadan qabul qilish' })).toBeVisible({ timeout: 20000 })
     await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
     const chip = page.getByRole('button', { name: new RegExp(`^${subxonSerial}\\b`) })
@@ -376,8 +376,8 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
     // live figure for it: (5000 - 4600) / 5000 = 8.0% — against Subxon's
     // own 5,000kg intake figure, never the truck's 5,700kg gate net
     // (multi-line, §2.16.1).
-    await page.getByRole('link', { name: 'Skladga KIRIM' }).click()
-    await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+    await page.getByRole('link', { name: 'KIRIM', exact: true }).click()
+    await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Moykadan qabul qilish' })).toBeVisible({ timeout: 20000 })
     const yieldRow = await page.evaluate(async (serialArg) => {
       const w = window as unknown as { supabase: { from: (t: string) => any } }
@@ -460,7 +460,7 @@ test('KIRIM (sulfured + natural lines) -> gate -> intake -> Moyka -> lab -> CHIQ
   await page.getByRole('button', { name: 'Chiqish' }).click()
   await page.waitForURL('**/login')
   await loginAs(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Skladdan CHIQIM' }).click()
+  await page.getByRole('link', { name: 'CHIQIM', exact: true }).click()
   {
     const omborW1 = page.getByRole('heading', { name: '1 · Yuklashga tayyor — moshina keldi' }).locator('xpath=following-sibling::div[1]')
     const omborRequest = omborW1.locator('div.rounded-md.border.border-slate-200.p-3', { hasText: PLATE_OUT })

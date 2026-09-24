@@ -89,6 +89,10 @@ export function useLaboratorKirim() {
         supabase
           .from('kirim_lines')
           .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no')
+          // Rezka lines never enter any Laborator queue (Rezka has no lab,
+          // SPEC.md "Rezka"). A process='rezka' delivery line is otherwise a
+          // real truck that passes the origin='delivery' allowlist below.
+          .neq('process', 'rezka')
           .abortSignal(signal),
         supabase.from('storage_intake').select('serial, actual_qty').abortSignal(signal),
         supabase.from('gate_weighings').select('order_id, gruzheny_kg').eq('dir', 'kirim').abortSignal(signal),

@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hasRawRemainder, isInMoyka } from './stageMembership.ts'
+import { hasRawRemainder, isInMoyka, isInRezka } from './stageMembership.ts'
 
 // §5.1 KIRIM Window 2 / §5.2 Moyka Window 1: raw remainder > 0.
 test('hasRawRemainder: untouched serial (nothing sent yet) has full remainder', () => {
@@ -76,4 +76,16 @@ test('fully packed and no raw remainder: neither predicate holds — left both p
   const sent = 5000
   assert.equal(hasRawRemainder(actualQty, sent), false)
   assert.equal(isInMoyka(sent, sent, null), false)
+})
+
+test('isInRezka: never sent is not in Rezka', () => {
+  assert.equal(isInRezka(0, 0, null), false)
+})
+
+test('isInRezka: over-received but still open stays in Rezka (more batches may come)', () => {
+  assert.equal(isInRezka(25, 30, null), true)
+})
+
+test('isInRezka: closed is never in Rezka, whatever the residual', () => {
+  assert.equal(isInRezka(25, 20, '2026-09-23T00:00:00Z'), false)
 })

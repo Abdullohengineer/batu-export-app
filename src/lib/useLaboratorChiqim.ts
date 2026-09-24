@@ -159,6 +159,10 @@ export function useLaboratorChiqim() {
           .from('kirim_lines')
           .select('serial, order_id, type_id, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no')
           .in('serial', serials)
+          // Structurally redundant (this queue is anchored on wash_cycles,
+          // which enforce_serial_process forbids for Rezka serials) but kept
+          // explicit, same reasoning as lab_turnaround_avg's origin filter.
+          .neq('process', 'rezka')
           .abortSignal(signal),
         supabase
           .from('lab_results')

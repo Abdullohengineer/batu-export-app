@@ -136,6 +136,23 @@ input (Prompt 11, 2026-08-29).
   - Needs a product decision.
 - **KIRIM raw has no void path.** A `rezka-menejer` run that fails between intake and test 2's
   dispatch can leave `TEST-` raw in Ombor's pickers and badges. No app path can clear it.
+- **Accepted raw has no void path, so any failed spec run strands `TEST-` raw in live queues**
+  (Ombor Moyka/Tashqi pickers, intake Window 2, the Moykaga badge, Laborator KIRIM, the Menejer
+  Xom pool). Needs either a `TEST-` filter on the Ombor/Laborator pickers or a void-raw RPC
+  restricted to `TEST-` plates. Hit on 2026-09-28: the failed `rezka-menejer` run left
+  `280926-009` (Moyka, 10 kg) and `280926-010` (Rezka, 30 kg).
+  - 010 was cleared through app flows as TEST Ombor: sent 30 kg, received 30 kg Standard
+    (auto-close), pallet voided.
+  - 009 was lab-tested Naturel as TEST Laborator; its 10 kg raw is still live, pending a
+    decision (see the next item).
+- **`hasRawRemainder` ignores raw dispatch (pre-existing).**
+  - The Moykaga badge and Ombor intake Window 2 use `hasRawRemainder(actual, moyka_sent)` for
+    Moyka serials.
+  - So a Moyka serial whose raw was dispatched on a Xom CHIQIM still shows "Qoldiq X kg" in
+    intake Window 2 and still counts in the badge. The Moyka picker (`available > 0`) correctly
+    drops it.
+  - Affects real serials, not just tests. `MoykaSendSection`'s header comment already
+    acknowledges the divergence.
 - Intake and gate history screens are not badged. `useIntakeHistory` now carries `process`,
   but the UI does not show it.
 

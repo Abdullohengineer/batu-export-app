@@ -88,7 +88,8 @@ async function standardAvailableKg(): Promise<number> {
       .select('available_kg')
       .eq('type_id', ctx.typeId!)
       .eq('calibre_id', ctx.standardId!)
-      .eq('is_old_stock', false),
+      .eq('is_old_stock', false)
+      .eq('owner_id', ctx.ownerId!), // 0148: availability is per client
     'Standard availability',
   )
   return rows.reduce((sum, r) => sum + Number(r.available_kg), 0)
@@ -415,7 +416,7 @@ test('3 · Kalibrlangan Kalibr 6 request is unchanged (created, then voided -- n
   test.setTimeout(90_000)
   const db = serviceClient()
   const k6Rows = await one(
-    db.from('finished_calibre_availability').select('available_kg').eq('type_id', ctx.typeId!).eq('calibre_id', ctx.k6Id!).eq('is_old_stock', false),
+    db.from('finished_calibre_availability').select('available_kg').eq('type_id', ctx.typeId!).eq('calibre_id', ctx.k6Id!).eq('is_old_stock', false).eq('owner_id', ctx.ownerId!),
     'K6 availability',
   )
   const k6Avail = Math.round(k6Rows.reduce((s, r) => s + Number(r.available_kg), 0))

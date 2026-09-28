@@ -211,11 +211,13 @@ export function OmborChiqimTab() {
   // Total-by-calibre availability (finished_calibre_availability) for a
   // finished/old_washed line's own type+calibre+isOldStock — the same soft-
   // warning source Menejer's own form reads.
-  function availableKgFor(line: ChiqimLine): number {
+  // Scoped to the request's own client (0148): the same pallets
+  // attribute_chiqim_line_fifo may draw from for this truck.
+  function availableKgFor(line: ChiqimLine, ownerId: string): number {
     if (!line.calibre_id) return 0
     const wantOldStock = line.line_kind === 'old_washed'
     const match = availabilityRows.find(
-      (a) => a.type_id === line.type_id && a.calibre_id === line.calibre_id && a.is_old_stock === wantOldStock,
+      (a) => a.owner_id === ownerId && a.type_id === line.type_id && a.calibre_id === line.calibre_id && a.is_old_stock === wantOldStock,
     )
     return match ? match.available_kg : 0
   }
@@ -697,7 +699,7 @@ export function OmborChiqimTab() {
                               const isOld = line.line_kind === 'old_washed'
                               const loaded = loadedKgFor(request.id, line.id)
                               const loadedNum = parseFloat(loaded) || 0
-                              const available = availableKgFor(line)
+                              const available = availableKgFor(line, request.owner_id)
                               const overAvailable = loadedNum > available
                               return (
                                 <Card key={line.id} padding="compact" tone={isOld ? 'pending' : 'neutral'}>

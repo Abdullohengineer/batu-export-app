@@ -158,10 +158,12 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
   // the two-level balance's TOTAL level; the per-parent-serial level is
   // reporting-only (passport), not something this form needs.
   function availableKg(row: LineRow): number {
-    if (!PALLET_KINDS.includes(row.kind) || !row.typeId || !row.calibreId) return 0
+    if (!PALLET_KINDS.includes(row.kind) || !ownerId || !row.typeId || !row.calibreId) return 0
     const wantOldStock = row.kind === 'old_washed'
+    // This client's own pallets only (0148) -- the same scope Ombor's FIFO
+    // draws from at finalize.
     const match = availabilityRows.find(
-      (a) => a.type_id === row.typeId && a.calibre_id === row.calibreId && a.is_old_stock === wantOldStock,
+      (a) => a.owner_id === ownerId && a.type_id === row.typeId && a.calibre_id === row.calibreId && a.is_old_stock === wantOldStock,
     )
     return match ? match.available_kg : 0
   }

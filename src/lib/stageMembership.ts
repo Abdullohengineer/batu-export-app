@@ -5,9 +5,18 @@
 // not two independently-written copies of the same rule.
 
 // §5.1 KIRIM Window 2 = §5.2 Moyka Window 1: a confirmed serial that still
-// has raw material sitting in storage, not yet sent to Moyka.
-export function hasRawRemainder(actualQty: number, sent: number): boolean {
-  return actualQty - sent > 0
+// has raw material sitting in storage.
+//
+// Post-Rezka cleanup item 3 (2026-09-28, docs/decisions/0229): the remainder
+// is useMoykaSerials' own `available` -- effective raw − moyka_sends −
+// raw dispatched (Xom CHIQIM) − rezka_sends, floored, 0 once an old-raw line
+// is closed out. It used to be `actualQty − moyka_sends` only, so a serial
+// whose raw left on a Xom truck stayed in Ombor intake Window 2 ("Qoldiq X
+// kg") and in the Moykaga badge while every picker (available > 0) had
+// already dropped it. One figure, computed once in the hook; both call
+// sites (OmborIntakeTab Window 2, OmborHome's Moykaga badge) pass the row.
+export function hasRawRemainder(serial: { available: number }): boolean {
+  return serial.available > 0
 }
 
 // §5.2 Moyka Window 2 = §5.3 Tayyor Window 1 (section mirroring): a serial

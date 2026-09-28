@@ -22,11 +22,9 @@ import { todayInTashkent } from '../../lib/dateRange'
 //   (see DECISIONS.md same date): the old per-serial-row list is gone,
 //   replaced by two dashed tiles (Yangi zaxira / Eski zaxira), only one
 //   expanded at a time. The Yangi zaxira tile's chip list is scoped to
-//   `available > 0` (NewStockToMoykaForm), not `hasRawRemainder` — this is
-//   a deliberate deviation from §5.1's own Window 2 predicate (`available`
-//   also nets raw-dispatch/rezka draws, which `hasRawRemainder` ignores),
-//   so this window's own membership no longer mirrors §5.1 W2 byte-for-byte
-//   the way section mirroring otherwise holds across every other boundary.
+//   `available > 0` (NewStockToMoykaForm). Since post-Rezka cleanup item 3
+//   (2026-09-28) that IS §5.1 Window 2's own predicate (hasRawRemainder =
+//   available > 0), so section mirroring holds here again byte-for-byte.
 //   Row-level detail (send history, Qaydlar, the provisional-variance
 //   flag) dropped with the old row — not shown anywhere in this redesign.
 // - Window 2 "Moykada" = §5.3 Tayyor's Window 1: reuses useMoykaOutput's

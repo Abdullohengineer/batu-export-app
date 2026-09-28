@@ -216,11 +216,12 @@ export function OmborIntakeTab() {
   // from moykaSerials — defensive only, should not happen since
   // useMoykaSerials fetches every storage_intake row unfiltered.
   //
-  // Rezka (§5.R, Rezka Prompt 2): a process='rezka' serial's exit is
-  // rezka_sends, not moyka_sends -- its "sent" here is rezkaSent, so a Tashqi
-  // Rezka truck leaves this window once it has all gone to Rezka, and is not
-  // counted as awaiting a Moyka send meanwhile.
-  const sentBySerial = new Map(moykaSerials.map((s) => [s.serial, s.process === 'rezka' ? s.rezkaSent : s.sent]))
+  // Post-Rezka cleanup item 3 (2026-09-28): membership is the hook's own
+  // `available` (hasRawRemainder), which nets every exit -- moyka_sends,
+  // rezka_sends (a Tashqi Rezka truck, Rezka Prompt 2) and raw dispatch on a
+  // Xom CHIQIM truck (previously missed: such a serial kept showing "Qoldiq
+  // X kg" here after its raw had left the building).
+  const moykaSerialBySerial = new Map(moykaSerials.map((s) => [s.serial, s]))
   // Newest-first by confirmed_at (DECISIONS "History list ordering") — the
   // underlying lines aren't reliably ordered (useIntakeLines builds them by
   // mapping over kirim_lines, which has no .order(), not over the
@@ -229,8 +230,10 @@ export function OmborIntakeTab() {
   const received = sortByDateDesc(
     lines.filter((l): l is IntakeLine & { intake: IntakeRecord } => {
       if (l.intake === null) return false
-      const eqValue = effectiveQty.get(l.serial)?.value ?? l.intake.actual_qty
-      return hasRawRemainder(eqValue, sentBySerial.get(l.serial) ?? 0)
+      const row = moykaSerialBySerial.get(l.serial)
+      // Defensive only (useMoykaSerials reads every storage_intake row): a
+      // serial missing from the hook stays visible rather than vanishing.
+      return row ? hasRawRemainder(row) : true
     }),
     (l) => l.intake.confirmed_at,
   )
@@ -342,7 +345,9 @@ export function OmborIntakeTab() {
           {received.map((line) => {
             const eq = effectiveQty.get(line.serial)
             const eqValue = eq?.value ?? line.intake.actual_qty
-            const remaining = Math.max(0, eqValue - (sentBySerial.get(line.serial) ?? 0))
+            // The same `available` that decides membership above (item 3):
+            // the shown "Qoldiq" and the window can never disagree.
+            const remaining = moykaSerialBySerial.get(line.serial)?.available ?? eqValue
             return (
             <Card key={line.serial} padding="compact">
               <div className="flex items-start justify-between gap-3">

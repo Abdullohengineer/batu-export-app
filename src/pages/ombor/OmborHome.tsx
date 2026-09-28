@@ -78,12 +78,11 @@ export function OmborHome() {
       label: 'Moykaga',
       icon: <MoykaIcon />,
       tone: 'moyka',
-      // Combined Moyka + Rezka (§5.R, Rezka Prompt 2): each process counted
-      // by its own tile's predicate -- Moyka's hasRawRemainder, Rezka's
-      // Tashqi picker `available > 0` (TashqiToRezkaForm).
-      count:
-        moykaSerials.filter((s) => s.process !== 'rezka' && hasRawRemainder(s.inputKg, s.sent)).length +
-        moykaSerials.filter((s) => s.process === 'rezka' && s.available > 0).length,
+      // Combined Moyka + Rezka (§5.R, Rezka Prompt 2), one predicate for both
+      // since post-Rezka cleanup item 3: hasRawRemainder is the hook's
+      // `available > 0`, which nets moyka_sends, rezka_sends and raw dispatch
+      // -- exactly what each process's own picker already offers.
+      count: moykaSerials.filter(hasRawRemainder).length,
     },
     {
       to: '/ombor/tayyor',

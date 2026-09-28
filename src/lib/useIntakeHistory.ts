@@ -59,6 +59,7 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
         .from('kirim_lines')
         .select('serial, order_id, type_id, declared_qty, partiya_no, process')
         .in('serial', serials)
+        .is('voided_at', null) // history twin of useIntakeLines (0152)
         .abortSignal(signal)
       if (kLinesErr) throw new Error(kLinesErr.message)
 

@@ -205,3 +205,18 @@ export async function voidPalletsWithStock(db: SupabaseClient, serials: string[]
     .is('voided_at', null)
   if (voidError) throw new Error(`void pallets: ${voidError.message}`)
 }
+
+// Void the run's TEST- KIRIM lines (post-Rezka cleanup item 6, migration
+// 0152, docs/decisions/0232). Accepted raw had no void path, so a run that
+// failed between intake and dispatch stranded TEST- raw in Ombor's pickers,
+// intake Window 2, the Moykaga badge, Laborator KIRIM and Menejer's Xom pool.
+// void_test_kirim_line refuses anything that is not a TEST- plate and is
+// idempotent, so calling it for every serial the run created is safe whether
+// the run passed or failed. Never a DELETE (SPEC §2.15); finished-stage
+// screens are unaffected (they do not filter on voided_at).
+export async function voidTestKirimLines(db: SupabaseClient, serials: string[]): Promise<void> {
+  for (const serial of serials) {
+    const { error } = await db.rpc('void_test_kirim_line', { p_serial: serial })
+    if (error) throw new Error(`void_test_kirim_line(${serial}): ${error.message}`)
+  }
+}

@@ -76,7 +76,8 @@ export function useIntakeLines() {
           .select('order_id, order_date, plate, driver, owner_id, status')
           .eq('origin', 'delivery')
           .order('created_at', { ascending: false }),
-        supabase.from('kirim_lines').select('serial, order_id, type_id, declared_qty, partiya_no, process'),
+        // Voided TEST lines (0152) never appear in intake Windows 1-2.
+        supabase.from('kirim_lines').select('serial, order_id, type_id, declared_qty, partiya_no, process').is('voided_at', null),
         supabase
           .from('gate_weighings')
           .select('order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')

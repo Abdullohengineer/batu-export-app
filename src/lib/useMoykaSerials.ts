@@ -132,7 +132,9 @@ export function useMoykaSerials() {
       // pass them straight through instead of making fetchEffectiveQty
       // re-fetch both tables again, unfiltered, a second time.
       const [{ data: kLines }, effectiveQtyBySerial] = await Promise.all([
-        supabase.from('kirim_lines').select('serial, order_id, type_id, partiya_no, process').in('serial', serialList),
+        // Voided TEST lines (void_test_kirim_line, 0152) leave every raw-stage
+        // queue: no line -> the intake row is skipped below.
+        supabase.from('kirim_lines').select('serial, order_id, type_id, partiya_no, process').in('serial', serialList).is('voided_at', null),
         fetchEffectiveQty(serialList, materialVariancePct, { intakes: intakes ?? [], sends: sends ?? [] }),
       ])
       const orderIds = [...new Set((kLines ?? []).map((l) => l.order_id))]

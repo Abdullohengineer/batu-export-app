@@ -1,5 +1,5 @@
 -- Debris purge: order 9B1ZK01 (Boysun Quritilgan Mevalar), project qohoqbapevrcjqxbstxi.
--- NOT YET APPLIED -- awaiting approval.
+-- APPLIED 2026-09-29 (approved; all guards passed).
 -- Decision: docs/decisions/0235-2026-09-29-boysun-9b1zk01-debris-purge.md
 -- Backup: docs/data-corrections/2026-09-29_boysun_9B1ZK01_purge_backup.sql
 --

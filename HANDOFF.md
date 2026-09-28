@@ -170,8 +170,8 @@ Carried (not in this prompt's scope — each still open):
 - Same type + same process on one truck collide in the KIRIM save-panel serial link.
 - `check-rpc-wrapper` misses multi-line `supabase\n  .from(` chains (`KirimForm.tsx`).
 - Client report / portal Rezka block.
-- Voided-departed TEST pallet `PLT-280926-024-RKN-1` (30 kg; void is one-way; its serial's
-  Olib ketilgan reads 0). TEST data only.
+- ~~Voided-departed TEST pallet `PLT-280926-024-RKN-1`~~ — removed by the 2026-09-29 TEST
+  purge (`docs/decisions/0234`).
 - Hisobot Excel export writes Partiya blank (no `'partiya'` case in `reportExport.ts`); export
   uses draft filters while totals use applied ones. Logged only.
 - TEST- filter for Ombor section 3 Window 2 (Rezka).
@@ -180,6 +180,13 @@ Carried (not in this prompt's scope — each still open):
   hard-delete teardown (TEST-plate design excluded from this prompt).
 - Client passport path still 1.3–7.6 s under RLS (client portal never opens one). `0227`.
 - `.env.test`: `TEST_RAHBAR_PASSWORD` needs correcting before the Rahbar specs can log in.
+- **`rahbar_dashboard_ledger` finished section counts TEST pallets** (found by the 2026-09-29
+  TEST purge, `docs/decisions/0234`). `0151` added `plate not like 'TEST-%'` to the raw and
+  Moyka event CTEs only; `finished.producedKg` / `finished.dispatchedKg` and
+  `byCalibreType.dispatched` still include TEST pallets. Purging 4 × 30 kg TEST Rezka pallets
+  moved Yangi/Hammasi produced and dispatched by −120 kg each. 0 kg live now (no TEST data
+  left), but the next e2e run leaks again. Fix: the same TEST-plate exclusion on the finished
+  CTEs (checked text edit, as 0150/0151).
 
 ## Prompt 3 follow-ups (logged, not fixed)
 - **Kalibrlangan doesn't filter calibres by the type's category.** The CHIQIM calibre select

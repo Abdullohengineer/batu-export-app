@@ -1,4 +1,4 @@
--- TEST data purge, project qohoqbapevrcjqxbstxi. NOT YET APPLIED -- awaiting approval.
+-- TEST data purge, project qohoqbapevrcjqxbstxi. APPLIED 2026-09-29 (approved; all guards passed).
 -- Decision: docs/decisions/0234-2026-09-29-test-data-purge.md
 -- Backup (restores every row below): docs/data-corrections/2026-09-29_test_purge_backup.sql
 --

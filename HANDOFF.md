@@ -151,58 +151,35 @@ input (Prompt 11, 2026-08-29).
   - Needs its own investigation: per-serial decomposition of the residual, starting from lines
     where `sent + dispatched > effective_qty`. See `docs/decisions/0231`.
 
-## Post-Rezka cleanup prompt (collected; none started)
-1. **`get_serial_passport` is slow under RLS — production risk (pre-existing `_core`).** Found
-   2026-09-28 while fixing `rezka-hisobot` test 1 (17 concurrent passports → 8 hit the 12 s
-   `authenticator` statement timeout; the test now calls them sequentially).
-   - As an authenticated Rahbar: `get_serial_passport_core` 762–1,591 ms warm, with single-call
-     spikes of 6.8 s and 14 s (no concurrency). As `service_role`/`postgres` (bypass RLS):
-     45–60 ms. The 0146 wrapper adds about 0.1–0.3 s.
-   - Through PostgREST (`pg_stat_statements`, 2026-09-28):
+## Post-Rezka cleanup prompt (branch `post-rezka-cleanup`) — DONE, list cleared
+Migrations 0147–0152 applied (stored md5s match; see each decision). Resolved:
+- ~~1. Passport / snapshot / ledger slow under RLS~~ → `0147` + `0149` (staff definer router;
+  ledger lists ordered). `docs/decisions/0227`.
+- ~~2. Owner-scoped FIFO and availability~~ → `0148`. `0228`.
+- ~~3. `hasRawRemainder` ignores raw dispatch~~ → frontend, nets every exit. `0229`.
+- ~~4. KIRIM raw void path~~ → `0152` `void_test_kirim_line` + six not-voided readers; 8 stranded
+  TEST KN serials voided. `0232`.
+- ~~10. Ledger reads Rezka raw as Oddiy raw~~ → `0150` (+ `0151` drops TEST from the event CTEs).
+  `0231`.
+- ~~11. Deep-link hard load bounces to home~~ → `useProfile` `loadedFor`. `0230`.
+- ~~13 (part). Stale Ombor link names in three specs; `chiqim-undo-scan` deletion~~ → `0233`
+  (also: `lab-relocation` now closes via Yakunlash before tracing loss).
 
-     | RPC | calls | mean ms | min ms | max ms |
-     |---|---|---|---|---|
-     | `rahbar_stock_snapshot` | 78 | 1,465 | 285 | 11,542 |
-     | `rahbar_dashboard_ledger` | 76 | 1,495 | 511 | 9,017 |
-     | `get_serial_passport` | 36 | 1,729 | 191 | 7,874 |
-     | `report_totals` | 107 | 668 | 80 | 3,820 |
-     | `report_query_page` | 13 | 612 | 6 | 2,836 |
-     | `report_query_page_rows` | 100 | 221 | 3 | 1,121 |
-     | `report_page_enrich` | 70 | 212 | 39 | 1,027 |
-
-     Caps: 12 s for everything except the four report RPCs (5 s, `pgrst_statement_cap`).
-     Figures include test-run bursts; they are cumulative since the last stats reset.
-   - Not re-planning: a PL/pgSQL copy of the `_core` body returned an identical result and was
-     no faster (1.0–1.8 s warm). The cost is executing under RLS — the `client_read_own_*`
-     policy branches expand into hundreds of InitPlans per statement (the v1.58 / `0202` class
-     of problem, never fixed for the passport).
-   - Next: an authenticated `EXPLAIN ANALYZE` of the `_core` body to find the hot policy; then
-     either a `security definer` passport with an explicit role/owner guard, or the `0130`
-     `(select my_role())` rewrite extended to the passport's tables. Snapshot and ledger maxes
-     say the same check is due there. See `0226` §10.
-2. **Owner-scoped FIFO and availability** — `attribute_chiqim_line_fifo` /
-   `finished_calibre_availability` match type + calibre only (product decision needed).
-3. **`hasRawRemainder` ignores raw dispatch** — Moykaga badge and intake Window 2.
-4. **KIRIM raw void path** — no way to clear stranded `TEST-` (or mistaken) raw.
-5. **Kalibrlangan calibre list not filtered by the type's category.**
-6. **Same type + same process on one truck collide in the KIRIM save-panel serial link.**
-7. **`check-rpc-wrapper` misses multi-line `supabase\n  .from(` chains** (`KirimForm.tsx`).
-8. **Client report / portal Rezka block** — out of scope for Prompt 4.
-9. **Voided-departed TEST pallet `PLT-280926-024-RKN-1`** (30 kg, departed, voided by the old
-   cleanup before the fix) — TEST data, void is one-way; its serial's Olib ketilgan reads 0.
-10. **`rahbar_dashboard_ledger` reads Rezka raw as Oddiy raw** (origin filter only;
-   `receivedKg`/`closingKg` include Tashqi Rezka raw that the snapshot moved out of `rawKg`;
-   `byCalibreType.dispatched` carries Standard — frontend now drops it from the bars). 0 kg live.
-11. **Deep-link hard load bounces to the role's home** (`useProfile` loading lags the session
-    by one render → `RoleRoute` → `/login` → home). Refreshing `/menejer/hisobot` lands on
-    KIRIM. Breaks every spec that `page.goto`s a deep route after login (`hisobot-moykadan`,
-    `hisobot-filter-debounce-consistency`, `moykada-yoqotish-invariant`). Fix: derive profile
-    loading from `profile?.id !== session.user.id`. See `0226` §10.
-12. Pre-existing, found in passing: Hisobot Excel export writes Partiya blank (no `'partiya'`
-    case in `reportExport.ts`); export uses draft filters while totals use applied ones.
-13. Carried from below: TEST- filter for Ombor section 3 Window 2 (Rezka); `fixtures.ts`
-    outdated `wash_cycles` shape; stale Ombor link names in three specs; `chiqim-undo-scan`
-    deletion; `full-chain` plates/hard-delete design.
+Carried (not in this prompt's scope — each still open):
+- Kalibrlangan calibre list not filtered by the type's category.
+- Same type + same process on one truck collide in the KIRIM save-panel serial link.
+- `check-rpc-wrapper` misses multi-line `supabase\n  .from(` chains (`KirimForm.tsx`).
+- Client report / portal Rezka block.
+- Voided-departed TEST pallet `PLT-280926-024-RKN-1` (30 kg; void is one-way; its serial's
+  Olib ketilgan reads 0). TEST data only.
+- Hisobot Excel export writes Partiya blank (no `'partiya'` case in `reportExport.ts`); export
+  uses draft filters while totals use applied ones. Logged only.
+- TEST- filter for Ombor section 3 Window 2 (Rezka).
+- `helpers/fixtures.ts`: `window.supabase` cast lacks `auth`, outdated `wash_cycles` insert shape.
+- `full-chain` and `lab-relocation-loss-verification` use `uniqueRealLookingPlate()` with a
+  hard-delete teardown (TEST-plate design excluded from this prompt).
+- Client passport path still 1.3–7.6 s under RLS (client portal never opens one). `0227`.
+- `.env.test`: `TEST_RAHBAR_PASSWORD` needs correcting before the Rahbar specs can log in.
 
 ## Prompt 3 follow-ups (logged, not fixed)
 - **Kalibrlangan doesn't filter calibres by the type's category.** The CHIQIM calibre select

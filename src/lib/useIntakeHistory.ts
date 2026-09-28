@@ -57,7 +57,7 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
 
       const { data: kLines, error: kLinesErr } = await supabase
         .from('kirim_lines')
-        .select('serial, order_id, type_id, declared_qty, partiya_no')
+        .select('serial, order_id, type_id, declared_qty, partiya_no, process')
         .in('serial', serials)
         .abortSignal(signal)
       if (kLinesErr) throw new Error(kLinesErr.message)
@@ -106,6 +106,7 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
             type_id: line.type_id,
             partiyaNo: line.partiya_no,
             declared_qty: line.declared_qty,
+            process: line.process === 'rezka' ? 'rezka' : 'moyka',
             order_id: order.order_id,
             order_date: order.order_date,
             plate: order.plate,

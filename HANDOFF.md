@@ -2,7 +2,7 @@
 
 Rezka is built in four prompts. Design audit: `docs/REZKA-AUDIT.md` (its wrong-premises list is
 authoritative over the original brief). Rules: `docs/SPEC.md` §5.R. Decisions:
-`docs/decisions/0219`–`0224`.
+`docs/decisions/0219`–`0225`.
 
 ## Prompt 1 — data layer, blockers, regressions (branch `rezka-prompt-1`) — COMPLETE
 
@@ -80,6 +80,82 @@ input (Prompt 11, 2026-08-29).
 - all four SQL items;
 - `OmborIntakeTab`, `OmborHome` badges, and the `OmborMoykaTab` Window 1 split.
 
+## Prompt 3 — Menejer KIRIM process toggle + CHIQIM Rezka tab (branch `rezka-prompt-3`) — BUILT, NO SQL
+
+**Status:** code complete on `rezka-prompt-3`; the PR is left for the product owner.
+- **No migration.** FIFO and availability already key on exact `calibre_id`
+  (`docs/decisions/0225` §4).
+- Local checks: `tsc -b` clean, `oxlint` 2 old warnings, `node --test` 81/81,
+  `lint:rpc-wrapper` OK (41 files; `useAvailableFinishedStock.ts` left the allowlist), build OK.
+
+**E2E — the product owner runs these locally:**
+`npx playwright test tests/e2e/rezka-menejer.spec.ts tests/e2e/rezka-ombor.spec.ts tests/e2e/full-chain.spec.ts`
+- The new spec has three serial tests on "TEST Rezka E2E" with `TEST-` plates. It is designed to
+  leave no live remainder, and cleanup only voids.
+- It could not run in the cloud container: there is no `.env.test`, and the proxy blocks
+  browser→Supabase.
+- Test 2 aborts on purpose if any Standard stock other than its own is available for Subxon
+  (FIFO is not owner-scoped; see below).
+
+**Built**
+- KIRIM:
+  - A **Moyka | Rezka** toggle per line (not a `<select>`, so e2e `row.locator('select')` still
+    works). `process` is written in the line insert.
+  - Fixed at creation: there is no line edit path and Menejer has no UPDATE policy.
+  - The save panel links serials by type + process.
+- Rezka · Tashqi badge on:
+  - the KIRIM save panel;
+  - the Menejer KIRIM list, plus a read-only "Jarayon" line;
+  - the Qorovul gate card (per truck);
+  - Ombor intake Windows 1 and 2.
+- CHIQIM **Rezka** tab:
+  - Standard only, preselected from the type.
+  - Stored as an ordinary `finished` line.
+  - Same "Mavjud" and soft warning as Kalibrlangan.
+- The Kalibrlangan and Eski zaxira "Yuvilgan" calibre lists no longer offer `is_rezka_output`.
+  Before this they were completely unfiltered.
+- Xom badges Tashqi Rezka raw.
+- Plain "Rezka" badge on Rezka CHIQIM lines, on Ombor's card and in `ChiqimRequestDetail`.
+- `RezkaBadge` provenance is now optional.
+- `useFinishedCalibreAvailability` moved onto React Query (same query).
+
+## Prompt 3 follow-ups (logged, not fixed)
+- **Kalibrlangan doesn't filter calibres by the type's category.** The CHIQIM calibre select
+  lists every category's calibres; Prompt 3 only removed `is_rezka_output`.
+- **Two lines of the same type and the same process on one truck collide in the serial link**
+  on the KIRIM save panel. Matching is by type + process, so two Subxon-Moyka lines still show
+  the same serial on both rows. Display only; the DB rows are correct.
+- **`check-rpc-wrapper` misses call chains split across lines.** Its regex needs a literal
+  `supabase.from(`, so `supabase\n  .from(` passes unchecked. `KirimForm.tsx` has two such calls
+  and is not on the allowlist.
+- **FIFO and availability are not owner-scoped (found while reading, pre-existing, undocumented).**
+  - `attribute_chiqim_line_fifo` and `finished_calibre_availability` match on type + calibre
+    only.
+  - So Menejer's "Mavjud" counts every client's pallets, and Ombor's finalize can consume
+    another client's pallets of the same type and calibre.
+  - Needs a product decision.
+- **KIRIM raw has no void path.** A `rezka-menejer` run that fails between intake and test 2's
+  dispatch can leave `TEST-` raw in Ombor's pickers and badges. No app path can clear it.
+- **Accepted raw has no void path, so any failed spec run strands `TEST-` raw in live queues**
+  (Ombor Moyka/Tashqi pickers, intake Window 2, the Moykaga badge, Laborator KIRIM, the Menejer
+  Xom pool). Needs either a `TEST-` filter on the Ombor/Laborator pickers or a void-raw RPC
+  restricted to `TEST-` plates. Hit on 2026-09-28: the failed `rezka-menejer` run left
+  `280926-009` (Moyka, 10 kg) and `280926-010` (Rezka, 30 kg).
+  - 010 was cleared through app flows as TEST Ombor: sent 30 kg, received 30 kg Standard
+    (auto-close), pallet voided.
+  - 009 was lab-tested Naturel as TEST Laborator; its 10 kg raw is still live, pending a
+    decision (see the next item).
+- **`hasRawRemainder` ignores raw dispatch (pre-existing).**
+  - The Moykaga badge and Ombor intake Window 2 use `hasRawRemainder(actual, moyka_sent)` for
+    Moyka serials.
+  - So a Moyka serial whose raw was dispatched on a Xom CHIQIM still shows "Qoldiq X kg" in
+    intake Window 2 and still counts in the badge. The Moyka picker (`available > 0`) correctly
+    drops it.
+  - Affects real serials, not just tests. `MoykaSendSection`'s header comment already
+    acknowledges the divergence.
+- Intake and gate history screens are not badged. `useIntakeHistory` now carries `process`,
+  but the UI does not show it.
+
 ## Reported, not patched — must also exclude / handle `process='rezka'` (for Prompts 2/3) — ✅ all resolved in Prompt 2 (`0144` + frontend)
 
 SQL (each needs its origin-filter category stated when touched — CLAUDE.md):
@@ -132,9 +208,9 @@ Frontend:
   Window membership = `isInRezka`; loss = `computeRezkaLossDisplay`; Yakunlash =
   `close_rezka_cycle_serial`. No printing on the Rezka path. New hooks on React Query;
   writes via `src/lib/rpc.ts`.
-- **Prompt 3 (Menejer):** KIRIM per-line process select; CHIQIM Rezka tab = ordinary
+- ~~**Prompt 3 (Menejer):** KIRIM per-line process select; CHIQIM Rezka tab = ordinary
   `finished` line on the Standard calibre. Migrate `useAvailableFinishedStock` onto React
-  Query while there (`docs/decisions/0223`).
+  Query while there (`docs/decisions/0223`).~~ Done — see Prompt 3 above.
 - **Prompt 4 (Hisobot/dashboard/qoldig'i):** Rezka directions, Yangi/Eski/Rezka toggle,
   passport Rezka lines. `RahbarHome` `grandTotal` and the client panel mirror read the
   snapshot keys by name — `rezkaRawKg`/`rezkaKnKg` are new and currently unread; `byCalibre`

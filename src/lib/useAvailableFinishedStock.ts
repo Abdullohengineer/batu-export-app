@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { run } from './rpc'
+import { queryKeys } from './queryClient'
 
 export interface CalibreAvailability {
   type_id: string
@@ -7,6 +9,8 @@ export interface CalibreAvailability {
   is_old_stock: boolean
   available_kg: number
 }
+
+const EMPTY: CalibreAvailability[] = []
 
 // §5.4 FIFO dispatch (2026-08-28, see DECISIONS.md "CHIQIM quantity-based
 // dispatch: FIFO cascade, consumption table"): Menejer's feasibility hint
@@ -20,26 +24,23 @@ export interface CalibreAvailability {
 // stock" can still go stale between form-load and finalize (another
 // request claims the same stock first); attribute_chiqim_line_fifo's own
 // hard-fail-if-insufficient is the real guard for that race, not this hook.
+//
+// Rezka Prompt 3 (2026-09-28): on React Query now (docs/decisions/0223 and
+// 0225) -- same query, same columns, but deduped across ChiqimForm and
+// OmborChiqimTab, throws on error instead of rendering "0 kg mavjud", and
+// refreshed by invalidateReportData() after every CHIQIM write. Rows stay
+// per calibre_id: the Rezka tab and Kalibrlangan split by which calibres
+// they OFFER (ChiqimForm), not here -- Standard (RKN) and Konditerka (KN)
+// are different calibre ids, so an exact-calibre lookup never mixes them.
 export function useFinishedCalibreAvailability() {
-  const [rows, setRows] = useState<CalibreAvailability[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        const { data } = await supabase.from('finished_calibre_availability').select('type_id, calibre_id, is_old_stock, available_kg')
-        if (!cancelled) setRows(data ?? [])
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return { rows, loading }
+  const { data, isPending, error } = useQuery({
+    queryKey: queryKeys.finishedCalibreAvailability(),
+    queryFn: async ({ signal }): Promise<CalibreAvailability[]> => {
+      const rows = await run(
+        supabase.from('finished_calibre_availability').select('type_id, calibre_id, is_old_stock, available_kg').abortSignal(signal),
+      )
+      return (rows ?? []).map((r) => ({ ...r, available_kg: Number(r.available_kg) }))
+    },
+  })
+  return { rows: data ?? EMPTY, loading: isPending, error: error ? error.message : null }
 }

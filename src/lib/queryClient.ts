@@ -74,6 +74,9 @@ export const queryKeys = {
   moykaOutput: () => ['moyka_output'] as const,
   rezkaOutput: () => ['rezka_output'] as const,
   rezkaKnAvailability: () => ['rezka_kn_availability'] as const,
+  // Rezka Prompt 3 (2026-09-28): moved off useEffect (docs/decisions/0223).
+  // Mounted by Menejer's ChiqimForm and Ombor's OmborChiqimTab.
+  finishedCalibreAvailability: () => ['finished_calibre_availability'] as const,
   omborChiqimRequests: () => ['ombor_chiqim_requests'] as const,
   // Phase 2 step 5 -- remaining unbounded-growth reads, no params.
   wipRows: () => ['wip_rows'] as const,

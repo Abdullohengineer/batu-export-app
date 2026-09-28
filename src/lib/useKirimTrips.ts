@@ -7,6 +7,7 @@ export interface KirimLine {
   type_id: string
   partiya_no: number | null
   declared_qty: number
+  process: 'moyka' | 'rezka' // Rezka Prompt 3: badge on the gate card, display only
 }
 
 export interface KirimOrderRow {
@@ -64,7 +65,7 @@ export function useKirimTrips() {
           .eq('origin', 'delivery')
           .order('created_at', { ascending: false })
           .abortSignal(signal),
-        supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id, partiya_no').abortSignal(signal),
+        supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id, partiya_no, process').abortSignal(signal),
         supabase
           .from('gate_weighings')
           .select('id, order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')

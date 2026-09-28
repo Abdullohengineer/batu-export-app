@@ -16,6 +16,8 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { RezkaBadge } from '../../components/ui/RezkaBadge'
+import type { Calibre } from '../../lib/useCalibres'
 import { todayInTashkent } from '../../lib/dateRange'
 
 // Opening stock, Stage 2 (2026-08-02, see DECISIONS.md "Opening stock"):
@@ -47,10 +49,16 @@ interface LineRow {
   // finished/old_washed picker this has no relationship to qty — "these are
   // your sources," not an allocation. raw/old_raw rows only.
   rawSerialPool: Set<string>
+  // Rezka tab (Rezka Prompt 3, SPEC.md §3.1 / §5.R): UI only. A Rezka row is
+  // an ordinary kind='finished' line on the is_rezka_output calibre
+  // ("Standard") -- stored and FIFO-fulfilled exactly like Kalibrlangan;
+  // this flag only decides which calibres the row OFFERS. Meaningful only
+  // while kind === 'finished'.
+  rezka: boolean
 }
 
 function newRow(): LineRow {
-  return { key: crypto.randomUUID(), kind: 'finished', typeId: '', calibreId: '', qty: '', rawSerialPool: new Set() }
+  return { key: crypto.randomUUID(), kind: 'finished', typeId: '', calibreId: '', qty: '', rawSerialPool: new Set(), rezka: false }
 }
 
 interface SavedLine {
@@ -60,6 +68,7 @@ interface SavedLine {
   calibreId: string
   rawSerialPool: string[]
   qtyKg: number | null
+  rezka: boolean
 }
 
 const PALLET_KINDS: LineKind[] = ['finished', 'old_washed']
@@ -187,6 +196,29 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
     updateRow(row.key, { rawSerialPool: next })
   }
 
+  // Which calibres a pallet row offers (Rezka Prompt 3). The split lives
+  // here, not in useFinishedCalibreAvailability: availability rows are
+  // already per calibre_id and availableKg() matches the exact calibre, so
+  // offering the right calibre is the whole split. Kalibrlangan and Eski
+  // zaxira "Yuvilgan" never offer is_rezka_output ("Standard"); the Rezka
+  // tab offers only it, narrowed to the chosen type's category (one per
+  // category). Konditerka stays on Kalibrlangan.
+  function offeredCalibres(row: LineRow): Calibre[] {
+    if (row.kind === 'finished' && row.rezka) {
+      const categoryId = productTypes.find((t) => t.id === row.typeId)?.category_id
+      return calibres.filter((c) => c.is_rezka_output && (!categoryId || c.category_id === categoryId))
+    }
+    return calibres.filter((c) => !c.is_rezka_output)
+  }
+
+  // A Rezka row's calibre is fully determined by its type (one Standard per
+  // category), so it is preselected on type change; the select still shows it.
+  function rezkaCalibreFor(typeId: string): string {
+    const categoryId = productTypes.find((t) => t.id === typeId)?.category_id
+    const matches = calibres.filter((c) => c.is_rezka_output && c.category_id === categoryId)
+    return matches.length === 1 ? matches[0].id : ''
+  }
+
   function feasibilityHint(row: LineRow): string | null {
     if (!PALLET_KINDS.includes(row.kind)) return null
     const target = parseFloat(row.qty)
@@ -271,6 +303,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
           calibreId: r.calibreId,
           rawSerialPool: [...r.rawSerialPool],
           qtyKg: r.qty ? parseFloat(r.qty) : null,
+          rezka: r.kind === 'finished' && r.rezka,
         })),
       )
       setPlate('')
@@ -411,9 +444,18 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => updateRow(row.key, { kind: 'finished', rawSerialPool: new Set(), qty: '' })}
+                  onClick={() =>
+                    updateRow(row.key, {
+                      kind: 'finished',
+                      rezka: false,
+                      rawSerialPool: new Set(),
+                      qty: '',
+                      // Leaving the Rezka tab drops its Standard calibre.
+                      calibreId: row.kind === 'finished' && row.rezka ? '' : row.calibreId,
+                    })
+                  }
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
-                    row.kind === 'finished'
+                    row.kind === 'finished' && !row.rezka
                       ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
                       : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
                   }`}
@@ -422,7 +464,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => updateRow(row.key, { kind: 'raw', calibreId: '', qty: '' })}
+                  onClick={() => updateRow(row.key, { kind: 'raw', calibreId: '', qty: '', rezka: false })}
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                     row.kind === 'raw'
                       ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
@@ -435,7 +477,13 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   type="button"
                   onClick={() =>
                     !OLD_STOCK_KINDS.includes(row.kind) &&
-                    updateRow(row.key, { kind: 'old_washed', rawSerialPool: new Set(), qty: '' })
+                    updateRow(row.key, {
+                      kind: 'old_washed',
+                      rezka: false,
+                      rawSerialPool: new Set(),
+                      qty: '',
+                      calibreId: row.kind === 'finished' && row.rezka ? '' : row.calibreId,
+                    })
                   }
                   className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                     OLD_STOCK_KINDS.includes(row.kind)
@@ -444,6 +492,25 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                   }`}
                 >
                   Eski zaxira
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateRow(row.key, {
+                      kind: 'finished',
+                      rezka: true,
+                      rawSerialPool: new Set(),
+                      qty: '',
+                      calibreId: row.typeId ? rezkaCalibreFor(row.typeId) : '',
+                    })
+                  }
+                  className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                    row.kind === 'finished' && row.rezka
+                      ? 'bg-violet-700 text-white dark:bg-violet-600'
+                      : 'bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300'
+                  }`}
+                >
+                  Rezka
                 </button>
                 {OLD_STOCK_KINDS.includes(row.kind) && (
                   <span className="inline-flex gap-1 rounded-md bg-amber-50 p-0.5 dark:bg-amber-950/40">
@@ -496,7 +563,15 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                 <select
                   required
                   value={row.typeId}
-                  onChange={(e) => updateRow(row.key, { typeId: e.target.value, rawSerialPool: new Set(), qty: '' })}
+                  onChange={(e) =>
+                    updateRow(row.key, {
+                      typeId: e.target.value,
+                      rawSerialPool: new Set(),
+                      qty: '',
+                      // Rezka: Standard follows the type's category.
+                      ...(row.kind === 'finished' && row.rezka ? { calibreId: rezkaCalibreFor(e.target.value) } : {}),
+                    })
+                  }
                   className="flex-1 rounded-md border border-slate-300 px-3 text-base min-h-12 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="" disabled>
@@ -518,7 +593,7 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                     <option value="" disabled>
                       Kalibr…
                     </option>
-                    {calibres.map((c) => (
+                    {offeredCalibres(row).map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label}
                       </option>
@@ -579,6 +654,9 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
                           >
                             <span className="font-mono">{selected ? '✓ ' : ''}{s.serial}</span>
                             <PartiyaBadge partiyaNo={s.partiyaNo} typeName={typeName(s.type_id)} />
+                            {/* Tashqi Rezka raw stays in the Xom pool (uncut
+                                KN the client may take back) -- badged. */}
+                            {s.process === 'rezka' && <RezkaBadge provenance="tashqi" />}
                             <span className="ml-1.5">{Math.round(s.available).toLocaleString()} kg mavjud</span>
                           </button>
                         )
@@ -635,7 +713,12 @@ export function ChiqimForm({ onSaved }: { onSaved: () => void }) {
             <div key={line.key} className="flex items-center justify-between text-sm">
               <span className="text-slate-600 dark:text-slate-400">
                 {typeName(line.typeId)} ·{' '}
-                {line.kind === 'finished' && calibreLabel(line.calibreId)}
+                {line.kind === 'finished' && !line.rezka && calibreLabel(line.calibreId)}
+                {line.kind === 'finished' && line.rezka && (
+                  <>
+                    <RezkaBadge /> {calibreLabel(line.calibreId)}
+                  </>
+                )}
                 {line.kind === 'old_washed' && `Eski zaxira (yuvilgan) · ${calibreLabel(line.calibreId)}`}
                 {line.kind === 'old_kn' && 'Eski zaxira (KN)'}
                 {(line.kind === 'raw' || line.kind === 'old_raw') &&

@@ -3,6 +3,8 @@ import type { ManifestLine } from '../lib/useDispatchManifestLines'
 import type { OldKnCollection } from '../lib/useOldKnCollectionsByRequest'
 import { GatePhoto } from './GatePhoto'
 import { formatDateTime } from '../lib/formatDate'
+import { useCalibres } from '../lib/useCalibres'
+import { RezkaBadge } from './ui/RezkaBadge'
 
 function fmt(ts: string | null) {
   return ts ? formatDateTime(ts) : '—'
@@ -65,6 +67,12 @@ export function ChiqimRequestDetail({
   onOpenPassport?: (serial: string) => void
 }) {
   const w = request.weighing
+  // Rezka Prompt 3: a Rezka CHIQIM line is an ordinary 'finished' line on
+  // the is_rezka_output calibre -- identified by its calibre, not a new
+  // line kind. Shared master-data cache (React Query), so no extra read
+  // for either caller (FinishedChiqimList, ChiqimRequestPassportModal).
+  const { calibres } = useCalibres(true)
+  const rezkaCalibreIds = new Set(calibres.filter((c) => c.is_rezka_output).map((c) => c.id))
   return (
     <div className="space-y-3">
       <div>
@@ -130,8 +138,9 @@ export function ChiqimRequestDetail({
         {request.lines.map((line) => (
           <div key={line.id}>
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-              <span>
+              <span className="inline-flex items-center gap-1.5">
                 {typeName(line.type_id)} · {lineLabel(line, calibreLabel)}
+                {line.line_kind === 'finished' && line.calibre_id && rezkaCalibreIds.has(line.calibre_id) && <RezkaBadge />}
               </span>
               <span>{line.qty_kg === null ? '—' : `${line.qty_kg.toLocaleString()} kg (so'rov)`}</span>
             </div>

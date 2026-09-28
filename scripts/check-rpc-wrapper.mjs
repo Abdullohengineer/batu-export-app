@@ -30,7 +30,6 @@ const ALLOWLIST = new Set([
   'src/lib/labVerdict.ts',
   'src/lib/masterDataAdmin.ts',
   'src/lib/serialPassport.ts',
-  'src/lib/useAvailableFinishedStock.ts',
   'src/lib/useChiqimTrips.ts',
   'src/lib/useChiqimTruckTypes.ts',
   'src/lib/useFinishedChiqimRequests.ts',

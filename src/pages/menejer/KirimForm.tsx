@@ -12,21 +12,31 @@ import { IconButton } from '../../components/ui/IconButton'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { toneStyles } from '../../components/ui/tokens'
+import { RezkaBadge } from '../../components/ui/RezkaBadge'
 import { todayInTashkent } from '../../lib/dateRange'
+
+// Rezka Prompt 3 (SPEC.md §2.1 / §5.R): process rides the LINE, not the
+// truck -- one truck can carry Moyka and Rezka lines, and fura/normal is
+// independent of it. Fixed at creation: kirim_lines has no Menejer UPDATE
+// policy and there is no line edit path (KirimOrdersList's Tahrirlash only
+// touches order date/plate/driver).
+type LineProcess = 'moyka' | 'rezka'
 
 interface TypeRow {
   key: string
   typeId: string
+  process: LineProcess
   qty: string
 }
 
 function newRow(): TypeRow {
-  return { key: crypto.randomUUID(), typeId: '', qty: '' }
+  return { key: crypto.randomUUID(), typeId: '', process: 'moyka', qty: '' }
 }
 
 interface SavedLine {
   key: string
   typeId: string
+  process: LineProcess
   serial: string | null // null while the insert is still in flight
 }
 
@@ -103,7 +113,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
     setSubmitting(true)
     // §2.1/§3.1: real serials only come from next_serial() in the database.
     // This is just a UI placeholder shown while that insert is in flight.
-    setSavedLines(validRows.map((r) => ({ key: r.key, typeId: r.typeId, serial: null })))
+    setSavedLines(validRows.map((r) => ({ key: r.key, typeId: r.typeId, process: r.process, serial: null })))
 
     try {
       let docPhotoPath: string | null = null
@@ -138,15 +148,19 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
             order_id: order.order_id,
             type_id: r.typeId,
             declared_qty: parseFloat(r.qty),
+            process: r.process,
           })),
         )
-        .select('serial, type_id')
+        .select('serial, type_id, process')
       if (linesErr) throw linesErr
 
       setSavedLines(
         validRows.map((r) => {
-          const match = lines.find((l) => l.type_id === r.typeId)
-          return { key: r.key, typeId: r.typeId, serial: match?.serial ?? null }
+          // type_id + process (Rezka Prompt 3): Subxon-Moyka and Subxon-Rezka
+          // on one truck are two different serials. Two lines with the SAME
+          // type AND process still collide here -- flagged in HANDOFF.md.
+          const match = lines.find((l) => l.type_id === r.typeId && l.process === r.process)
+          return { key: r.key, typeId: r.typeId, process: r.process, serial: match?.serial ?? null }
         }),
       )
 
@@ -231,7 +245,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
           // chain.spec.ts, rewash-hard-gate.spec.ts) -- confirmed by an
           // actual e2e run when this was first dropped during the Card swap.
           <Card key={row.key} padding="compact" className="space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 required
                 value={row.typeId}
@@ -247,6 +261,34 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
                   </option>
                 ))}
               </select>
+              {/* Process toggle, not a <select>: full-chain/partiya-raqami
+                  specs pick the type with row.locator('select'), which a
+                  second select in this row would make ambiguous. Same
+                  segmented-button pattern as ChiqimForm's Transport turi. */}
+              <div role="group" aria-label="Jarayon" className="inline-flex shrink-0 gap-0.5 rounded-md bg-slate-100 p-0.5 dark:bg-slate-800">
+                {(
+                  [
+                    ['moyka', 'Moyka'],
+                    ['rezka', 'Rezka'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={row.process === value}
+                    onClick={() => updateRow(row.key, { process: value })}
+                    className={`rounded px-2.5 py-1.5 text-xs font-medium ${
+                      row.process === value
+                        ? value === 'rezka'
+                          ? 'bg-violet-700 text-white dark:bg-violet-600'
+                          : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <TextInput
                 type="number"
                 min="0"
@@ -328,7 +370,10 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
         <Card>
           {savedLines.map((line) => (
             <div key={line.key} className="flex items-center justify-between text-sm">
-              <span className="text-slate-600 dark:text-slate-400">{typeName(line.typeId)}</span>
+              <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                {typeName(line.typeId)}
+                {line.process === 'rezka' && <RezkaBadge provenance="tashqi" />}
+              </span>
               <span className="font-mono text-slate-900 dark:text-slate-100">
                 {line.serial ? line.serial : 'seriya: kutilmoqda'}
               </span>

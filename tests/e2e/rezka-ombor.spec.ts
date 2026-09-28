@@ -262,9 +262,17 @@ test('Ombor Rezka: Tashqi send + gain close, Ichki draw + exact auto-close', asy
   await tCard.getByRole('button', { name: 'Yakunlash' }).click()
   await expect(tCard.getByText('Ortiqcha +4 kg')).toBeVisible()
   await tCard.getByRole('button', { name: 'Yakunlash' }).click()
+  // Race fixed 2026-09-28: "Ortiqcha +4 kg" is ALSO in the confirmation text,
+  // which stays on screen until close_rezka_cycle_serial returns -- asserting
+  // it proved nothing and the DB read below ran ~100 ms before the RPC
+  // committed (API logs, docs/decisions/0225). Wait for the confirmation to
+  // go away (handleYakunlash clears it only after the RPC succeeds), then
+  // poll the DB.
+  await expect(received.getByText(/Davom etasizmi\?/)).toHaveCount(0, { timeout: 15_000 })
   await expect(received.getByText('Ortiqcha +4 kg').first()).toBeVisible()
-  const closed = await one(db.from('rezka_cycles').select('closed_at').eq('serial', s.tashqiSerial).single(), 'Tashqi cycle closed')
-  expect(closed.closed_at).not.toBeNull()
+  await expect
+    .poll(async () => (await one(db.from('rezka_cycles').select('closed_at').eq('serial', s.tashqiSerial).single(), 'Tashqi cycle closed')).closed_at, { timeout: 15_000 })
+    .not.toBeNull()
 
   // Nothing on the Rezka path prints: no Barcode #2 print/preview controls rendered.
   await expect(page.getByRole('button', { name: 'Barcode #2' })).toHaveCount(0)

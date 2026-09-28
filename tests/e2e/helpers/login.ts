@@ -26,5 +26,17 @@ export async function loginAs(page: Page, role: TestRole): Promise<void> {
   await page.getByLabel('Telefon raqami').fill(phone)
   await page.getByLabel('Parol').fill(password)
   await page.getByRole('button', { name: 'Kirish' }).click()
-  await page.waitForURL(`**/${role.toLowerCase()}**`)
+  // Fail fast on a rejected login instead of hanging until the test timeout
+  // on the URL wait (2026-09-28: a stale TEST_RAHBAR_PASSWORD hung
+  // rezka-hisobot for 120 s -- the auth log showed 400 invalid_credentials).
+  // Whichever settles first wins: the role's home URL, or LoginPage's own
+  // role="alert" error line.
+  const alert = page.getByRole('alert')
+  const outcome = await Promise.race([
+    page.waitForURL(`**/${role.toLowerCase()}**`).then(() => 'ok' as const),
+    alert.waitFor({ state: 'visible' }).then(() => 'alert' as const),
+  ])
+  if (outcome === 'alert') {
+    throw new Error(`Login as TEST ${role} rejected: "${await alert.innerText()}" -- check TEST_${role}_PHONE/PASSWORD in .env.test.`)
+  }
 }

@@ -50,8 +50,18 @@ export function computeDashboardDerived(
     return calibres.find((c) => c.id === id)?.is_numberless ?? false
   }
 
+  // Rezka (2026-09-28, Prompt 4): the Rezka output calibre ("Standard",
+  // RKN) is numberless, so without this it would be drawn as a second KN
+  // bar and counted in the KN dispatch figure. The snapshot already keeps
+  // it out of konditirskiyKg (0143, rezkaKnKg); the per-calibre rows are
+  // brought in line here. Rezka has its own dashboard toggle.
+  function isRezkaOutput(id: string): boolean {
+    return calibres.find((c) => c.id === id)?.is_rezka_output ?? false
+  }
+
   function sliceByType(rows: ByCalibreTypeRow[]): ByCalibreTypeRow[] {
-    return selectedTypeIds === null ? rows : rows.filter((r) => selectedTypeIds.includes(r.typeId))
+    const oddiy = rows.filter((r) => !isRezkaOutput(r.calibreId))
+    return selectedTypeIds === null ? oddiy : oddiy.filter((r) => selectedTypeIds.includes(r.typeId))
   }
 
   function regroupByCalibre(rows: ByCalibreTypeRow[]): CalibreKgRow[] {
@@ -81,7 +91,9 @@ export function computeDashboardDerived(
   }
 
   const dispatchedKalibrliPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => !isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
-  const dispatchedKnPeriod = ledger ? ledger.byCalibreType.dispatched.filter((r) => isKn(r.calibreId)).reduce((s, r) => s + r.kg, 0) : 0
+  const dispatchedKnPeriod = ledger
+    ? ledger.byCalibreType.dispatched.filter((r) => isKn(r.calibreId) && !isRezkaOutput(r.calibreId)).reduce((s, r) => s + r.kg, 0)
+    : 0
 
   const dispatchedByCalibre = ledger ? regroupByCalibre(ledger.byCalibreType.dispatched).filter((r) => !isKn(r.calibreId)) : []
   const dispatchedKnRows = ledger ? regroupByCalibre(ledger.byCalibreType.dispatched).filter((r) => isKn(r.calibreId)) : []

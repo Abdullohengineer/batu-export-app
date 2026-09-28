@@ -1,4 +1,4 @@
-import type { ReportTotals } from '../../lib/reportQuery'
+import type { DirectionGroup, ReportTotals } from '../../lib/reportQuery'
 import { REPORT_COLUMNS } from '../../lib/reportColumns'
 import { formatLossKg } from '../../lib/formatLoss'
 import { toneStyles } from '../../components/ui/tokens'
@@ -17,6 +17,9 @@ interface TotalChip {
   // renders bare and a SURPLUS gets the '+'. Using `signed` on a loss
   // figure would print "+1,432 kg" for 1,432 kg of product lost.
   loss?: boolean
+  // Rezkada (2026-09-28): positive = still in Rezka, negative = the open
+  // cycle already returned more than was sent -- shown as "Ortiqcha +X kg".
+  rezkada?: boolean
 }
 
 // One entry per "volume" column key (src/lib/reportColumns.ts) — every
@@ -114,6 +117,25 @@ const STATE_COLUMN_CHIPS: Record<string, (t: ReportTotals) => TotalChip[]> = {
   k7: (t) => [{ label: 'K7', value: t.stateK7 }],
   k8: (t) => [{ label: 'K8', value: t.stateK8 }],
   kn: (t) => [{ label: 'KN', value: t.stateKn }],
+  // Rezka (2026-09-28) -- lifetime per distinct serial, like the Moyka
+  // "(jami)" twins. For a Rezka serial the bundle's lifetime Moykadan
+  // chiqgan IS its Rezka output (the Rezka group only ever holds Rezka
+  // serials), so that sum is reused, not recomputed.
+  rezkaga_yuborilgan: (t) => [{ label: 'Rezkaga yuborilgan (jami)', value: t.stateRezkagaYuborilgan }],
+  rezkada: (t) => [{ label: 'Rezkada', value: t.stateRezkada, rezkada: true }],
+  rezkadan_chiqgan: (t) => [{ label: 'Rezkadan chiqgan (jami)', value: t.stateMoykadanChiqganLifetime }],
+}
+
+// Rezka movement chips (2026-09-28): the period row sums of the Rezkaga
+// yuborildi / Rezkadan chiqdi rows, "(davrda)" like the Moyka pair. Not tied
+// to a column (the Rezka columns are lifetime state), shown whenever the
+// Rezka group is active. Tashqi Rezka kirim and Rezka chiqim are already in
+// Netto's Kirim/Chiqim; an Ichki mint is not (report_totals).
+function rezkaMovementChips(t: ReportTotals): TotalChip[] {
+  return [
+    { label: 'Rezkaga yuborilgan (davrda)', value: t.totalToRezka },
+    { label: 'Rezkadan chiqgan (davrda)', value: t.totalFromRezka },
+  ]
 }
 
 function ChipGroup({ title, chips }: { title: string; chips: TotalChip[] }) {
@@ -127,6 +149,8 @@ function ChipGroup({ title, chips }: { title: string; chips: TotalChip[] }) {
           <span className="font-medium text-slate-900 dark:text-slate-100">
             {chip.loss ? (
               formatLossKg(chip.value)
+            ) : chip.rezkada && chip.value < 0 ? (
+              `Ortiqcha +${kg(-chip.value)}`
             ) : (
               <>
                 {chip.signed && chip.value >= 0 ? '+' : ''}
@@ -154,10 +178,12 @@ export function TotalsStrip({
   totals,
   dateBasisText,
   visibleColumnKeys,
+  group = 'oddiy',
 }: {
   totals: ReportTotals
   dateBasisText: string
   visibleColumnKeys: Set<string>
+  group?: DirectionGroup
 }) {
   const visibleVolumeColumns = REPORT_COLUMNS.filter((c) => c.kind === 'volume' && visibleColumnKeys.has(c.key))
 
@@ -171,6 +197,7 @@ export function TotalsStrip({
   const movementChips = visibleVolumeColumns
     .filter((c) => (c.totalBasis ?? 'movement') === 'movement')
     .flatMap((c) => MOVEMENT_COLUMN_CHIPS[c.key]?.(totals) ?? [])
+    .concat(group === 'rezka' ? rezkaMovementChips(totals) : [])
 
   const stateColumns = visibleVolumeColumns.filter((c) => c.totalBasis === 'state')
   const stateChips = stateColumns.flatMap((c) => STATE_COLUMN_CHIPS[c.key]?.(totals) ?? [])

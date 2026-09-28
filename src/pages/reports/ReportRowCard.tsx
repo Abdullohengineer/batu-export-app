@@ -1,4 +1,6 @@
-import type { ReportRow } from '../../lib/reportQuery'
+import { isRezkaKind, type ReportRow } from '../../lib/reportQuery'
+import { REZKA_DIRECTION_LABEL } from '../../lib/rezkaReportLabels'
+import { RezkaRowDetail } from './RezkaRowDetail'
 import { KirimRowDetail } from './KirimRowDetail'
 import { ChiqimDispatchRowDetail } from './ChiqimDispatchRowDetail'
 import { MoykaSendRowDetail } from './MoykaSendRowDetail'
@@ -56,6 +58,9 @@ export function ReportRowCard({
       tone = 'ok'
       label = `${qty.toLocaleString()} kg`
     }
+  } else if (isRezkaKind(row.kind)) {
+    tone = 'neutral'
+    label = `${REZKA_DIRECTION_LABEL[row.kind]} · ${qty.toLocaleString()} kg`
   } else if (row.kind === 'moyka_send') {
     tone = 'neutral'
     label = `${qty.toLocaleString()} kg`
@@ -88,7 +93,9 @@ export function ReportRowCard({
       </button>
       {expanded && (
         <div className="mt-1">
-          {row.kind === 'kirim' ? (
+          {'rezka' in row ? (
+            <RezkaRowDetail row={row} onOpenPassport={onOpenPassport} />
+          ) : row.kind === 'kirim' ? (
             <KirimRowDetail row={row} onOpenPassport={onOpenPassport} />
           ) : row.kind === 'moyka_send' ? (
             <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />

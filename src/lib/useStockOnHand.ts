@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
+import { run } from './rpc'
 import type { StockOnHandRow, StockBucket } from './stockOnHand'
 
 interface StockOnHandDbRow {
@@ -40,6 +41,7 @@ function mapRow(r: StockOnHandDbRow): StockOnHandRow {
     boxMassKg: r.box_mass_kg === null ? null : Number(r.box_mass_kg),
     isOldStock: r.is_old_stock,
     weightIsEstimate: r.weight_is_estimate,
+    isRezka: false, // set in useStockOnHand once the Rezka serial set is known
   }
 }
 
@@ -96,21 +98,32 @@ export function useStockOnHand() {
   const { data, isPending, isFetching, error, refetch } = useQuery({
     queryKey: queryKeys.stockOnHand(),
     queryFn: async ({ signal }): Promise<StockOnHandData> => {
-      const [rowsResult, avgResult] = await Promise.allSettled([
+      const [rowsResult, avgResult, rezkaResult] = await Promise.allSettled([
         fetchAllStockOnHandRows(signal),
         supabase.rpc('lab_turnaround_avg').abortSignal(signal),
+        // Rezka (2026-09-28, Prompt 4): which serials are process='rezka',
+        // so the Joriy | Eski | Rezka switch can classify every row (raw
+        // balance and Standard pallets alike) by its serial. Required, not
+        // tolerated like the turnaround stat: without it a Rezka row would
+        // silently render as Joriy stock.
+        run(supabase.from('kirim_lines').select('serial').eq('process', 'rezka').abortSignal(signal)),
       ])
       if (rowsResult.status === 'rejected') {
         throw rowsResult.reason instanceof StockOnHandTooLargeError
           ? rowsResult.reason
           : new Error("Ombor qoldig'ini yuklashda xatolik yuz berdi.")
       }
+      if (rezkaResult.status === 'rejected') {
+        throw new Error("Ombor qoldig'ini yuklashda xatolik yuz berdi (Rezka seriyalari).")
+      }
+      const rezkaSerials = new Set(((rezkaResult.value ?? []) as { serial: string }[]).map((r) => r.serial))
+      const rows = rowsResult.value.map((r) => (r.serial && rezkaSerials.has(r.serial) ? { ...r, isRezka: true } : r))
       let turnaroundAvgDays: number | null = null
       if (avgResult.status === 'fulfilled') {
         const v = avgResult.value.data
         turnaroundAvgDays = v === null || v === undefined ? null : Number(v)
       }
-      return { rows: rowsResult.value, turnaroundAvgDays }
+      return { rows, turnaroundAvgDays }
     },
   })
 

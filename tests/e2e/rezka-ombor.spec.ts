@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginAs } from './helpers/login'
 import { uniqueTestId } from './helpers/fixtures'
-import { serviceClient } from './helpers/teardown'
+import { serviceClient, voidPalletsWithStock } from './helpers/teardown'
 
 // Rezka Prompt 2 (SPEC.md §5.R "Ombor sections 2 and 3"; docs/decisions/0224).
 // Drives both Ombor Rezka flows through the real UI as TEST Ombor:
@@ -160,7 +160,8 @@ async function cleanup() {
   const db = serviceClient()
   const serials = [seeded.tashqiSerial, seeded.knSerial, ...(mintedSerial ? [mintedSerial] : [])]
   const now = new Date().toISOString()
-  await db.from('finished_pallets').update({ status: 'bekor_qilindi', voided_at: now }).in('serial', serials).is('voided_at', null)
+  // Only pallets still holding stock -- never a departed/consumed one.
+  await voidPalletsWithStock(db, serials, now)
   await db.from('rezka_cycles').update({ closed_at: now }).in('serial', serials).is('closed_at', null)
   await db.from('wash_cycles').update({ closed_at: now }).eq('id', seeded.washCycleId).is('closed_at', null)
 }

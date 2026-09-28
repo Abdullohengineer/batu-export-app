@@ -5,7 +5,7 @@ import { SearchTrigger } from '../../components/ui/SearchTrigger'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useRahbarStockSnapshot, useRahbarDashboardLedger } from '../../lib/useRahbarDashboardV2'
-import { SCOPE_LABEL, type ZaxiraScope } from '../../lib/rahbarDashboardV2'
+import { SCOPE_LABEL, type DashboardScope, type ZaxiraScope } from '../../lib/rahbarDashboardV2'
 import { computeDashboardDerived } from '../../lib/rahbarDashboardDerived'
 import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
@@ -55,7 +55,12 @@ function tileStyle(tone: TileTone): { bg: string; fg: string } {
 }
 
 export function RahbarHome() {
-  const [scope, setScope] = usePersistentState<ZaxiraScope>('rahbar.scope', 'yangi')
+  const [scope, setScope] = usePersistentState<DashboardScope>('rahbar.scope', 'yangi')
+  // Rezka (2026-09-28): UI-only toggle, never sent to the RPCs. The Rezka
+  // snapshot keys are scope-independent, so under Rezka the 'hammasi'
+  // snapshot is read (usually already cached from the Hammasi button).
+  const isRezka = scope === 'rezka'
+  const dataScope: ZaxiraScope = isRezka ? 'hammasi' : scope
   // Default preset is 'bu_oy', NOT 'boshidan' (2026-09-19, Phase 1A). The
   // old default made every fresh dashboard mount ask rahbar_dashboard_ledger
   // for the entire dataset since project inception (BOSHIDAN -> today) — the
@@ -86,8 +91,8 @@ export function RahbarHome() {
     return { from: customRange.applied.customFrom, to: customRange.applied.customTo }
   }, [preset, customRange.applied])
 
-  const { snapshot, loading: snapLoading, error: snapError } = useRahbarStockSnapshot(scope)
-  const { ledger, loading: ledgerLoading, error: ledgerError } = useRahbarDashboardLedger(from, to, scope)
+  const { snapshot, loading: snapLoading, error: snapError } = useRahbarStockSnapshot(dataScope)
+  const { ledger, loading: ledgerLoading, error: ledgerError } = useRahbarDashboardLedger(from, to, dataScope)
 
   function calibreLabel(id: string): string {
     return calibres.find((c) => c.id === id)?.label ?? id
@@ -115,7 +120,7 @@ export function RahbarHome() {
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Zaxira</span>
           <div className="flex gap-0.5 rounded-full bg-slate-100 p-0.5 dark:bg-slate-800">
-            {(['yangi', 'eski', 'hammasi'] as ZaxiraScope[]).map((s) => (
+            {(['yangi', 'eski', 'hammasi', 'rezka'] as DashboardScope[]).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -170,6 +175,29 @@ export function RahbarHome() {
       {/* Hero tiles */}
       {snapLoading || !snapshot ? (
         <p className="text-sm text-slate-400">Yuklanmoqda…</p>
+      ) : isRezka ? (
+        // Rezka view (2026-09-28, Prompt 4): the two Rezka stock figures the
+        // snapshot already carries (0143) -- both OUTSIDE every Oddiy tile --
+        // and the open-cycle Rezkada balance (0146), signed. No period
+        // charts: the ledger has no Rezka section (see below).
+        <HeroTiles
+          className="grid grid-cols-2 gap-3 lg:grid-cols-3"
+          tiles={[
+            { key: 'rezkaRaw', label: 'Rezka xom ashyo', value: snapshot.rezkaRawKg, unit: 'kg', caption: "Hozirgi qoldiq · Rezkaga yuborilmagan", ...tileStyle('raw') },
+            {
+              key: 'rezkada',
+              label: snapshot.rezkadaKg < 0 ? 'Rezka · Ortiqcha' : 'Rezkada',
+              value: Math.abs(snapshot.rezkadaKg),
+              unit: 'kg',
+              caption:
+                snapshot.rezkadaKg < 0
+                  ? `Ochiq sikllar: qaytgan yuborilgandan +${fmt(-snapshot.rezkadaKg)} kg ko'p`
+                  : "Ochiq sikllar: yuborilgan − qaytgan",
+              ...tileStyle('moyka'),
+            },
+            { key: 'rezkaKn', label: 'Rezka tayyor mahsulot (Standard)', value: snapshot.rezkaKnKg, unit: 'kg', caption: 'Hozirgi qoldiq · Konditerkadan alohida', ...tileStyle('kn') },
+          ]}
+        />
       ) : (
         <HeroTiles
           className={scope === 'yangi' ? 'grid grid-cols-2 gap-3 lg:grid-cols-5' : 'grid grid-cols-2 gap-3 lg:grid-cols-6'}
@@ -255,6 +283,11 @@ export function RahbarHome() {
         </div>
       )}
 
+      {isRezka ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Rezka harakatlari (kirim, Rezkaga yuborildi, Rezkadan chiqdi, chiqim) — Hisobotlar → Rezka.
+        </p>
+      ) : (
       <OmborHozirSection
         ledgerLoading={ledgerLoading}
         ledger={ledger}
@@ -272,6 +305,7 @@ export function RahbarHome() {
         dispatchedKnRows={derived.dispatchedKnRows}
         dispatchedMax={derived.dispatchedMax}
       />
+      )}
     </div>
   )
 }

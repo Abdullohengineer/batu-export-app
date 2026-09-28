@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { test, expect, type Page } from '@playwright/test'
 import { loginAs, type TestRole } from './helpers/login'
 import { uniqueTestId } from './helpers/fixtures'
-import { serviceClient } from './helpers/teardown'
+import { serviceClient, voidPalletsWithStock } from './helpers/teardown'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
@@ -31,7 +31,7 @@ const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
 // to leave NO live remainder: both raw serials end at 0 kg (Rezka sent in
 // full, Moyka dispatched raw), the Moyka serial's KIRIM lab test is done
 // (Naturel), the Rezka cycle auto-closes. afterAll only voids -- never
-// deletes -- whatever a failed run left live: in-stock pallets -> bekor_
+// deletes -- whatever a failed run left live: pallets still holding stock (available kg > 0) -> bekor_
 // qilindi, open cycles -> closed, unfinished CHIQIM requests -> voided. KIRIM
 // raw has no void path, so a run that fails between intake and test 2 can
 // leave TEST raw in Ombor's pickers -- see HANDOFF.md.
@@ -125,7 +125,8 @@ test.afterAll(async () => {
   const now = new Date().toISOString()
   const serials = [ctx.moykaSerial, ctx.rezkaSerial].filter((s): s is string => !!s)
   if (serials.length > 0) {
-    await db.from('finished_pallets').update({ status: 'bekor_qilindi', voided_at: now }).in('serial', serials).eq('status', 'in_stock')
+    // Only pallets still holding stock -- never a departed/consumed one.
+    await voidPalletsWithStock(db, serials, now)
     await db.from('rezka_cycles').update({ closed_at: now }).in('serial', serials).is('closed_at', null)
     await db.from('wash_cycles').update({ closed_at: now }).in('serial', serials).is('closed_at', null)
   }

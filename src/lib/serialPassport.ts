@@ -307,6 +307,42 @@ export interface PassportDispatchedByCalibre {
   kg: number
 }
 
+// Rezka (2026-09-28, Rezka Prompt 4; get_serial_passport wrapper, 0146).
+// rezkaDrawsOut: on a PARENT Konditerka serial -- each Ichki Rezka serial
+// minted from this serial's pallets ("Rezkaga yuborilgan KN: X kg ->
+// serial S"). Empty for every other serial.
+export interface PassportRezkaDrawOut {
+  mintedSerial: string
+  kg: number
+  drawnAt: string
+  pallets: { barcode2: string; qtyKg: number }[]
+}
+
+export interface PassportRezkaCycle {
+  cycleNo: number
+  openedAt: string
+  closedAt: string | null
+  sentKg: number
+  receivedKg: number
+  // Open cycle: sent − received, signed (negative = Ortiqcha); 0 once closed.
+  rezkadaKg: number
+  // Closed cycle: realized, signed (negative = Ortiqcha); null while open.
+  yoqotishKg: number | null
+}
+
+// rezka: non-null only on a Rezka serial (kirim_lines.process='rezka').
+// No lab block for Rezka -- dispatches stay in the generic `dispatches` key.
+export interface PassportRezka {
+  provenance: 'tashqi' | 'ichki'
+  arrivedAt: string | null // Tashqi: gate completion; null for Ichki
+  mintedAt: string | null // Ichki: the first KN draw; null for Tashqi
+  parents: { barcode2: string; qtyKg: number; sourceSerial: string }[] | null
+  sentKg: number
+  receivedKg: number
+  rezkadaKg: number // open cycles only, signed
+  cycles: PassportRezkaCycle[]
+}
+
 export interface SerialPassport {
   serial: string
   order: PassportOrder | null
@@ -326,6 +362,10 @@ export interface SerialPassport {
   storageLossEvents: PassportStorageLossEvent[]
   pendingDispatches: PassportPendingDispatch[]
   dispatchedByCalibre: PassportDispatchedByCalibre[]
+  // Rezka (0146). Optional in the type so a payload from before the wrapper
+  // (or a partial mock) still renders.
+  rezkaDrawsOut?: PassportRezkaDrawOut[]
+  rezka?: PassportRezka | null
 }
 
 export async function fetchSerialPassport(serial: string): Promise<SerialPassport> {

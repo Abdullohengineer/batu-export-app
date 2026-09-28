@@ -127,6 +127,8 @@ export type ReportColumnKind = 'context' | 'volume' | 'measurement'
 // it, not because one exists today).
 export type ReportColumnTotalBasis = 'movement' | 'state' | 'none'
 
+import type { DirectionGroup } from './reportQuery'
+
 export interface ReportColumnDef {
   key: string
   label: string
@@ -137,6 +139,11 @@ export interface ReportColumnDef {
   // Hover tooltip on the <th> (ReportResultsTable.tsx) — used to flag a
   // meaning change a reader might not expect from the label alone.
   headerNote?: string
+  // Yo'nalish group (2026-09-28, Rezka Prompt 4): omitted = shown in both
+  // groups; 'oddiy' = Moyka/lab/dispatch-kalibr columns, meaningless on a
+  // Rezka row; 'rezka' = the Rezka-only columns. The picker and the table
+  // list only the active group's columns (columnsForGroup).
+  group?: DirectionGroup
 }
 
 // Order here is display order, left to right. Defaults per the task spec:
@@ -157,6 +164,9 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'type', label: 'Tur', kind: 'context', defaultVisible: true },
   { key: 'calibre', label: 'Kalibr', kind: 'context', defaultVisible: false },
   { key: 'barcode2', label: 'Barcode #2', kind: 'context', defaultVisible: false },
+  // Manba (Rezka only): Tashqi = arrived on a truck; Ichki = minted from
+  // Konditerka pallets, with the parent Barcode #2 list.
+  { key: 'manba', label: 'Manba', kind: 'context', defaultVisible: false, group: 'rezka' },
   { key: 'netto', label: 'Netto, kg', kind: 'volume', defaultVisible: true, align: 'right' },
   // "Nakladnoy" was considered and rejected: it already means the client's
   // attached waybill PHOTO elsewhere in this app (kirim_orders.doc_photo,
@@ -169,8 +179,8 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   { key: 'tara', label: 'Tara, kg', kind: 'volume', defaultVisible: false, align: 'right' },
   { key: 'plate', label: 'Moshina', kind: 'context', defaultVisible: false },
   { key: 'driver', label: 'Haydovchi', kind: 'context', defaultVisible: false },
-  { key: 'moisture', label: 'Namlik %', kind: 'measurement', defaultVisible: false, align: 'right' },
-  { key: 'so2', label: 'SO₂ ppm', kind: 'measurement', defaultVisible: false, align: 'right' },
+  { key: 'moisture', label: 'Namlik %', kind: 'measurement', defaultVisible: false, align: 'right', group: 'oddiy' },
+  { key: 'so2', label: 'SO₂ ppm', kind: 'measurement', defaultVisible: false, align: 'right', group: 'oddiy' },
   { key: 'status', label: 'Holat', kind: 'context', defaultVisible: true },
   // Serial-state columns (2026-08-15, see DECISIONS.md "Hisobot: Moyka
   // rows, direction split, serial-state columns") — every row shows its
@@ -184,6 +194,16 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // as Tara/Namlik/SO2 today.
   { key: 'qabul_qilingan', label: 'Qabul qilingan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'omborda_qoldi', label: 'Omborda qoldi, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  // Rezka serial state (2026-09-28). LIFETIME per serial (rezka_serial_
+  // state_set / the bundle's lifetime Moykadan chiqgan -- for a Rezka serial
+  // that IS its Rezka output), so labelled "(jami)" and totalled once per
+  // distinct serial, like the Moyka "(jami)" twins. The period movement
+  // figures ("davrda") are separate chips (TotalsStrip, Rezka group), never
+  // under the same name. Rezkada is signed: negative = Ortiqcha.
+  { key: 'rezkaga_yuborilgan', label: 'Rezkaga yuborilgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'rezka' },
+  { key: 'rezkada', label: 'Rezkada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'rezka',
+    headerNote: "Ochiq Rezka sikli bo'yicha: yuborilgan − qaytgan. Manfiy qiymat = Ortiqcha." },
+  { key: 'rezkadan_chiqgan', label: 'Rezkadan chiqgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'rezka' },
   // Default-VISIBLE (2026-09-03, MOYKADAN per-serial rows) — the "how much
   // sent to / received from Moyka" headline figures used to require opening
   // Ustunlar to see at all. Global default (this registry has no per-
@@ -196,14 +216,14 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // movement chip only — a state-basis chip here would now be additive but
   // redundant/misleading, see ReportColumnTotalBasis. Use "Moykaga
   // yuborilgan (jami)" below to check the Qabul qilingan identity.
-  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement',
+  { key: 'moykaga_yuborilgan', label: 'Moykaga yuborilgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement', group: 'oddiy',
     headerNote: "Davr bo'yicha. Balans tenglamasi (Qabul qilingan = Omborda qoldi + Moykaga yuborilgan + Xom jo'natilgan) uchun \"Moykaga yuborilgan (jami)\" ustunidan foydalaning." },
   // Lifetime twin (2026-09-14, re-applies 97f5444) of the column above —
   // default-hidden, like every other reconciliation-only column in this
   // family; sourced from unchanged kirim_line_state. Enable via the column
   // picker to check the Qabul qilingan identity and the Moyka-internal
   // identity now that the plain column is range-scoped.
-  { key: 'moykaga_yuborilgan_jami', label: 'Moykaga yuborilgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'moykaga_yuborilgan_jami', label: 'Moykaga yuborilgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
   // 2026-09-14 (later same day, see docs/decisions/0186-...-moykada-
   // yoqotish-period-scoping.md): AS-OF-PERIOD-END now (kirim_line_moyka_
   // asof(serial, p_to)), not as-of-now (kirim_line_state) any more — the
@@ -216,11 +236,11 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // THIS report's own p_to remains the same kind of one-shot figure it
   // always was as as-of-now; stacking it across two different reports'
   // p_to values was never a meaningful operation either way.
-  { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'moykada', label: 'Moykada, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
   // 2026-09-14: RANGE-SCOPED, same treatment and same caveat as moykaga_yuborilgan above.
-  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement',
+  { key: 'moykadan_chiqgan', label: 'Moykadan chiqgan, kg', kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'movement', group: 'oddiy',
     headerNote: "Davr bo'yicha. \"Moykaga yuborilgan = Moykadan chiqgan + Moykada + Yo'qotish\" tenglamasi uchun \"Moykadan chiqgan (jami)\" ustunidan foydalaning." },
-  { key: 'moykadan_chiqgan_jami', label: 'Moykadan chiqgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'moykadan_chiqgan_jami', label: 'Moykadan chiqgan (jami), kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
   // Yo'qotish (2026-08-31) — the per-serial REALIZED wash loss, booked only
   // once the serial is closed via Yakunlash (migration 0101's split; NULL,
   // rendered "—", while it is still open, because that gap is still
@@ -246,7 +266,7 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // loss is recognized in exactly one period and blank everywhere else, so
   // summing per period and summing the combined range agree by
   // construction; verified live, see the decision doc).
-  { key: 'yoqotish', label: "Yo'qotish, kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'state' },
+  { key: 'yoqotish', label: "Yo'qotish, kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'state', group: 'oddiy' },
   { key: 'xom_jonatilgan', label: "Xom holda jo'natilgan, kg", kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   { key: 'olib_ketilgan', label: 'Olib ketilgan, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
   // Output-by-kalibr (2026-08-15 pattern, added 2026-08-29 -- Prompt 6, see
@@ -266,15 +286,15 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // second view of one already on the strip. No per-kalibr lifetime twin --
   // not needed; the Moykadan chiqgan (jami) twin above already covers the
   // aggregate check across all kalibrs combined.
-  { key: 'k1', label: 'K1, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k2', label: 'K2, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k3', label: 'K3, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k4', label: 'K4, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k5', label: 'K5, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k6', label: 'K6, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k7', label: 'K7, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'k8', label: 'K8, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
-  { key: 'kn', label: 'KN, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state' },
+  { key: 'k1', label: 'K1, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
+  { key: 'k2', label: 'K2, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
+  { key: 'k3', label: 'K3, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
+  { key: 'k4', label: 'K4, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
+  { key: 'k5', label: 'K5, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
+  { key: 'k6', label: 'K6, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
+  { key: 'k7', label: 'K7, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
+  { key: 'k8', label: 'K8, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
+  { key: 'kn', label: 'KN, kg', kind: 'volume', defaultVisible: false, align: 'right', totalBasis: 'state', group: 'oddiy' },
   // Dispatch-grain kalibr breakdown (2026-09-15, see docs/decisions/0189-
   // ...-chiqim-dispatch-full-detail-and-kalibr-breakdown.md) — what THIS
   // CHIQIM dispatch line physically carried, per kalibr (pallet component
@@ -303,17 +323,29 @@ export const REPORT_COLUMNS: ReportColumnDef[] = [
   // already compute correctly (report_query_page's dispatch_k1..dispatch_kn,
   // matching the exact per-request totals reported as "0/empty" — the data
   // was never wrong, it just weren't on screen).
-  { key: 'dispatch_k1', label: "K1 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k2', label: "K2 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k3', label: "K3 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k4', label: "K4 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k5', label: "K5 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k6', label: "K6 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k7', label: "K7 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_k8', label: "K8 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
-  { key: 'dispatch_kn', label: "KN (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none' },
+  { key: 'dispatch_k1', label: "K1 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
+  { key: 'dispatch_k2', label: "K2 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
+  { key: 'dispatch_k3', label: "K3 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
+  { key: 'dispatch_k4', label: "K4 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
+  { key: 'dispatch_k5', label: "K5 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
+  { key: 'dispatch_k6', label: "K6 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
+  { key: 'dispatch_k7', label: "K7 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
+  { key: 'dispatch_k8', label: "K8 (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
+  { key: 'dispatch_kn', label: "KN (jo'natma), kg", kind: 'volume', defaultVisible: true, align: 'right', totalBasis: 'none', group: 'oddiy' },
 ]
 
-export function defaultVisibleColumnKeys(): Set<string> {
-  return new Set(REPORT_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key))
+export function columnsForGroup(group: DirectionGroup): ReportColumnDef[] {
+  return REPORT_COLUMNS.filter((c) => !c.group || c.group === group)
+}
+
+// Rezka's own default set (2026-09-28) -- the Oddiy defaultVisible flags
+// were tuned for Moyka/dispatch rows and would hide every Rezka figure.
+const REZKA_DEFAULT_VISIBLE = [
+  'direction', 'date', 'serial', 'partiya', 'type', 'calibre', 'manba', 'netto',
+  'qabul_qilingan', 'rezkaga_yuborilgan', 'rezkada', 'rezkadan_chiqgan', 'olib_ketilgan', 'status',
+]
+
+export function defaultVisibleColumnKeys(group: DirectionGroup = 'oddiy'): Set<string> {
+  if (group === 'rezka') return new Set(REZKA_DEFAULT_VISIBLE)
+  return new Set(REPORT_COLUMNS.filter((c) => c.defaultVisible && c.group !== 'rezka').map((c) => c.key))
 }

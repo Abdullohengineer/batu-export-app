@@ -1,0 +1,10 @@
+-- Historical record -- EXECUTES NOTHING.
+--
+-- Migration number 0145 was never used. Rezka Prompt 3 (2026-09-28,
+-- docs/decisions/0225-*) reserved 0145 for a possible
+-- attribute_chiqim_line_fifo / finished_calibre_availability change and
+-- concluded no SQL was needed (both already match on exact calibre_id), so
+-- the number was left unused and Rezka Prompt 4 took 0146
+-- (docs/decisions/0226-*). This file exists only so the gap in the sequence
+-- is explicit rather than looking like a lost migration. Nothing was applied
+-- live under this number; schema_migrations has no 0145 row.

@@ -10,10 +10,17 @@
 
 export type ZaxiraScope = 'yangi' | 'eski' | 'hammasi'
 
-export const SCOPE_LABEL: Record<ZaxiraScope, string> = {
+// Dashboard toggle (2026-09-28, Rezka Prompt 4): a fourth button after
+// Hammasi. UI-only -- 'rezka' is never sent to the RPCs (Rezka is never old
+// stock, so its snapshot figures are scope-independent); RahbarHome reads
+// the 'hammasi' snapshot under it.
+export type DashboardScope = ZaxiraScope | 'rezka'
+
+export const SCOPE_LABEL: Record<DashboardScope, string> = {
   yangi: 'Yangi',
   eski: 'Eski',
   hammasi: 'Hammasi',
+  rezka: 'Rezka',
 }
 
 export interface StockByType {
@@ -54,6 +61,14 @@ export interface RahbarStockSnapshot {
   // returns it. Point-in-time, same "right now" basis as every other field
   // here -- not the period-scoped moykadaSnapshot the ledger RPC returns.
   moykadaKg: number
+  // Rezka (0143 split, 0146 rezkadaKg) -- outside every figure above:
+  // rezkaRawKg = unsent raw on Rezka serials (moved OUT of rawKg);
+  // rezkaKnKg = Standard (is_rezka_output) pallets on hand (OUT of
+  // konditirskiyKg); rezkadaKg = sum over open Rezka cycles of sent −
+  // returned, SIGNED (negative = Ortiqcha). All scope-independent.
+  rezkaRawKg: number
+  rezkaKnKg: number
+  rezkadaKg: number
   oldKnNote: string
   /** rawKg + moykadaKg + finishedCalibredKg + konditirskiyKg + oldKnKg. NOTE the
    *  dashboard's own headline deliberately EXCLUDES oldKnKg -- see RahbarHome. */

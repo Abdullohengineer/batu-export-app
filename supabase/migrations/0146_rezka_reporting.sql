@@ -139,17 +139,19 @@ select 'rezka_output', 'rezka-output-' || m.barcode2, m.serial, m.barcode2, m.or
 from report_moyka_output_rows m
 join rz on rz.serial = m.serial
 union all
--- Rezka chiqim: consumption on Rezka pallets, departed requests only
--- (they crossed the gate), dated by request_date.
+-- Rezka chiqim: consumption on Rezka pallets, departed requests only,
+-- dated EXACTLY like the Oddiy dispatch rows -- report_chiqim_rows_v2's own
+-- date_basis, which is the departure date (chiqim_departed_at, utc), not
+-- request_date (that was the retired v1 report_chiqim_rows). One date basis
+-- for dispatch across both groups (product-owner decision, 2026-09-28).
 select 'rezka_chiqim', 'rezka-chiqim-' || c.row_key, c.serial, c.barcode2, c.order_id, c.request_id, c.owner_id,
-  c.type_id, c.calibre_id, c.plate, c.driver, cr.request_date, 'request_date', c.qty_kg, c.provisional,
+  c.type_id, c.calibre_id, c.plate, c.driver, c.date_basis, 'departed_at', c.qty_kg, c.provisional,
   c.declared_qty, c.truck_variance_diff_kg, c.truck_variance_diff_pct, c.provisional_variance_flag, c.wash_cycle,
   c.pallet_status, c.lab_verdict, c.target_moisture_pct, c.target_so2_mg_kg, c.moisture_pct, c.so2_mg_kg,
   c.void_successor_barcodes, c.box_mass_kg, c.partiya_no
 from report_chiqim_rows_v2 c
 join rz on rz.serial = c.serial
-join chiqim_requests cr on cr.id = c.request_id
-where chiqim_departed_at(cr.id) is not null;
+where chiqim_departed_at(c.request_id) is not null;
 
 -- ------------------------------------------------------------------
 -- 3. Oddiy sources drop Rezka lines (live bodies, one clause each)
@@ -382,12 +384,13 @@ as $function$
   union all
 
   -- Rezka chiqim: per (request, serial) -- a serial so the row carries its
-  -- serial-state (olib ketilgan); departed only, dated by request_date.
+  -- serial-state (olib ketilgan); departed only, dated by departure (same
+  -- basis as the Oddiy chiqim_dispatch row).
   select
     'rezka_chiqim'::text, 'rezka-chiqim-' || z.request_id::text || '-' || z.serial, z.serial, null::text,
     (array_agg(z.order_id))[1], z.request_id, (array_agg(z.owner_id))[1], (array_agg(z.type_id))[1],
     (array_agg(z.calibre_id))[1], (array_agg(z.plate))[1], (array_agg(z.driver))[1], max(z.date_basis),
-    'request_date'::text, sum(z.qty_kg), false, null::numeric, null::numeric, null::numeric, false, null::integer,
+    'departed_at'::text, sum(z.qty_kg), false, null::numeric, null::numeric, null::numeric, false, null::integer,
     'jonatilgan'::text, null::text, null::numeric, null::numeric, null::numeric, null::numeric, null::text[],
     null::numeric, min(z.partiya_no)
   from report_rezka_rows z

@@ -69,6 +69,10 @@ function collectConsoleErrors(page: Page): string[] {
 }
 
 test('1 · DB: Rezka serial state, passport Rezka block and snapshot keys match the base tables', async () => {
+  // Headroom, not a hide: the reads are batched below, but the passport
+  // count still grows with every Rezka spec run and each is a network round
+  // trip from the test machine.
+  test.setTimeout(90_000)
   const db = serviceClient()
   const owner = await must(db.from('owners').select('id').eq('name', OWNER_NAME).maybeSingle(), 'owner')
   test.skip(!owner, `No "${OWNER_NAME}" owner yet -- run rezka-menejer / rezka-ombor first.`)
@@ -90,30 +94,44 @@ test('1 · DB: Rezka serial state, passport Rezka block and snapshot keys match 
   }[]
   expect(state.map((s) => s.serial).sort()).toEqual([...serials].sort())
 
-  for (const line of lines) {
+  // Base tables read ONCE for all serials (4 round trips), and the per-serial
+  // passports in parallel -- the old per-serial sequential loop was ~6 round
+  // trips x N serials, and N grows by 3 with every rezka-menejer/-ombor run
+  // (17 on 2026-09-28). No query here is slow: measured live the same day,
+  // get_serial_passport ~60-100 ms warm, the state set ~2 ms.
+  type Send = { serial: string; qty_kg: number | string; sent_date: string }
+  type Cycle = { serial: string; opened_at: string; closed_at: string | null }
+  type Pallet = { serial: string; weight_kg: number | string; received_date: string; status: string }
+  type Draw = { barcode2: string; qty_kg: number | string; minted_serial: string }
+  const [allSends, allCycles, allPallets, allDraws, passports] = await Promise.all([
+    must(db.from('rezka_sends').select('serial, qty_kg, sent_date').in('serial', serials), 'sends') as Promise<Send[]>,
+    must(db.from('rezka_cycles').select('serial, opened_at, closed_at').in('serial', serials), 'cycles') as Promise<Cycle[]>,
+    must(db.from('finished_pallets').select('serial, weight_kg, received_date, status').in('serial', serials), 'pallets') as Promise<Pallet[]>,
+    must(db.from('rezka_kn_draws').select('barcode2, qty_kg, minted_serial').in('minted_serial', serials), 'draws') as Promise<Draw[]>,
+    Promise.all(
+      serials.map(
+        (serial) =>
+          must(db.rpc('get_serial_passport', { p_serial: serial }), `passport ${serial}`) as Promise<{
+            rezka: { provenance: string; sentKg: number; receivedKg: number; rezkadaKg: number; cycles: unknown[] } | null
+          }>,
+      ),
+    ),
+  ])
+
+  lines.forEach((line, i) => {
     const s = state.find((x) => x.serial === line.serial)!
     const origin = originByOrder.get(line.order_id)
     // Manba follows the order's origin.
     expect(s.manba, line.serial).toBe(origin === 'internal_reprocess' ? 'ichki' : 'tashqi')
 
     // Rezkaga yuborilgan = every rezka_sends row of the serial.
-    const sends = (await must(db.from('rezka_sends').select('qty_kg, sent_date').eq('serial', line.serial), 'sends')) as {
-      qty_kg: number | string
-      sent_date: string
-    }[]
+    const sends = allSends.filter((x) => x.serial === line.serial)
     expect(Number(s.rezkaga_yuborilgan), line.serial).toBe(sum(sends, 'qty_kg'))
 
     // Rezkada = per OPEN cycle, sends since opened minus non-void pallets
     // since opened (close_rezka_cycle_serial's rule), signed.
-    const cycles = (await must(db.from('rezka_cycles').select('opened_at, closed_at').eq('serial', line.serial), 'cycles')) as {
-      opened_at: string
-      closed_at: string | null
-    }[]
-    const pallets = (await must(
-      db.from('finished_pallets').select('weight_kg, received_date, status').eq('serial', line.serial),
-      'pallets',
-    )) as { weight_kg: number | string; received_date: string; status: string }[]
-    const live = pallets.filter((p) => p.status !== 'bekor_qilindi')
+    const cycles = allCycles.filter((c) => c.serial === line.serial)
+    const live = allPallets.filter((p) => p.serial === line.serial && p.status !== 'bekor_qilindi')
     let rezkada = 0
     for (const c of cycles.filter((c) => c.closed_at === null)) {
       const opened = c.opened_at.slice(0, 10)
@@ -122,29 +140,20 @@ test('1 · DB: Rezka serial state, passport Rezka block and snapshot keys match 
     expect(Number(s.rezkada), line.serial).toBeCloseTo(rezkada, 3)
 
     // Ichki: parents = its rezka_kn_draws rows.
-    const draws = (await must(db.from('rezka_kn_draws').select('barcode2, qty_kg').eq('minted_serial', line.serial), 'draws')) as {
-      barcode2: string
-      qty_kg: number | string
-    }[]
+    const draws = allDraws.filter((d) => d.minted_serial === line.serial)
     expect(s.parents.map((p) => p.barcode2).sort(), line.serial).toEqual(draws.map((d) => d.barcode2).sort())
 
     // Passport wrapper: the Rezka block carries the same figures.
-    const passport = (await must(db.rpc('get_serial_passport', { p_serial: line.serial }), 'passport')) as {
-      rezka: { provenance: string; sentKg: number; receivedKg: number; rezkadaKg: number; cycles: unknown[] } | null
-    }
+    const passport = passports[i]
     expect(passport.rezka, line.serial).not.toBeNull()
     expect(passport.rezka!.provenance).toBe(s.manba)
     expect(Number(passport.rezka!.sentKg)).toBe(sum(sends, 'qty_kg'))
     expect(Number(passport.rezka!.receivedKg)).toBe(sum(live, 'weight_kg'))
     expect(Number(passport.rezka!.rezkadaKg)).toBeCloseTo(rezkada, 3)
     expect(passport.rezka!.cycles.length).toBe(cycles.length)
-  }
+  })
 
   // Parent KN serials: rezkaDrawsOut lists each mint drawn from them.
-  const allDraws = (await must(
-    db.from('rezka_kn_draws').select('barcode2, qty_kg, minted_serial').in('minted_serial', serials),
-    'all draws',
-  )) as { barcode2: string; qty_kg: number | string; minted_serial: string }[]
   if (allDraws.length > 0) {
     const parentPallets = (await must(
       db.from('finished_pallets').select('barcode2, serial').in('barcode2', allDraws.map((d) => d.barcode2)),
@@ -165,8 +174,12 @@ test('1 · DB: Rezka serial state, passport Rezka block and snapshot keys match 
   }
 
   // Snapshot: the three Rezka keys are present and numeric at every scope.
-  for (const scope of ['yangi', 'eski', 'hammasi']) {
-    const snap = (await must(db.rpc('rahbar_stock_snapshot', { p_scope: scope }), `snapshot ${scope}`)) as Record<string, unknown>
+  const scopes = ['yangi', 'eski', 'hammasi']
+  const snaps = await Promise.all(
+    scopes.map((scope) => must(db.rpc('rahbar_stock_snapshot', { p_scope: scope }), `snapshot ${scope}`) as Promise<Record<string, unknown>>),
+  )
+  for (const [i, scope] of scopes.entries()) {
+    const snap = snaps[i]
     for (const key of ['rezkaRawKg', 'rezkaKnKg', 'rezkadaKg']) {
       expect(Number.isFinite(Number(snap[key])), `${scope}.${key}`).toBe(true)
     }

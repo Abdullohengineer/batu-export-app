@@ -216,6 +216,11 @@ Frontend:
   must split it by `process`.
 
 ## E2E test follow-ups (found while getting test 6 green)
+- **TEST Rahbar's password in `.env.test` is stale** (2026-09-28): the auth log shows `400
+  invalid_credentials` for `900000001` and the account's last successful sign-in is
+  2026-08-12. `rezka-hisobot` test 3 is the only spec that logs in as Rahbar. The account is
+  fine (active, confirmed, role `rahbar`). Fix `.env.test` locally; `loginAs` now fails fast
+  with the login error instead of hanging on the URL wait.
 - **TEST- plate filter for Ombor section 3 Window 2 (Rezka).** `rezka-ombor.spec.ts` voids its
   pallets and closes its cycles, but the TEST serials stay listed as closed rows in
   "Qabul qilingan seriyalar": `useRezkaOutput().received` has no TEST- filter. Add one, same

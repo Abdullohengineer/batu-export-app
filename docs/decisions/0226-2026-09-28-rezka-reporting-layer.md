@@ -225,6 +225,29 @@ Logged in HANDOFF.
   - Spec fixed to navigate via the sidebar, like every passing spec. The app is not changed.
   - Proposed fix: in `useProfile`, treat "session present but `profile?.id !== session.user.id`"
     as loading (derive it; don't keep a separate flag).
+- **`get_serial_passport` is slow under RLS, and the slow part predates this branch.**
+  - Found when `rezka-hisobot` test 1 fired 17 passports at once and 8 hit the 12 s
+    `authenticator` statement timeout. Serializing the calls fixed the test. The test uses
+    `service_role`, which bypasses RLS: about 50 ms warm and about 300 ms cold per call.
+  - As an authenticated Rahbar (RLS on), measured 2026-09-28:
+    - `get_serial_passport_core`: 762–1,591 ms warm.
+    - A single call spiked to 6.8 s once, and a cold one to 14 s, with no concurrency.
+    - `postgres` (bypasses RLS): 45–60 ms.
+    - The 0146 wrapper adds about 0–300 ms on top (the Rezka part: 3.8 ms as `postgres`, about
+      13 ms warm as authenticated).
+  - Through PostgREST (`pg_stat_statements`):
+    - `get_serial_passport`: mean 1.7 s, max 7.9 s.
+    - `rahbar_stock_snapshot`: mean 1.5 s, max 11.5 s.
+    - `rahbar_dashboard_ledger`: mean 1.5 s, max 9.0 s.
+    - `report_totals`: max 3.8 s, against its 5 s cap.
+  - Not the cause: re-planning. A PL/pgSQL copy of the `_core` body returned an identical result
+    and was no faster (1.0–1.8 s warm).
+  - The cost is executing under RLS: the `client_read_own_*` policy branches expand into
+    hundreds of InitPlans per statement. The v1.58 / `0202` class of problem, never fixed for the
+    passport.
+  - Next step: an authenticated `EXPLAIN ANALYZE` of the `_core` body, to find the hot policy.
+    Candidates: a `security definer` passport with an explicit role/owner guard, or the `0130`
+    `(select my_role())` rewrite extended to the passport's tables.
 - **The export uses the draft filters while the totals come from the applied ones
   (pre-existing).** If the user edits filters and exports without pressing Qidirish, the rows
   and the summary can describe different sets. The group switch inherits this.

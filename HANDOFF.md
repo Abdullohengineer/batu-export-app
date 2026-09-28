@@ -153,9 +153,13 @@ input (Prompt 11, 2026-08-29).
     KIRIM. Breaks every spec that `page.goto`s a deep route after login (`hisobot-moykadan`,
     `hisobot-filter-debounce-consistency`, `moykada-yoqotish-invariant`). Fix: derive profile
     loading from `profile?.id !== session.user.id`. See `0226` §10.
-11. Pre-existing, found in passing: Hisobot Excel export writes Partiya blank (no `'partiya'`
+11. **`get_serial_passport` is slow under RLS (pre-existing `_core`).** Authenticated: about
+    1 s warm, single-call spikes of 6.8 s and 14 s. Through PostgREST: mean 1.7 s, max 7.9 s.
+    Rahbar snapshot and ledger: max 11.5 s and 9.0 s. 12 s cap. `service_role` / `postgres`:
+    about 50 ms. The 0146 wrapper adds about 0.1–0.3 s. See `0226` §10.
+12. Pre-existing, found in passing: Hisobot Excel export writes Partiya blank (no `'partiya'`
     case in `reportExport.ts`); export uses draft filters while totals use applied ones.
-12. Carried from below: TEST- filter for Ombor section 3 Window 2 (Rezka); `fixtures.ts`
+13. Carried from below: TEST- filter for Ombor section 3 Window 2 (Rezka); `fixtures.ts`
     outdated `wash_cycles` shape; stale Ombor link names in three specs; `chiqim-undo-scan`
     deletion; `full-chain` plates/hard-delete design.
 

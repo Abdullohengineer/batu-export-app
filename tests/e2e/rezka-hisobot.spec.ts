@@ -94,29 +94,31 @@ test('1 · DB: Rezka serial state, passport Rezka block and snapshot keys match 
   }[]
   expect(state.map((s) => s.serial).sort()).toEqual([...serials].sort())
 
-  // Base tables read ONCE for all serials (4 round trips), and the per-serial
-  // passports in parallel -- the old per-serial sequential loop was ~6 round
-  // trips x N serials, and N grows by 3 with every rezka-menejer/-ombor run
-  // (17 on 2026-09-28). No query here is slow: measured live the same day,
-  // get_serial_passport ~60-100 ms warm, the state set ~2 ms.
+  // Base tables read ONCE for all serials (4 small index reads), then the
+  // passports ONE AT A TIME. They were fired all at once for a run
+  // (6b6284e) and 8 of 17 hit the 12 s statement timeout: on this instance
+  // (2 workers, 224 MB shared buffers) a burst of ~17 cold-connection
+  // passports (~285 ms each through PostgREST, vs ~50 ms warm in-session)
+  // queues behind each other. Alone, every passport is 48-63 ms warm
+  // (measured 2026-09-28) -- the app only ever opens one at a time per user.
+  // N grows by 3 with every rezka-menejer/-ombor run (20 on 2026-09-28).
   type Send = { serial: string; qty_kg: number | string; sent_date: string }
   type Cycle = { serial: string; opened_at: string; closed_at: string | null }
   type Pallet = { serial: string; weight_kg: number | string; received_date: string; status: string }
   type Draw = { barcode2: string; qty_kg: number | string; minted_serial: string }
-  const [allSends, allCycles, allPallets, allDraws, passports] = await Promise.all([
+  const [allSends, allCycles, allPallets, allDraws] = await Promise.all([
     must(db.from('rezka_sends').select('serial, qty_kg, sent_date').in('serial', serials), 'sends') as Promise<Send[]>,
     must(db.from('rezka_cycles').select('serial, opened_at, closed_at').in('serial', serials), 'cycles') as Promise<Cycle[]>,
     must(db.from('finished_pallets').select('serial, weight_kg, received_date, status').in('serial', serials), 'pallets') as Promise<Pallet[]>,
     must(db.from('rezka_kn_draws').select('barcode2, qty_kg, minted_serial').in('minted_serial', serials), 'draws') as Promise<Draw[]>,
-    Promise.all(
-      serials.map(
-        (serial) =>
-          must(db.rpc('get_serial_passport', { p_serial: serial }), `passport ${serial}`) as Promise<{
-            rezka: { provenance: string; sentKg: number; receivedKg: number; rezkadaKg: number; cycles: unknown[] } | null
-          }>,
-      ),
-    ),
   ])
+  type RezkaPassport = {
+    rezka: { provenance: string; sentKg: number; receivedKg: number; rezkadaKg: number; cycles: unknown[] } | null
+  }
+  const passports: RezkaPassport[] = []
+  for (const serial of serials) {
+    passports.push((await must(db.rpc('get_serial_passport', { p_serial: serial }), `passport ${serial}`)) as RezkaPassport)
+  }
 
   lines.forEach((line, i) => {
     const s = state.find((x) => x.serial === line.serial)!
@@ -174,12 +176,9 @@ test('1 · DB: Rezka serial state, passport Rezka block and snapshot keys match 
   }
 
   // Snapshot: the three Rezka keys are present and numeric at every scope.
-  const scopes = ['yangi', 'eski', 'hammasi']
-  const snaps = await Promise.all(
-    scopes.map((scope) => must(db.rpc('rahbar_stock_snapshot', { p_scope: scope }), `snapshot ${scope}`) as Promise<Record<string, unknown>>),
-  )
-  for (const [i, scope] of scopes.entries()) {
-    const snap = snaps[i]
+  // Sequential, same reason as the passports above.
+  for (const scope of ['yangi', 'eski', 'hammasi']) {
+    const snap = (await must(db.rpc('rahbar_stock_snapshot', { p_scope: scope }), `snapshot ${scope}`)) as Record<string, unknown>
     for (const key of ['rezkaRawKg', 'rezkaKnKg', 'rezkadaKg']) {
       expect(Number.isFinite(Number(snap[key])), `${scope}.${key}`).toBe(true)
     }

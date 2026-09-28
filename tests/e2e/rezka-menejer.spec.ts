@@ -371,11 +371,19 @@ test('2 · Rezka output 30 kg Standard -> Menejer Rezka tab -> dispatch; availab
   await expect(omborRequest.getByText('Rezka').first()).toBeVisible()
   await omborRequest.getByRole('button', { name: 'Yuklashni boshlash' }).click()
   await page.getByPlaceholder("Yuklangan og'irlik (kg)").fill(String(REZKA_KG))
-  await expect(page.getByText('Yetarli emas')).not.toBeVisible()
+  // The shortfall note is live and lists EVERY short line. With the Standard
+  // line loaded but the Xom line not yet, only Xom may be listed -- the
+  // Rezka/Standard line itself must show no shortfall.
+  const shortfall = page.getByText(/^Yetarli emas:/)
+  await expect(shortfall).toBeVisible()
+  await expect(shortfall).toContainText(`Xom — ${MOYKA_KG} kg kam`)
+  await expect(shortfall).not.toContainText('Standard')
   await page.getByRole('button', { name: new RegExp(`${ctx.moykaSerial}.*kg mavjud`) }).click()
   await page.getByPlaceholder('Vazn (kg)').fill(String(MOYKA_KG + 1))
   await page.getByPlaceholder('Quti massasi (kg)').fill('1')
   await page.getByRole('button', { name: "+ Qo'shish" }).click()
+  // Xom now loaded net 10 kg (11 − 1 tara): no line is short, note gone.
+  await expect(page.getByText('Yetarli emas')).toHaveCount(0)
   await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
   await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
   await expect(omborRequest).not.toBeVisible({ timeout: 20000 })

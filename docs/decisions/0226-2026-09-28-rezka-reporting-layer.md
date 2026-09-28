@@ -208,6 +208,23 @@ Logged in HANDOFF.
   - Currently 0 kg live (all Rezka is TEST).
 - **The Hisobot Excel export writes the Partiya column blank (pre-existing).** `columnValue` in
   `src/lib/reportExport.ts` has no `'partiya'` case. Unrelated to Rezka.
+- **A hard load of any deep route bounces to the role's home (pre-existing app race).**
+  - Found when `rezka-hisobot` test 3 failed on `page.goto('/menejer/hisobot')`. Traced with a
+    stubbed backend: `/menejer/hisobot` → `/login` → `/menejer`, before the profile request is
+    even sent.
+  - Mechanism, one render long:
+    1. `useSession` sets the session and `loading=false` together.
+    2. `useProfile` still holds `loading=false` from its earlier null-session effect; its fetch
+       effect has not run yet.
+    3. So `AuthProvider` reports "not loading, no profile", and `RoleRoute` redirects to
+       `/login`, which bounces to the role's home.
+  - A user refreshing Hisobot, or opening a bookmarked deep link, lands on KIRIM or the
+    dashboard.
+  - The same race affects every existing spec that deep-links after login:
+    `hisobot-moykadan`, `hisobot-filter-debounce-consistency`, `moykada-yoqotish-invariant`.
+  - Spec fixed to navigate via the sidebar, like every passing spec. The app is not changed.
+  - Proposed fix: in `useProfile`, treat "session present but `profile?.id !== session.user.id`"
+    as loading (derive it; don't keep a separate flag).
 - **The export uses the draft filters while the totals come from the applied ones
   (pre-existing).** If the user edits filters and exports without pressing Qidirish, the rows
   and the summary can describe different sets. The group switch inherits this.

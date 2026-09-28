@@ -148,9 +148,14 @@ input (Prompt 11, 2026-08-29).
 9. **`rahbar_dashboard_ledger` reads Rezka raw as Oddiy raw** (origin filter only;
    `receivedKg`/`closingKg` include Tashqi Rezka raw that the snapshot moved out of `rawKg`;
    `byCalibreType.dispatched` carries Standard — frontend now drops it from the bars). 0 kg live.
-10. Pre-existing, found in passing: Hisobot Excel export writes Partiya blank (no `'partiya'`
+10. **Deep-link hard load bounces to the role's home** (`useProfile` loading lags the session
+    by one render → `RoleRoute` → `/login` → home). Refreshing `/menejer/hisobot` lands on
+    KIRIM. Breaks every spec that `page.goto`s a deep route after login (`hisobot-moykadan`,
+    `hisobot-filter-debounce-consistency`, `moykada-yoqotish-invariant`). Fix: derive profile
+    loading from `profile?.id !== session.user.id`. See `0226` §10.
+11. Pre-existing, found in passing: Hisobot Excel export writes Partiya blank (no `'partiya'`
     case in `reportExport.ts`); export uses draft filters while totals use applied ones.
-11. Carried from below: TEST- filter for Ombor section 3 Window 2 (Rezka); `fixtures.ts`
+12. Carried from below: TEST- filter for Ombor section 3 Window 2 (Rezka); `fixtures.ts`
     outdated `wash_cycles` shape; stale Ombor link names in three specs; `chiqim-undo-scan`
     deletion; `full-chain` plates/hard-delete design.
 

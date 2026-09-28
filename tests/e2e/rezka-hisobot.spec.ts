@@ -212,8 +212,13 @@ test('3 · UI: Oddiy | Rezka selector with exactly four Rezka directions; dashbo
   test.setTimeout(120_000)
   const consoleErrors = collectConsoleErrors(page)
 
+  // Navigate by the sidebar links, never page.goto a deep route: a hard load
+  // of a deep route currently bounces to the role's home (useProfile's
+  // loading flag lags one render behind the session -- pre-existing app
+  // race, see docs/decisions/0226 §10). Every other passing spec clicks nav.
   await loginAs(page, 'MENEJER')
-  await page.goto('/menejer/hisobot')
+  await page.getByRole('link', { name: 'Hisobot', exact: true }).click()
+  await page.waitForURL('**/menejer/hisobot')
   const group = page.getByRole('group', { name: "Yo'nalish guruhi" })
   await expect(group.getByRole('button', { name: 'Oddiy' })).toHaveAttribute('aria-pressed', 'true')
   await group.getByRole('button', { name: 'Rezka' }).click()
@@ -229,7 +234,8 @@ test('3 · UI: Oddiy | Rezka selector with exactly four Rezka directions; dashbo
   await page.getByRole('button', { name: /Yo'nalish/ }).click()
 
   // Qoldiq: Joriy | Eski | Rezka.
-  await page.goto('/menejer/qoldiq')
+  await page.getByRole('link', { name: "Ombor qoldig'i", exact: true }).click()
+  await page.waitForURL('**/menejer/qoldiq')
   for (const label of ['Joriy zaxira', 'Eski zaxira', 'Rezka']) {
     await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible()
   }
@@ -239,8 +245,7 @@ test('3 · UI: Oddiy | Rezka selector with exactly four Rezka directions; dashbo
   // Dashboard: Rezka is the fourth button, after Hammasi.
   await page.getByRole('button', { name: 'Chiqish' }).click()
   await page.waitForURL('**/login')
-  await loginAs(page, 'RAHBAR')
-  await page.goto('/rahbar')
+  await loginAs(page, 'RAHBAR') // lands on /rahbar, the dashboard itself
   await page.getByRole('button', { name: 'Rezka', exact: true }).click()
   await expect(page.getByText('Rezka xom ashyo')).toBeVisible()
   await expect(page.getByText('Rezka tayyor mahsulot (Standard)')).toBeVisible()

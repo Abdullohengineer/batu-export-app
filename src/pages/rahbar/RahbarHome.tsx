@@ -285,7 +285,7 @@ export function RahbarHome() {
 
       {isRezka ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Rezka harakatlari (kirim, Rezkaga yuborildi, Rezkadan chiqdi, chiqim) — Hisobot → Yo'nalish: Rezka.
+          Rezka harakatlari (kirim, Rezkaga yuborildi, Rezkadan chiqdi, chiqim) — Hisobotlar → Rezka.
         </p>
       ) : (
       <OmborHozirSection

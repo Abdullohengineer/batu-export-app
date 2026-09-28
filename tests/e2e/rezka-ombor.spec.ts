@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginAs } from './helpers/login'
 import { uniqueTestId } from './helpers/fixtures'
-import { serviceClient, voidPalletsWithStock } from './helpers/teardown'
+import { serviceClient, voidPalletsWithStock, voidTestKirimLines } from './helpers/teardown'
 
 // Rezka Prompt 2 (SPEC.md §5.R "Ombor sections 2 and 3"; docs/decisions/0224).
 // Drives both Ombor Rezka flows through the real UI as TEST Ombor:
@@ -164,6 +164,10 @@ async function cleanup() {
   await voidPalletsWithStock(db, serials, now)
   await db.from('rezka_cycles').update({ closed_at: now }).in('serial', serials).is('closed_at', null)
   await db.from('wash_cycles').update({ closed_at: now }).eq('id', seeded.washCycleId).is('closed_at', null)
+  // Raw lines only (0152). The Ichki mint is left out: its plate is always
+  // QAYTA-ISHLASH (not TEST-, so void_test_kirim_line refuses it) and it has
+  // no intake, so it never sits in a raw-stage queue anyway.
+  await voidTestKirimLines(db, [seeded.tashqiSerial, seeded.knSerial])
 }
 
 test.beforeAll(async () => {

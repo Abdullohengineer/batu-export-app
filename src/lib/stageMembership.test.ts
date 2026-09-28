@@ -3,21 +3,42 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { hasRawRemainder, isInMoyka, isInRezka } from './stageMembership.ts'
 
-// §5.1 KIRIM Window 2 / §5.2 Moyka Window 1: raw remainder > 0.
+// §5.1 KIRIM Window 2 / §5.2 Moyka Window 1: raw remainder > 0, where the
+// remainder is useMoykaSerials' `available` (effective raw − moyka_sends −
+// raw dispatched − rezka_sends, floored). `avail` mirrors that arithmetic so
+// each case reads as the exits it models.
+function avail(input: number, moykaSent = 0, rawDispatched = 0, rezkaSent = 0): { available: number } {
+  return { available: Math.max(0, input - moykaSent - rawDispatched - rezkaSent) }
+}
+
 test('hasRawRemainder: untouched serial (nothing sent yet) has full remainder', () => {
-  assert.equal(hasRawRemainder(3000, 0), true)
+  assert.equal(hasRawRemainder(avail(3000)), true)
 })
 
 test('hasRawRemainder: fully-sent serial has no remainder left', () => {
-  assert.equal(hasRawRemainder(3000, 3000), false)
+  assert.equal(hasRawRemainder(avail(3000, 3000)), false)
 })
 
 test('hasRawRemainder: partial send still has a positive remainder', () => {
-  assert.equal(hasRawRemainder(3000, 1000), true)
+  assert.equal(hasRawRemainder(avail(3000, 1000)), true)
 })
 
 test('hasRawRemainder: over-sent (should be blocked at the write path, but must not misbehave) is not a remainder', () => {
-  assert.equal(hasRawRemainder(1000, 1200), false)
+  assert.equal(hasRawRemainder(avail(1000, 1200)), false)
+})
+
+// Post-Rezka cleanup item 3: the bug -- raw that left on a Xom CHIQIM truck
+// used to be ignored, so this serial stayed in intake Window 2 and the badge.
+test('hasRawRemainder: raw dispatched in full on a Xom CHIQIM has no remainder', () => {
+  assert.equal(hasRawRemainder(avail(1000, 0, 1000)), false)
+})
+
+test('hasRawRemainder: part to Moyka, rest on a Xom truck has no remainder', () => {
+  assert.equal(hasRawRemainder(avail(1000, 600, 400)), false)
+})
+
+test('hasRawRemainder: a Tashqi Rezka serial sent in full to Rezka has no remainder', () => {
+  assert.equal(hasRawRemainder(avail(100, 0, 0, 100)), false)
 })
 
 // §5.2 Moyka Window 2 / §5.3 Tayyor Window 1: a positive live in-Moyka
@@ -55,7 +76,7 @@ test('isInMoyka: closed serial with a positive residual is NOT in Moyka — Yaku
 test('early-life serial: hasRawRemainder and isInMoyka both true at once (all four windows)', () => {
   const actualQty = 6000
   const sent = 5000
-  assert.equal(hasRawRemainder(actualQty, sent), true)
+  assert.equal(hasRawRemainder(avail(actualQty, sent)), true)
   assert.equal(isInMoyka(sent, 0, null), true)
 })
 
@@ -65,7 +86,7 @@ test('early-life serial: hasRawRemainder and isInMoyka both true at once (all fo
 test('last portion sent: hasRawRemainder false, isInMoyka true — S2W2/S3W1 only', () => {
   const actualQty = 2700
   const sent = 2700
-  assert.equal(hasRawRemainder(actualQty, sent), false)
+  assert.equal(hasRawRemainder(avail(actualQty, sent)), false)
   assert.equal(isInMoyka(sent, 0, null), true)
 })
 
@@ -74,7 +95,7 @@ test('last portion sent: hasRawRemainder false, isInMoyka true — S2W2/S3W1 onl
 test('fully packed and no raw remainder: neither predicate holds — left both processing windows', () => {
   const actualQty = 5000
   const sent = 5000
-  assert.equal(hasRawRemainder(actualQty, sent), false)
+  assert.equal(hasRawRemainder(avail(actualQty, sent)), false)
   assert.equal(isInMoyka(sent, sent, null), false)
 })
 

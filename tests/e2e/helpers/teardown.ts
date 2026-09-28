@@ -7,7 +7,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // design — SPEC.md §2.15 "never delete, only void" is enforced at the RLS
 // level for operational data, not just a convention. (dispatch_manifest is
 // the one exception: `ombor_deletes`, scoped to pre-gate-stage-2 status —
-// exactly what chiqim-undo-scan.spec.ts's own RLS-refusal assertion tests.)
+// which chiqim-undo-scan.spec.ts used to assert; that spec was deleted
+// 2026-09-28 with the scan-to-load flow it tested -- docs/decisions/0233.)
 // The one precedent for bulk test-data removal in this project's history
 // (DECISIONS.md "Reporting engine cleanup", the 96-row TEST- CHIQIM
 // deletion) was executed the same way this file does it: elevated,
@@ -203,4 +204,19 @@ export async function voidPalletsWithStock(db: SupabaseClient, serials: string[]
     .in('barcode2', barcodes)
     .is('voided_at', null)
   if (voidError) throw new Error(`void pallets: ${voidError.message}`)
+}
+
+// Void the run's TEST- KIRIM lines (post-Rezka cleanup item 6, migration
+// 0152, docs/decisions/0232). Accepted raw had no void path, so a run that
+// failed between intake and dispatch stranded TEST- raw in Ombor's pickers,
+// intake Window 2, the Moykaga badge, Laborator KIRIM and Menejer's Xom pool.
+// void_test_kirim_line refuses anything that is not a TEST- plate and is
+// idempotent, so calling it for every serial the run created is safe whether
+// the run passed or failed. Never a DELETE (SPEC §2.15); finished-stage
+// screens are unaffected (they do not filter on voided_at).
+export async function voidTestKirimLines(db: SupabaseClient, serials: string[]): Promise<void> {
+  for (const serial of serials) {
+    const { error } = await db.rpc('void_test_kirim_line', { p_serial: serial })
+    if (error) throw new Error(`void_test_kirim_line(${serial}): ${error.message}`)
+  }
 }

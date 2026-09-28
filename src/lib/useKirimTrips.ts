@@ -65,7 +65,8 @@ export function useKirimTrips() {
           .eq('origin', 'delivery')
           .order('created_at', { ascending: false })
           .abortSignal(signal),
-        supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id, partiya_no, process').abortSignal(signal),
+        // Voided TEST lines (0152) are not gate work.
+        supabase.from('kirim_lines').select('serial, type_id, declared_qty, order_id, partiya_no, process').is('voided_at', null).abortSignal(signal),
         supabase
           .from('gate_weighings')
           .select('id, order_id, gruzheny_kg, pustoy_kg, net_kg, completed_at')
@@ -76,11 +77,15 @@ export function useKirimTrips() {
       if (linesErr) throw new Error(linesErr.message)
       if (weighingsErr) throw new Error(weighingsErr.message)
 
-      return (orders ?? []).map((order) => ({
-        order,
-        lines: (lines ?? []).filter((l) => l.order_id === order.order_id),
-        weighing: (weighings ?? []).find((w) => w.order_id === order.order_id) ?? null,
-      }))
+      return (orders ?? [])
+        .map((order) => ({
+          order,
+          lines: (lines ?? []).filter((l) => l.order_id === order.order_id),
+          weighing: (weighings ?? []).find((w) => w.order_id === order.order_id) ?? null,
+        }))
+        // A real order always has lines; one with none left had every line
+        // voided (TEST only, 0152) -- not a truck anyone should weigh.
+        .filter((trip) => trip.lines.length > 0)
     },
   })
 

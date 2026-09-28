@@ -19,26 +19,47 @@ export interface Profile {
 
 export function useProfile(session: Session | null) {
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Whose answer `profile` is: the user id it was fetched for, null once
+  // cleared for "no session", undefined before the first answer.
+  //
+  // Post-Rezka cleanup item 4 (2026-09-28, docs/decisions/0230): loading is
+  // DERIVED from this, never stored. It used to be a separate flag that the
+  // "no session yet" effect set to false on mount; when getSession() then
+  // resolved, there was one render with a session, no profile and
+  // loading=false -- before this effect had re-run to start the fetch -- so
+  // RoleRoute saw "logged in, no profile" and redirected to /login, which
+  // bounced to the role's home. Every hard load of a deep route
+  // (/menejer/hisobot, a bookmark, a refresh) landed on KIRIM / the
+  // dashboard instead. Now "session present, profile not yet loaded for
+  // THIS user" is loading by construction, including the relogin-as-a-
+  // different-user case (the previous user's answer never counts).
+  const [loadedFor, setLoadedFor] = useState<string | null | undefined>(undefined)
 
   useEffect(() => {
     if (!session) {
       setProfile(null)
-      setLoading(false)
+      setLoadedFor(null)
       return
     }
 
-    setLoading(true)
+    let cancelled = false
+    const userId = session.user.id
     supabase
       .from('profiles')
       .select('id, full_name, role, active, language, phone, owner_id')
-      .eq('id', session.user.id)
+      .eq('id', userId)
       .single()
       .then(({ data }) => {
+        // A newer session superseded this fetch -- its own effect answers.
+        if (cancelled) return
         setProfile(data)
-        setLoading(false)
+        setLoadedFor(userId)
       })
+    return () => {
+      cancelled = true
+    }
   }, [session])
 
+  const loading = session ? loadedFor !== session.user.id : loadedFor === undefined
   return { profile, loading }
 }

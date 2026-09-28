@@ -52,7 +52,7 @@ async function seedReadyForMoyka(page: Page, plate: string): Promise<string> {
   await switchRole(page, 'MENEJER')
   const { orderId, typeId } = await page.evaluate(
     async ({ plate, ownerName }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', ownerName).single()
       if (ownerErr) throw new Error(`owner lookup: ${ownerErr.message}`)
       const { data: type, error: typeErr } = await w.supabase.from('product_types').select('id').eq('name', 'Subxon').single()
@@ -76,7 +76,7 @@ async function seedReadyForMoyka(page: Page, plate: string): Promise<string> {
 
   const serial = await page.evaluate(
     async ({ orderId, typeId }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       // is_sulfured: false -- an explicit natural classification (2026-08-14;
       // see DECISIONS.md "Client quality targets removed from Menejer/
       // Laborator; explicit natural/sulphured flag"), so its eventual CHIQIM
@@ -98,7 +98,7 @@ async function seedReadyForMoyka(page: Page, plate: string): Promise<string> {
   await switchRole(page, 'QOROVUL')
   await page.evaluate(
     async ({ orderId }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const {
         data: { user },
       } = await w.supabase.auth.getUser()
@@ -121,7 +121,7 @@ async function seedReadyForMoyka(page: Page, plate: string): Promise<string> {
   await switchRole(page, 'OMBOR')
   await page.evaluate(
     async ({ serial }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const {
         data: { user },
       } = await w.supabase.auth.getUser()
@@ -177,7 +177,7 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
   // --- Ombor: send both serials to Moyka (this mints each wash_cycles row
   // -- CHIQIM lab testing becomes enterable from this instant) ---
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
+  await page.getByRole('link', { name: 'Moykaga', exact: true }).click()
   await sendToMoyka(page, serialPass)
   await sendToMoyka(page, serialReject)
 
@@ -187,7 +187,7 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
   // receivable chip at all any more (not shown-but-blocked), so the proof
   // is its absence from the chip list, not a missing/disabled button on a
   // per-serial card.
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
   await expect(page.getByRole('button', { name: new RegExp(`^${serialPass}\\b`) })).toHaveCount(0)
   await expect(page.getByRole('button', { name: new RegExp(`^${serialReject}\\b`) })).toHaveCount(0)
@@ -199,7 +199,7 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
   // policy); the UI gate above is convenience on top of it, not the gate
   // itself (SPEC.md §2.15 "hiding buttons is not security").
   const directInsertOutcome = await page.evaluate(async ({ serial }) => {
-    const w = window as unknown as { supabase: { from: (t: string) => any } }
+    const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
     const { data: type } = await w.supabase.from('kirim_lines').select('type_id').eq('serial', serial).single()
     const { data: calibre } = await w.supabase.from('calibres').select('id').eq('code', '06').single()
     const { error } = await w.supabase.from('finished_pallets').insert({
@@ -250,7 +250,7 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
   await expect(serialCard(page, serialReject)).toBeVisible()
   await expect(serialCard(page, serialReject).getByText('Rad etildi')).toBeVisible()
   const rejectedPalletCount = await page.evaluate(async ({ serial }) => {
-    const w = window as unknown as { supabase: { from: (t: string) => any } }
+    const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
     const { data } = await w.supabase.from('finished_pallets').select('barcode2').eq('serial', serial)
     return (data ?? []).length
   }, { serial: serialReject })
@@ -258,7 +258,7 @@ test('untested and rejected serials cannot reach Barcode #2; a passing verdict u
 
   // --- Part 3: passing serialPass unlocks packing ---
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
   const passChip = page.getByRole('button', { name: new RegExp(`^${serialPass}\\b`) })
   await expect(passChip).toBeVisible({ timeout: 20_000 })

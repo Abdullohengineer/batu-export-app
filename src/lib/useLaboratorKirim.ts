@@ -89,6 +89,8 @@ export function useLaboratorKirim() {
         supabase
           .from('kirim_lines')
           .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no')
+          // Voided TEST lines (void_test_kirim_line, 0152) are not lab work.
+          .is('voided_at', null)
           // Rezka lines never enter any Laborator queue (Rezka has no lab,
           // SPEC.md "Rezka"). A process='rezka' delivery line is otherwise a
           // real truck that passes the origin='delivery' allowlist below.

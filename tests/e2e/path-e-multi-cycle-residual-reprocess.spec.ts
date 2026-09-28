@@ -89,7 +89,7 @@ async function seedRawSerial(page: Page, declaredQty: number): Promise<{ serial:
   await switchRole(page, 'MENEJER')
   const { orderId, typeId, ownerId } = await page.evaluate(
     async ({ plate, ownerName }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', ownerName).single()
       if (ownerErr) throw new Error(`owner lookup: ${ownerErr.message}`)
       const { data: type, error: typeErr } = await w.supabase.from('product_types').select('id').eq('name', 'Subxon').single()
@@ -108,7 +108,7 @@ async function seedRawSerial(page: Page, declaredQty: number): Promise<{ serial:
 
   const serial = await page.evaluate(
     async ({ orderId, typeId, declaredQty }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       // is_sulfured: false — one-step CHIQIM verdict, same reasoning as
       // lab-relocation-loss-verification.spec.ts.
       const { data: line, error } = await w.supabase
@@ -125,7 +125,7 @@ async function seedRawSerial(page: Page, declaredQty: number): Promise<{ serial:
   await switchRole(page, 'QOROVUL')
   await page.evaluate(
     async ({ orderId, declaredQty }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const {
         data: { user },
       } = await w.supabase.auth.getUser()
@@ -148,7 +148,7 @@ async function seedRawSerial(page: Page, declaredQty: number): Promise<{ serial:
   await switchRole(page, 'OMBOR')
   await page.evaluate(
     async ({ serial, declaredQty }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const {
         data: { user },
       } = await w.supabase.auth.getUser()
@@ -169,7 +169,7 @@ async function seedRawSerial(page: Page, declaredQty: number): Promise<{ serial:
 // shipped alongside the schema change. This test would fail loudly on
 // that regression if it ever reappeared.
 async function sendToMoyka(page: Page, serial: string, qtyKg: number): Promise<void> {
-  await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
+  await page.getByRole('link', { name: 'Moykaga', exact: true }).click()
   const yangiTile = page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' })
   if (await yangiTile.isVisible().catch(() => false)) await yangiTile.click()
   const chip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
@@ -199,7 +199,7 @@ async function passLabTest(page: Page, serial: string): Promise<void> {
 // Real UI: §5.3 single-tile receive picker.
 async function receivePallet(page: Page, serial: string, calibreLabel: string, weightKg: number): Promise<void> {
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   const tile = page.getByRole('button', { name: '+ Moykadan qabul qilish' })
   if (await tile.isVisible().catch(() => false)) await tile.click()
   const chip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
@@ -232,7 +232,7 @@ test('Path E: full residual-reprocess lifecycle — two cycles, correct scoping 
   await receivePallet(page, serial, 'Kalibr 4', 760)
 
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   // Row not expanded yet — Yakunlash button sits on the collapsed row.
   await expect(page.getByRole('button', { name: 'Yakunlash', exact: true })).toBeVisible({ timeout: 20_000 })
   await page.getByRole('button', { name: 'Yakunlash', exact: true }).click()
@@ -244,7 +244,7 @@ test('Path E: full residual-reprocess lifecycle — two cycles, correct scoping 
 
   const cycle1ClosedAt = await page.evaluate(
     async ({ serial }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const { data, error } = await w.supabase.from('wash_cycles').select('id, closed_at').eq('serial', serial).eq('cycle_no', 1).single()
       if (error) throw new Error(`wash_cycles lookup: ${error.message}`)
       return data
@@ -310,7 +310,7 @@ test('Path E: full residual-reprocess lifecycle — two cycles, correct scoping 
   // --- useMoykaOutput: TWO rows for this serial in Ombor's own screens now
   // (Window 2 history), each with its own independent figures ---
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   const historyRows = page.locator('div', { hasText: serial })
   expect(await historyRows.count(), 'two cycle-rows expected for this serial in Window 2').toBeGreaterThanOrEqual(2)
 
@@ -318,7 +318,7 @@ test('Path E: full residual-reprocess lifecycle — two cycles, correct scoping 
   // calibre sequence (-04-2), never colliding with -04-1 ---
   const barcodes = await page.evaluate(
     async ({ serial }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const { data, error } = await w.supabase.from('finished_pallets').select('barcode2, weight_kg').eq('serial', serial).order('created_at')
       if (error) throw new Error(`finished_pallets select: ${error.message}`)
       return data as { barcode2: string; weight_kg: number }[]
@@ -356,7 +356,7 @@ test('Path E: full residual-reprocess lifecycle — two cycles, correct scoping 
   // ever existed — proves cycle 2's close never touched cycle 1's row ---
   const cycle1After = await page.evaluate(
     async ({ serial }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const { data, error } = await w.supabase.from('wash_cycles').select('closed_at').eq('serial', serial).eq('cycle_no', 1).single()
       if (error) throw new Error(`wash_cycles lookup: ${error.message}`)
       return data.closed_at as string
@@ -408,7 +408,7 @@ test('Path E prompt (c): kirim_line_loss_range/moyka_asof/loss_asof stay cycle-w
   await receivePallet(page, serial, 'Kalibr 4', 760)
 
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Yakunlash', exact: true })).toBeVisible({ timeout: 20_000 })
   const [closeResponse] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/rpc/close_wash_cycle_serial')),
@@ -490,7 +490,7 @@ test('Path E prompt (c): kirim_line_loss_range/moyka_asof/loss_asof stay cycle-w
   await receivePallet(page, serial, 'Kalibr 4', 190)
 
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Yakunlash', exact: true })).toBeVisible({ timeout: 20_000 })
   const [close2Response] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/rpc/close_wash_cycle_serial')),
@@ -546,7 +546,7 @@ test('Path E: reject open_second_wash_cycle when the parent lab verdict was not 
   await receivePallet(page, serial, 'Kalibr 4', 280)
 
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   await page.getByRole('button', { name: 'Yakunlash', exact: true }).click()
   await page.getByRole('button', { name: 'Yakunlash', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Yakunlash', exact: true })).toHaveCount(0, { timeout: 20_000 })

@@ -8,6 +8,10 @@ export interface CalibreAvailability {
   calibre_id: string
   is_old_stock: boolean
   available_kg: number
+  // Post-Rezka cleanup item 2 (0148): one row per owner. Every caller must
+  // match the request's own client -- another client's pallets are never
+  // this client's stock (attribute_chiqim_line_fifo scopes the same way).
+  owner_id: string
 }
 
 const EMPTY: CalibreAvailability[] = []
@@ -25,6 +29,9 @@ const EMPTY: CalibreAvailability[] = []
 // request claims the same stock first); attribute_chiqim_line_fifo's own
 // hard-fail-if-insufficient is the real guard for that race, not this hook.
 //
+// Post-Rezka cleanup item 2 (2026-09-28, migration 0148, docs/decisions/0228):
+// the view is per owner now -- callers look up (owner, type, calibre, old/new).
+//
 // Rezka Prompt 3 (2026-09-28): on React Query now (docs/decisions/0223 and
 // 0225) -- same query, same columns, but deduped across ChiqimForm and
 // OmborChiqimTab, throws on error instead of rendering "0 kg mavjud", and
@@ -37,7 +44,7 @@ export function useFinishedCalibreAvailability() {
     queryKey: queryKeys.finishedCalibreAvailability(),
     queryFn: async ({ signal }): Promise<CalibreAvailability[]> => {
       const rows = await run(
-        supabase.from('finished_calibre_availability').select('type_id, calibre_id, is_old_stock, available_kg').abortSignal(signal),
+        supabase.from('finished_calibre_availability').select('type_id, calibre_id, is_old_stock, available_kg, owner_id').abortSignal(signal),
       )
       return (rows ?? []).map((r) => ({ ...r, available_kg: Number(r.available_kg) }))
     },

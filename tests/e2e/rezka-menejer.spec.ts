@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { test, expect, type Page } from '@playwright/test'
 import { loginAs, type TestRole } from './helpers/login'
 import { uniqueTestId } from './helpers/fixtures'
-import { serviceClient, voidPalletsWithStock } from './helpers/teardown'
+import { serviceClient, voidPalletsWithStock, voidTestKirimLines } from './helpers/teardown'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
@@ -32,9 +32,10 @@ const TEST_PHOTO = path.join(__dirname, 'fixtures', 'test-photo.png')
 // full, Moyka dispatched raw), the Moyka serial's KIRIM lab test is done
 // (Naturel), the Rezka cycle auto-closes. afterAll only voids -- never
 // deletes -- whatever a failed run left live: pallets still holding stock (available kg > 0) -> bekor_
-// qilindi, open cycles -> closed, unfinished CHIQIM requests -> voided. KIRIM
-// raw has no void path, so a run that fails between intake and test 2 can
-// leave TEST raw in Ombor's pickers -- see HANDOFF.md.
+// qilindi, open cycles -> closed, unfinished CHIQIM requests -> voided, and
+// the run's TEST KIRIM lines -> void_test_kirim_line (0152), so a run that
+// fails between intake and test 2 no longer strands TEST raw in Ombor's
+// pickers.
 //
 // Run locally with the other Rezka spec and test 6:
 //   npx playwright test tests/e2e/rezka-menejer.spec.ts tests/e2e/rezka-ombor.spec.ts tests/e2e/full-chain.spec.ts
@@ -88,7 +89,8 @@ async function standardAvailableKg(): Promise<number> {
       .select('available_kg')
       .eq('type_id', ctx.typeId!)
       .eq('calibre_id', ctx.standardId!)
-      .eq('is_old_stock', false),
+      .eq('is_old_stock', false)
+      .eq('owner_id', ctx.ownerId!), // 0148: availability is per client
     'Standard availability',
   )
   return rows.reduce((sum, r) => sum + Number(r.available_kg), 0)
@@ -129,6 +131,8 @@ test.afterAll(async () => {
     await voidPalletsWithStock(db, serials, now)
     await db.from('rezka_cycles').update({ closed_at: now }).in('serial', serials).is('closed_at', null)
     await db.from('wash_cycles').update({ closed_at: now }).in('serial', serials).is('closed_at', null)
+    // Any raw a failed run left behind leaves every raw-stage queue (0152).
+    await voidTestKirimLines(db, serials)
   }
   const menejer = (await db.from('profiles').select('id').eq('role', 'menejer').like('full_name', 'TEST %').limit(1).single()).data
   const plates = [ctx.chiqimPlate, ctx.k6Plate].filter((p): p is string => !!p)
@@ -415,7 +419,7 @@ test('3 · Kalibrlangan Kalibr 6 request is unchanged (created, then voided -- n
   test.setTimeout(90_000)
   const db = serviceClient()
   const k6Rows = await one(
-    db.from('finished_calibre_availability').select('available_kg').eq('type_id', ctx.typeId!).eq('calibre_id', ctx.k6Id!).eq('is_old_stock', false),
+    db.from('finished_calibre_availability').select('available_kg').eq('type_id', ctx.typeId!).eq('calibre_id', ctx.k6Id!).eq('is_old_stock', false).eq('owner_id', ctx.ownerId!),
     'K6 availability',
   )
   const k6Avail = Math.round(k6Rows.reduce((s, r) => s + Number(r.available_kg), 0))

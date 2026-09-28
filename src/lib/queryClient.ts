@@ -72,6 +72,8 @@ export const queryKeys = {
   intakeLines: () => ['intake_lines'] as const,
   moykaSerials: () => ['moyka_serials'] as const,
   moykaOutput: () => ['moyka_output'] as const,
+  rezkaOutput: () => ['rezka_output'] as const,
+  rezkaKnAvailability: () => ['rezka_kn_availability'] as const,
   omborChiqimRequests: () => ['ombor_chiqim_requests'] as const,
   // Phase 2 step 5 -- remaining unbounded-growth reads, no params.
   wipRows: () => ['wip_rows'] as const,

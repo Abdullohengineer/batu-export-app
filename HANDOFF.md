@@ -2,7 +2,7 @@
 
 Rezka is built in four prompts. Design audit: `docs/REZKA-AUDIT.md` (its wrong-premises list is
 authoritative over the original brief). Rules: `docs/SPEC.md` §5.R. Decisions:
-`docs/decisions/0219`–`0223`.
+`docs/decisions/0219`–`0224`.
 
 ## Prompt 1 — data layer, blockers, regressions (branch `rezka-prompt-1`) — COMPLETE
 
@@ -35,7 +35,52 @@ input (Prompt 11, 2026-08-29).
   `process` (Moyka picker filters it; Xom raw pool keeps it); `isInRezka`,
   `computeRezkaLossDisplay`; `FinishedReceiptForm` `rezka` prop.
 
-## Reported, not patched — must also exclude / handle `process='rezka'` (for Prompts 2/3)
+## Prompt 2 — Ombor sections 2/3 with a Moyka/Rezka pill (branch `rezka-prompt-2`) — BUILT, `0144` APPLIED
+
+**Status:** code complete on `rezka-prompt-2`; PR left for the product owner.
+- **Migration `0144` applied to live on 2026-09-28** (schema_migrations version
+  `20260928074512`). The stored statement is md5-identical to the committed file
+  (`6e003fda70ef23227230346a3fad0372`, 25,034 bytes).
+- Post-apply checks, run right before and right after the apply (07:43:33 and 07:45:45 UTC).
+  All 14 reads were identical in canonical md5:
+  - the three regression reads: `yield_rows` (43 rows), `wip_rows` (10 rows),
+    `lab_turnaround_avg`;
+  - the 11 Prompt 1 baselines: ledger ×3 scopes, snapshot ×3, client report ×3 owners,
+    `stock_on_hand_rows` (135), `finished_pallet_availability` (216).
+- Local checks: `tsc -b` clean, `oxlint` 2 old warnings, `node --test` 81/81,
+  `lint:rpc-wrapper` OK, build OK.
+
+**E2E — the product owner runs it locally, next to test 6:**
+`npx playwright test tests/e2e/rezka-ombor.spec.ts tests/e2e/full-chain.spec.ts`
+(needs `.env.test` including `SUPABASE_SERVICE_ROLE_KEY`; `0144` is now live).
+- The spec uses the dedicated owner **TEST Rezka E2E** (created if missing) and TEST- plates.
+- It voids its pallets and closes its cycles afterwards. Nothing is deleted.
+- It could not run in the cloud container: there is no `.env.test`, and the proxy blocks
+  browser→Supabase.
+
+**Built**
+- `0144`:
+  - `rezka_kn_candidate_pallets` is the single Konditerka predicate, read by both
+    `send_kn_to_rezka` (rewritten) and `rezka_kn_available()` (the tile).
+  - Explicit Rezka exclusions in `yield_rows`, `wip_rows` and `lab_turnaround_avg`;
+    `classify_kirim_line_sulfur` rejects Rezka.
+- Pill (`ProcessPill`, persisted per tab):
+  - The Moyka bodies moved unchanged to `MoykaSendSection` / `MoykaReceiveSection`.
+  - The Rezka bodies are separate components.
+- Section 2 Rezka:
+  - Tashqaridan olish / Ichkaridan olish tiles.
+  - Window 2 "Rezkada" with signed Rezkada, badge, and Ichki parent barcode2s.
+- Section 3 Rezka:
+  - No-lab, no-print Standard receive.
+  - Window 2 with Yakunlash at any residual; the confirmation reads "Ortiqcha +X kg" on a gain.
+- `RezkaBadge`; combined nav badges; `OmborIntakeTab` Window 2 reads `rezkaSent` for Rezka.
+- `check-rpc-wrapper` accepts `run(supabase.from(...))` (it had rejected its own pattern).
+
+**Resolved from the Prompt 1 "reported, not patched" list:**
+- all four SQL items;
+- `OmborIntakeTab`, `OmborHome` badges, and the `OmborMoykaTab` Window 1 split.
+
+## Reported, not patched — must also exclude / handle `process='rezka'` (for Prompts 2/3) — ✅ all resolved in Prompt 2 (`0144` + frontend)
 
 SQL (each needs its origin-filter category stated when touched — CLAUDE.md):
 - `classify_kirim_line_sulfur` — Laborator sulfur classification; a Rezka line has no lab.
@@ -55,6 +100,16 @@ Frontend:
   must split it by `process`.
 
 ## E2E test follow-ups (found while getting test 6 green)
+- **TEST- plate filter for Ombor section 3 Window 2 (Rezka).** `rezka-ombor.spec.ts` voids its
+  pallets and closes its cycles, but the TEST serials stay listed as closed rows in
+  "Qabul qilingan seriyalar": `useRezkaOutput().received` has no TEST- filter. Add one, same
+  family as `isTestPlate()`, to that window only; the live windows are unaffected once cycles
+  close.
+- **`seedDispatchablePallets` (`tests/e2e/helpers/fixtures.ts`) writes the outdated
+  `wash_cycles` shape.** It inserts `{ serial, status: 'final', final_loss_pct: 0 }`, which
+  predates `cycle_no`/`opened_at`/`closed_at` (0124). Its `window.supabase` type also lacks
+  `auth`, which is a tsc error at line 199. Unused by the Rezka spec; any spec that still calls
+  it needs it updated.
 - Update the stale Ombor link names (`Moykaga Chiqarish` / `Tayyor Mahsulot` / `Skladga
   KIRIM` / `Skladdan CHIQIM` → `Moykaga` / `Tayyor` / `KIRIM` / `CHIQIM`, `exact: true`) in
   `tests/e2e/lab-packing-hard-gate.spec.ts`, `lab-relocation-loss-verification.spec.ts` and

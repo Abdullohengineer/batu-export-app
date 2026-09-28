@@ -1,6 +1,11 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import type { Calibre } from '../../lib/useCalibres'
 import type { OutputSerial } from '../../lib/useMoykaOutput'
+
+// The five fields this form actually reads. Structural, so both a Moyka
+// OutputSerial and a Rezka RezkaOutputSerial (useRezkaOutput) fit without
+// either being converted (Rezka Prompt 2).
+export type ReceiptSerial = Pick<OutputSerial, 'serial' | 'partiyaNo' | 'category_id' | 'received' | 'barcodeSeqByCalibre'>
 import { Button } from '../../components/ui/Button'
 import { TextInput } from '../../components/ui/FormField'
 import { StatusNote } from '../../components/ui/StatusNote'
@@ -26,10 +31,11 @@ export function FinishedReceiptForm({
   ownerName,
   calibres,
   rezka = false,
+  headerBadge,
   onCancel,
   onSubmit,
 }: {
-  serial: OutputSerial
+  serial: ReceiptSerial
   typeName: string
   ownerName: string
   calibres: Calibre[]
@@ -37,6 +43,9 @@ export function FinishedReceiptForm({
   // ("Standard"). Without it -- every Moyka path -- those calibres are
   // hidden, so a Moyka serial can never be received as Rezka output.
   rezka?: boolean
+  // Shown beside the serial number in the header (Rezka receive passes its
+  // RezkaBadge -- SPEC.md §5.R provenance everywhere the serial shows).
+  headerBadge?: ReactNode
   onCancel: () => void
   onSubmit: (values: ReceiptValues) => Promise<void>
 }) {
@@ -98,6 +107,7 @@ export function FinishedReceiptForm({
           <span className="inline-flex items-center gap-1.5">
             <span className="font-mono font-medium text-slate-900 dark:text-slate-100">{serial.serial}</span>
             <PartiyaBadge partiyaNo={serial.partiyaNo} typeName={typeName} />
+            {headerBadge}
           </span>
         </div>
         <div className="flex items-center justify-between text-sm">
@@ -164,7 +174,7 @@ export function FinishedReceiptForm({
 
       <div className="space-y-2">
         <Button type="submit" variant="primary" size="lg" fullWidth disabled={submitting}>
-          {submitting ? 'Saqlanmoqda…' : 'Saqlash va shtrix-kod chiqarish'}
+          {submitting ? 'Saqlanmoqda…' : rezka ? 'Saqlash' : 'Saqlash va shtrix-kod chiqarish'}
         </Button>
         <Button type="button" variant="ghost" size="md" fullWidth onClick={onCancel}>
           Yopish

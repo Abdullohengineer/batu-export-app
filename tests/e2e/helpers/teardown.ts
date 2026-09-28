@@ -23,7 +23,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // spec still uses for everything except teardown).
 let cachedClient: SupabaseClient | null = null
 
-function serviceClient(): SupabaseClient {
+export function serviceClient(): SupabaseClient {
   if (cachedClient) return cachedClient
   const url = process.env.SUPABASE_URL ?? 'https://qohoqbapevrcjqxbstxi.supabase.co'
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY

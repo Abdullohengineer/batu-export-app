@@ -134,6 +134,23 @@ input (Prompt 11, 2026-08-29).
 - Spec cleanup fixed: `voidPalletsWithStock` voids only pallets with available kg > 0
   (`rezka-menejer`, `rezka-ombor`). New read-only `rezka-hisobot.spec.ts`.
 
+## Logged for its own investigation (not part of the post-Rezka cleanup prompt)
+- **Rahbar ledger residuals are large and pre-existing** (`rahbar_dashboard_ledger`,
+  2026-09-28, after 0150/0151 removed the TEST share):
+  - Raw residual (Ledger A):
+    - this month −6,550 kg;
+    - from 2026-07-15 −7,590 kg.
+  - Moykada residual (Ledger B):
+    - this month −7,330 kg;
+    - from 2026-07-15 +6,778 kg.
+  - Likely causes:
+    - the documented over-send characteristic: `raw_closing_total`'s `greatest(0, …)` floor
+      absorbs any line sent or dispatched beyond its own effective qty;
+    - the registration gap between Ombor intake and gate weigh-2 (the effective-qty ladder vs
+      what was actually sent).
+  - Needs its own investigation: per-serial decomposition of the residual, starting from lines
+    where `sent + dispatched > effective_qty`. See `docs/decisions/0231`.
+
 ## Post-Rezka cleanup prompt (collected; none started)
 1. **`get_serial_passport` is slow under RLS — production risk (pre-existing `_core`).** Found
    2026-09-28 while fixing `rezka-hisobot` test 1 (17 concurrent passports → 8 hit the 12 s

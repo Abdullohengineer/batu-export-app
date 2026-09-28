@@ -109,6 +109,33 @@ $$;
 -- ------------------------------------------------------------------
 alter function public.rahbar_dashboard_ledger(date, date, text) rename to rahbar_dashboard_ledger_rls;
 
+-- byCalibreType.dispatched was a jsonb_agg without ORDER BY, so its element
+-- order followed the plan -- and bypassing RLS changes the plan (the 0147
+-- dry run's one hash mismatch: same 11 elements, different order). Give it
+-- an explicit order so the output is plan-independent. Done as a checked
+-- text edit of the live body (the 0143 body, 19,098 chars), not a retype:
+-- the body must be exactly the one measured (md5 below) and the target line
+-- must occur exactly once, or the migration aborts. Nothing else changes.
+do $ord$
+declare
+  v_src text;
+  v_old constant text := $x$select coalesce(jsonb_agg(jsonb_build_object('typeId', type_id, 'calibreId', calibre_id, 'kg', kg)), '[]'::jsonb)$x$;
+  v_new constant text := $x$select coalesce(jsonb_agg(jsonb_build_object('typeId', type_id, 'calibreId', calibre_id, 'kg', kg) order by type_id, calibre_id), '[]'::jsonb)$x$;
+begin
+  select prosrc into v_src from pg_proc
+  where proname = 'rahbar_dashboard_ledger_rls' and pronamespace = 'public'::regnamespace;
+  if md5(v_src) <> '178696381ebb22ab4801942952fc7bb0' then
+    raise exception '0147: rahbar_dashboard_ledger body is not the expected 0143 body (md5 %)', md5(v_src);
+  end if;
+  if (length(v_src) - length(replace(v_src, v_old, ''))) / length(v_old) <> 1 then
+    raise exception '0147: dispatched jsonb_agg line not found exactly once';
+  end if;
+  execute format(
+    'create or replace function public.rahbar_dashboard_ledger_rls(p_from date, p_to date, p_scope text) returns jsonb language sql stable as %L',
+    replace(v_src, v_old, v_new));
+end;
+$ord$;
+
 create function public.rahbar_dashboard_ledger_staff(p_from date, p_to date, p_scope text)
 returns jsonb
 language plpgsql

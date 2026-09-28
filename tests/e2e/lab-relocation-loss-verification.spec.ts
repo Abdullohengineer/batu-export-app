@@ -3,6 +3,11 @@ import { loginAs, type TestRole } from './helpers/login'
 import { uniqueRealLookingPlate, E2E_OWNER_NAME } from './helpers/fixtures'
 import { teardownFixtures } from './helpers/teardown'
 
+// AMENDED 2026-09-28 (post-Rezka cleanup item 7): "computed live the
+// instant Ombor packs a pallet" below predates 0101 (Yakunlash). The loss
+// is now booked when Ombor closes the serial, so this test packs, closes,
+// THEN traces the booked 150kg -- same numbers, one extra real step.
+//
 // Laborator v2 (2026-07-28 — see DECISIONS.md "Lab moves inside Moyka,
 // wash-cycle concept removed") Test 2: loss = (raw for serial − received
 // finished), computed live the instant Ombor packs a pallet — no manual
@@ -54,7 +59,7 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   await switchRole(page, 'MENEJER')
   const { orderId, typeId, ownerId } = await page.evaluate(
     async ({ plate, ownerName }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const { data: owner, error: ownerErr } = await w.supabase.from('owners').select('id').eq('name', ownerName).single()
       if (ownerErr) throw new Error(`owner lookup: ${ownerErr.message}`)
       const { data: type, error: typeErr } = await w.supabase.from('product_types').select('id').eq('name', 'Subxon').single()
@@ -78,7 +83,7 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
 
   const serial = await page.evaluate(
     async ({ orderId, typeId }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       // is_sulfured: false -- an explicit natural classification (2026-08-14;
       // see DECISIONS.md "Client quality targets removed from Menejer/
       // Laborator; explicit natural/sulphured flag") so the below "natural
@@ -99,7 +104,7 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   await switchRole(page, 'QOROVUL')
   await page.evaluate(
     async ({ orderId }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const {
         data: { user },
       } = await w.supabase.auth.getUser()
@@ -124,7 +129,7 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   await switchRole(page, 'OMBOR')
   await page.evaluate(
     async ({ serial }) => {
-      const w = window as unknown as { supabase: { from: (t: string) => any } }
+      const w = window as unknown as { supabase: { from: (t: string) => any; auth: { getUser: () => Promise<{ data: { user: { id: string } } }> } } }
       const {
         data: { user },
       } = await w.supabase.auth.getUser()
@@ -142,7 +147,7 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   // not a per-serial row form. Wait on the actual moyka_sends response, not
   // a button-label/visibility change, for the same reason this block
   // already documented before the redesign.
-  await page.getByRole('link', { name: 'Moykaga Chiqarish' }).click()
+  await page.getByRole('link', { name: 'Moykaga', exact: true }).click()
   await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
   const chip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
   await expect(chip).toBeVisible({ timeout: 20_000 })
@@ -170,7 +175,7 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   // see DECISIONS.md "Section 3 single-tile receive picker") — open the
   // tile, select the serial's chip, same FinishedReceiptForm as before. ---
   await switchRole(page, 'OMBOR')
-  await page.getByRole('link', { name: 'Tayyor Mahsulot' }).click()
+  await page.getByRole('link', { name: 'Tayyor', exact: true }).click()
   await page.getByRole('button', { name: '+ Moykadan qabul qilish' }).click()
   const receiveChip = page.getByRole('button', { name: new RegExp(`^${serial}\\b`) })
   await expect(receiveChip).toBeVisible({ timeout: 20_000 })
@@ -179,6 +184,21 @@ test('loss computed at receipt matches get_client_report and yield_rows exactly'
   await page.locator('input[type="number"]').fill('850')
   await page.getByRole('button', { name: 'Saqlash va shtrix-kod chiqarish' }).click()
   await expect(page.getByText(/PLT-/)).toBeVisible({ timeout: 20_000 })
+
+  // --- Ombor: Yakunlash (post-Rezka cleanup item 7, 2026-09-28). Since
+  // 0101 (docs/decisions "Serial close-out (Yakunlash)") loss is REALIZED
+  // only when Ombor closes the serial: before that the 150kg gap is
+  // Moykada, get_client_report books no loss and yield_rows has no row --
+  // the same drift full-chain.spec.ts was fixed for (5d4ded1). Close it the
+  // way a user does, same pattern as path-e-multi-cycle-residual-reprocess:
+  // the button on the collapsed Window 2 row, then the confirm. ---
+  await expect(page.getByRole('button', { name: 'Yakunlash', exact: true })).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: 'Yakunlash', exact: true }).click()
+  const [closeResponse] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/rpc/close_wash_cycle_serial')),
+    page.getByRole('button', { name: 'Yakunlash', exact: true }).click(),
+  ])
+  expect(closeResponse.ok(), `close_wash_cycle_serial must succeed: ${await closeResponse.text()}`).toBe(true)
 
   // --- Trace the SAME number into get_client_report and yield_rows ---
   const today = new Date().toISOString().slice(0, 10)

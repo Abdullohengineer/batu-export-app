@@ -7,7 +7,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // design — SPEC.md §2.15 "never delete, only void" is enforced at the RLS
 // level for operational data, not just a convention. (dispatch_manifest is
 // the one exception: `ombor_deletes`, scoped to pre-gate-stage-2 status —
-// exactly what chiqim-undo-scan.spec.ts's own RLS-refusal assertion tests.)
+// which chiqim-undo-scan.spec.ts used to assert; that spec was deleted
+// 2026-09-28 with the scan-to-load flow it tested -- docs/decisions/0233.)
 // The one precedent for bulk test-data removal in this project's history
 // (DECISIONS.md "Reporting engine cleanup", the 96-row TEST- CHIQIM
 // deletion) was executed the same way this file does it: elevated,

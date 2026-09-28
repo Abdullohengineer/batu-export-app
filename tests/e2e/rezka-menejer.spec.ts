@@ -247,7 +247,8 @@ test('1 · KIRIM with a Moyka and a Rezka line: badges, gate, intake with tara, 
   await page.getByRole('button', { name: '+ Tashqaridan olish' }).click()
   await expect(page.getByRole('button', { name: new RegExp(rezkaSerial) })).toBeVisible()
   await expect(page.getByRole('button', { name: new RegExp(moykaSerial) })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Yopish' }).click()
+  // No "Yopish" here: TashqiToRezkaForm only renders its close button once a
+  // serial is picked. Switching the pill unmounts the whole Rezka body.
   await pill.getByRole('button', { name: 'Moyka' }).click()
   await page.getByRole('button', { name: '+ Yangi zaxiradan moykaga yuborish' }).click()
   await expect(page.getByRole('button', { name: new RegExp(moykaSerial) })).toBeVisible()
@@ -378,7 +379,8 @@ test('2 · Rezka output 30 kg Standard -> Menejer Rezka tab -> dispatch; availab
   await page.getByRole('button', { name: 'Yuklashni yakunlash' }).click()
   await page.getByRole('button', { name: 'Ha, yakunlash' }).click()
   await expect(omborRequest).not.toBeVisible({ timeout: 20000 })
-  expect(await standardAvailableKg()).toBe(0)
+  // Poll: the UI settling is not proof the DB read will see the commit.
+  await expect.poll(standardAvailableKg, { timeout: 15_000 }).toBe(0)
 
   // --- Qorovul weigh-2 -> departed ---
   await switchTo(page, 'QOROVUL')
@@ -392,8 +394,9 @@ test('2 · Rezka output 30 kg Standard -> Menejer Rezka tab -> dispatch; availab
   const yak = page.getByRole('heading', { name: '2 · Yakunlangan' }).locator('xpath=following-sibling::div[1]')
   await expect(yak.locator('.rounded-md', { hasText: ctx.chiqimPlate! })).toBeVisible({ timeout: 20000 })
 
-  const done = await one(db.from('chiqim_requests').select('status').eq('id', req.id).single(), 'request status')
-  expect(done.status).toBe('olib_ketildi')
+  await expect
+    .poll(async () => (await one(db.from('chiqim_requests').select('status').eq('id', req.id).single(), 'request status')).status, { timeout: 15_000 })
+    .toBe('olib_ketildi')
   const consumed = await one(db.from('chiqim_pallet_consumption').select('barcode2, qty_kg').eq('chiqim_line_id', (await one(db.from('chiqim_lines').select('id').eq('request_id', req.id).eq('calibre_id', ctx.standardId!).single(), 'rezka line id')).id), 'consumption')
   expect(consumed).toEqual([{ barcode2: `PLT-${ctx.rezkaSerial}-RKN-1`, qty_kg: REZKA_KG }])
   expect(consoleErrors, consoleErrors.join('\n')).toEqual([])

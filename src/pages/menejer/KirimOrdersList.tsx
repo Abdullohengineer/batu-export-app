@@ -16,6 +16,7 @@ import { StatusNote } from '../../components/ui/StatusNote'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { RezkaBadge } from '../../components/ui/RezkaBadge'
 import type { Tone } from '../../components/ui/tokens'
 import { SerialPassportModal } from '../reports/SerialPassportModal'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
@@ -39,6 +40,7 @@ interface KirimLine {
   type_id: string
   declared_qty: number
   partiya_no: number | null
+  process: 'moyka' | 'rezka' // fixed at creation (Rezka Prompt 3) -- shown read-only here
 }
 
 interface KirimOrder {
@@ -98,7 +100,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
         supabase
           .from('kirim_orders')
           .select(
-            'order_id, order_date, plate, driver, declared_total, status, kirim_lines(serial, type_id, declared_qty, partiya_no)',
+            'order_id, order_date, plate, driver, declared_total, status, kirim_lines(serial, type_id, declared_qty, partiya_no, process)',
           )
           .eq('created_by', profile.id)
           .order('created_at', { ascending: false }),
@@ -228,6 +230,7 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
           >
             <SerialChip>{order.kirim_lines[0]?.serial ?? '—'}</SerialChip>
             <PartiyaBadge partiyaNo={order.kirim_lines[0]?.partiya_no ?? null} typeName={typeName(order.kirim_lines[0]?.type_id ?? '')} />
+            {order.kirim_lines.some((l) => l.process === 'rezka') && <RezkaBadge provenance="tashqi" />}
             <span className="min-w-0 flex-1">
               <span className="block text-base text-slate-900 dark:text-slate-100">
                 {order.plate} · {order.driver}
@@ -250,8 +253,11 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
                     <span className="inline-flex items-center gap-1.5">
                       <span className="font-mono text-slate-700 dark:text-slate-300">{line.serial}</span>
                       <PartiyaBadge partiyaNo={line.partiya_no} typeName={typeName(line.type_id)} />
+                      {line.process === 'rezka' && <RezkaBadge provenance="tashqi" />}
                     </span>
-                    <span className="text-slate-600 dark:text-slate-400">{typeName(line.type_id)}</span>
+                    <span className="text-slate-600 dark:text-slate-400">
+                      {typeName(line.type_id)} · Jarayon: {line.process === 'rezka' ? 'Rezka' : 'Moyka'}
+                    </span>
                     <span className="text-slate-600 dark:text-slate-400">
                       E'lon qilingan {line.declared_qty.toLocaleString()} kg
                       {eq && (

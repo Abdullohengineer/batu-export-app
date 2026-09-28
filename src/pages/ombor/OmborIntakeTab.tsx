@@ -221,7 +221,6 @@ export function OmborIntakeTab() {
   // Rezka truck leaves this window once it has all gone to Rezka, and is not
   // counted as awaiting a Moyka send meanwhile.
   const sentBySerial = new Map(moykaSerials.map((s) => [s.serial, s.process === 'rezka' ? s.rezkaSent : s.sent]))
-  const rezkaSerials = new Set(moykaSerials.filter((s) => s.process === 'rezka').map((s) => s.serial))
   // Newest-first by confirmed_at (DECISIONS "History list ordering") — the
   // underlying lines aren't reliably ordered (useIntakeLines builds them by
   // mapping over kirim_lines, which has no .order(), not over the
@@ -278,6 +277,7 @@ export function OmborIntakeTab() {
                 <div className="flex items-center gap-2">
                   <SerialChip>{line.serial}</SerialChip>
                   <PartiyaBadge partiyaNo={line.partiyaNo} typeName={typeName(line.type_id)} />
+                  {line.process === 'rezka' && <RezkaBadge provenance="tashqi" />}
                   <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                     {ownerName(line.owner_id)} · {typeName(line.type_id)}
                   </span>
@@ -350,7 +350,7 @@ export function OmborIntakeTab() {
                   <div className="flex items-center gap-2">
                     <SerialChip variant="emphasized">{line.serial}</SerialChip>
                     <PartiyaBadge partiyaNo={line.partiyaNo} typeName={typeName(line.type_id)} />
-                    {rezkaSerials.has(line.serial) && <RezkaBadge provenance="tashqi" />}
+                    {line.process === 'rezka' && <RezkaBadge provenance="tashqi" />}
                     <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                       {ownerName(line.owner_id)} · {typeName(line.type_id)}
                     </span>

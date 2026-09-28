@@ -21,6 +21,7 @@ import { StatusNote } from '../../components/ui/StatusNote'
 import { FuraBadge } from '../../components/ui/FuraBadge'
 import { Stat } from '../../components/ui/Stat'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { RezkaBadge } from '../../components/ui/RezkaBadge'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { TextInput } from '../../components/ui/FormField'
 import type { Tone } from '../../components/ui/tokens'
@@ -171,6 +172,13 @@ export function OmborChiqimTab() {
   // so this terse label just says "Xom". Opening stock, Stage 2 — three
   // more kinds, same terse-label reasoning (each kind's own section below
   // shows the real detail).
+  // Rezka Prompt 3: a Rezka line is a plain 'finished' line on the
+  // is_rezka_output calibre ("Standard"). Badge only -- loaded-kg entry,
+  // FIFO attribution and finalize are exactly the Kalibrlangan path.
+  function isRezkaLine(line: { calibre_id: string | null; line_kind: ChiqimLine['line_kind'] }) {
+    return line.line_kind === 'finished' && !!calibres.find((c) => c.id === line.calibre_id)?.is_rezka_output
+  }
+
   function lineLabel(line: { calibre_id: string | null; line_kind: ChiqimLine['line_kind'] }) {
     switch (line.line_kind) {
       case 'raw':
@@ -548,9 +556,13 @@ export function OmborChiqimTab() {
                 </div>
 
                 <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
-                  {request.lines
-                    .map((l) => `${typeName(l.type_id)} ${lineLabel(l)} · ${l.qty_kg === null ? '—' : l.qty_kg.toLocaleString()}`)
-                    .join('   ')}
+                  {request.lines.map((l, i) => (
+                    <span key={l.id} className="inline-flex items-center gap-1">
+                      {i > 0 && <span className="w-2" />}
+                      {`${typeName(l.type_id)} ${lineLabel(l)} · ${l.qty_kg === null ? '—' : l.qty_kg.toLocaleString()}`}
+                      {isRezkaLine(l) && <RezkaBadge />}
+                    </span>
+                  ))}
                 </div>
 
                 {/* Gate-weighing status: informational only, never gates
@@ -693,6 +705,7 @@ export function OmborChiqimTab() {
                                     <span className="flex items-center gap-1.5">
                                       {typeName(line.type_id)} · {lineLabel(line)}
                                       {isOld && oldStockBadge}
+                                      {isRezkaLine(line) && <RezkaBadge />}
                                     </span>
                                     <span>sof {line.qty_kg === null ? '—' : `${line.qty_kg.toLocaleString()} kg`}</span>
                                   </div>

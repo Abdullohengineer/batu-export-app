@@ -13,6 +13,7 @@ import { Stat } from '../../components/ui/Stat'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { RezkaBadge } from '../../components/ui/RezkaBadge'
 import { formatDate } from '../../lib/formatDate'
 
 async function uploadGatePhoto(file: File) {
@@ -68,6 +69,12 @@ export function QorovulKirimTab() {
 
   function primaryTypeName(trip: KirimTrip) {
     return typeName(trip.lines[0]?.type_id ?? '')
+  }
+
+  // Rezka Prompt 3: the card is per truck; badge it when any line on the
+  // truck is a Rezka line (display only -- the gate's job is unchanged).
+  function hasRezka(trip: KirimTrip) {
+    return trip.lines.some((l) => l.process === 'rezka')
   }
 
   function closeForm() {
@@ -165,6 +172,7 @@ export function QorovulKirimTab() {
                     <div className="flex items-center gap-2">
                       <SerialChip>{primarySerial(trip)}</SerialChip>
                     <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} typeName={primaryTypeName(trip)} />
+                    {hasRezka(trip) && <RezkaBadge provenance="tashqi" />}
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(trip.order.owner_id)} · {typeSummary(trip)}
                       </span>
@@ -224,6 +232,7 @@ export function QorovulKirimTab() {
                   <div className="flex items-center gap-2">
                     <SerialChip>{primarySerial(trip)}</SerialChip>
                     <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} typeName={primaryTypeName(trip)} />
+                    {hasRezka(trip) && <RezkaBadge provenance="tashqi" />}
                     <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                       {ownerName(trip.order.owner_id)} · {typeSummary(trip)}
                     </span>

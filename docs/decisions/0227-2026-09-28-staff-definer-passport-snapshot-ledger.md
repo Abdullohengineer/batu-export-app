@@ -103,3 +103,17 @@ passport, so this is left.
 The first dry run, one combined transaction, exceeded the MCP tool's 60 s limit. The backend kept
 running, so it was cancelled with `pg_cancel_backend`. Nothing had committed: none of the new
 functions existed afterwards. It was re-run as three smaller rolled-back transactions.
+
+## Follow-up: 0149 orders `byCalibreType.processed` too
+
+Applied 2026-09-28. Stored md5 `a2e880dd3b11061d0e7904c27161de92` matches the file.
+
+`processed` gets the same `order by type_id, calibre_id`, as the same checked edit: the
+post-0147 body md5 `678813ec…` is asserted, and exactly one match is required. Both lists in
+`rahbar_dashboard_ledger` are now plan-independent.
+
+Rolled-back check before applying:
+- every key except `processed` is identical;
+- `processed` holds the same set, now in order;
+- router, RLS path and `postgres` hash identically: Rahbar `e0fd03d0…` = postgres; client router
+  = client RLS path.

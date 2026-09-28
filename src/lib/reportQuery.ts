@@ -50,7 +50,39 @@
 // (see ReportFilterBar.tsx): `directions: []` means no restriction (every
 // kind), matching report_totals/report_filtered_rows' own
 // `p_directions is null or array_length(...) is null` semantics.
-export type ReportRowKind = 'kirim' | 'chiqim' | 'chiqim_raw' | 'chiqim_old_kn' | 'moyka_send' | 'moyka_output'
+export type OddiyRowKind = 'kirim' | 'chiqim' | 'chiqim_raw' | 'chiqim_old_kn' | 'moyka_send' | 'moyka_output'
+
+// Rezka (2026-09-28, Prompt 4 -- docs/decisions/0226-...): four kinds, fed
+// by report_rezka_rows (migration 0146). The server returns them ONLY when
+// named in p_directions -- an empty/null direction list keeps meaning
+// "every Oddiy kind", so every pre-Rezka caller is unchanged.
+export type RezkaRowKind = 'rezka_kirim' | 'rezka_send' | 'rezka_output' | 'rezka_chiqim'
+
+export type ReportRowKind = OddiyRowKind | RezkaRowKind
+
+// Yo'nalish GROUP (2026-09-28): an exclusive switch above the direction
+// multi-select. The two groups never render in one table -- Rezka rows are
+// excluded from every Oddiy kind server-side, and vice versa.
+export type DirectionGroup = 'oddiy' | 'rezka'
+
+export const ODDIY_KINDS: OddiyRowKind[] = ['kirim', 'moyka_send', 'moyka_output', 'chiqim', 'chiqim_raw', 'chiqim_old_kn']
+export const REZKA_KINDS: RezkaRowKind[] = ['rezka_kirim', 'rezka_send', 'rezka_output', 'rezka_chiqim']
+
+export function isRezkaKind(kind: string): kind is RezkaRowKind {
+  return (REZKA_KINDS as string[]).includes(kind)
+}
+
+// What actually goes to the server as p_directions. Oddiy + nothing checked
+// = [] (null over the wire: every Oddiy kind, the pre-Rezka meaning). Rezka +
+// nothing checked = all four Rezka kinds, since the server only emits Rezka
+// rows when asked for by name. A persisted filter from before the group
+// existed has no `group` and reads as Oddiy.
+export function effectiveDirections(filters: Pick<ReportFilters, 'group' | 'directions'>): ReportRowKind[] {
+  const group = filters.group ?? 'oddiy'
+  const inGroup = filters.directions.filter((d) => (group === 'rezka' ? isRezkaKind(d) : !isRezkaKind(d)))
+  if (group === 'rezka' && inGroup.length === 0) return [...REZKA_KINDS]
+  return inGroup
+}
 
 // The four states named verbatim in §3.2.2. "omborda"/"band_qilingan" have no
 // governing event yet (no arrival or dispatch date to filter on) — they
@@ -78,6 +110,9 @@ export type PalletStatusFilter =
 export type LabVerdictFilter = '' | 'o_tdi' | 'qayta_yuvish' | 'tekshirilmagan'
 
 export interface ReportFilters {
+  // Optional only so a filter persisted before 2026-09-28 still loads --
+  // undefined reads as 'oddiy' everywhere (effectiveDirections).
+  group?: DirectionGroup
   directions: ReportRowKind[] // [] = no restriction (every kind) — see ReportRowKind above
   from: string // YYYY-MM-DD, inclusive
   to: string // YYYY-MM-DD, inclusive
@@ -98,6 +133,7 @@ export interface ReportFilters {
 
 export function defaultReportFilters(from: string, to: string): ReportFilters {
   return {
+    group: 'oddiy',
     directions: [],
     from,
     to,
@@ -114,7 +150,15 @@ export function defaultReportFilters(from: string, to: string): ReportFilters {
   }
 }
 
-export type DateBasisSource = 'gate_stage1' | 'order_date' | 'gate_stage2' | 'sent_date' | 'received_date' | null
+export type DateBasisSource =
+  | 'gate_stage1'
+  | 'order_date'
+  | 'gate_stage2'
+  | 'sent_date'
+  | 'received_date'
+  | 'drawn_at' // Rezka kirim, Ichki -- the KN draw that minted the serial
+  | 'departed_at' // Rezka chiqim -- chiqim_departed_at, same basis as the Oddiy dispatch row
+  | null
 
 // A serial's own standing balance (2026-08-15). qabulQilingan/ombordaQoldi/
 // xomJonatilgan/olibKetilgan are genuinely as-of-now, never clipped to the
@@ -368,11 +412,56 @@ export interface MoykaOutputReportRow {
   state: SerialState
 }
 
+// Rezka rows (2026-09-28, Prompt 4). One shape for all four Rezka kinds --
+// they share every field the table reads; which ones are filled depends on
+// the kind (plate/driver only on Tashqi kirim and chiqim, declared only on
+// Tashqi kirim, calibreId only on output/chiqim, always the Standard
+// calibre). `state` is the same serial bundle the Oddiy rows carry (Qabul
+// qilingan, Omborda qoldi, Olib ketilgan, Moykadan chiqgan = Rezkadan
+// chiqgan for a Rezka serial -- kirim_line_report_bundle_set already sums a
+// serial's own non-void pallets); `rezka` is the Rezka-only part from
+// rezka_serial_state_set.
+export interface RezkaSerialState {
+  manba: 'tashqi' | 'ichki' | null
+  parents: { barcode2: string; qtyKg: number; sourceSerial: string }[]
+  rezkagaYuborilgan: number
+  // Signed, per OPEN cycle (close_rezka_cycle_serial's rule): negative = the
+  // open cycle has already returned more than was sent (Ortiqcha).
+  rezkada: number
+}
+
+export interface RezkaReportRow {
+  kind: RezkaRowKind
+  key: string
+  serial: string
+  barcode2: string
+  orderId: string
+  requestId: string
+  typeId: string
+  partiyaNo: number | null
+  calibreId: string
+  ownerId: string
+  plate: string | null
+  driver: string | null
+  weightKg: number
+  declaredQty: number | null
+  boxMassKg: number | null
+  dateBasis: string | null
+  dateBasisSource: DateBasisSource
+  // True for the Tashqi Rezka kirim row -- the only Rezka kirim that counts
+  // in the Kirim total (an Ichki mint moves stock that is already counted).
+  isTashqiKirim: boolean
+  palletStatus: Exclude<PalletStatusFilter, ''> | null
+  state: SerialState
+  rezka: RezkaSerialState
+}
+
 export type ReportRow =
   | KirimReportRow
   | ChiqimDispatchReportRow
   | MoykaSendReportRow
   | MoykaOutputReportRow
+  | RezkaReportRow
 
 // §3.2.2 🔒 "a voided Barcode #2 must remain findable" — a voided pallet's
 // cycle was, by construction, the ACTIVE cycle at the moment it was voided
@@ -466,6 +555,14 @@ export interface ReportTotals {
   stateK7: number
   stateK8: number
   stateKn: number
+  // Rezka (2026-09-28). Movement: row sums of rezka_send / rezka_output,
+  // like totalToMoyka/totalFromMoyka -- internal, never in kgIn/kgOut.
+  // (Tashqi Rezka kirim and Rezka chiqim ARE in kgIn/kgOut.) State: once
+  // per distinct serial, lifetime; stateRezkada signed.
+  totalToRezka: number
+  totalFromRezka: number
+  stateRezkagaYuborilgan: number
+  stateRezkada: number
 }
 
 // Which real-world date each kind is governed by (§3.2.3, extended
@@ -482,6 +579,13 @@ const KIND_DATE_BASIS_LABEL: Record<ReportRowKind, string> = {
   chiqim_old_kn: "jo'natilgan sana",
   moyka_send: 'Moykaga yuborilgan sana',
   moyka_output: 'Moykadan chiqqan sana',
+  // Tashqi: arrival like Oddiy kirim; Ichki: the KN draw. Named once for
+  // the kind, both halves spelled out.
+  rezka_kirim: 'kelish (Tashqi) / KN olingan sana (Ichki)',
+  rezka_send: 'Rezkaga yuborilgan sana',
+  rezka_output: 'Rezkadan chiqqan sana',
+  // Same departure basis as Oddiy chiqim -- deliberately the same label.
+  rezka_chiqim: "jo'natilgan sana",
 }
 
 // §3.2.3 🔒 date basis label, shown on screen and in exports — printed
@@ -492,7 +596,8 @@ const KIND_DATE_BASIS_LABEL: Record<ReportRowKind, string> = {
 // "two people producing two different numbers from the same screen" is
 // exactly what this label exists to prevent, whether 2 kinds are checked
 // or 6.
-export function dateBasisLabel(directions: ReportRowKind[]): string {
+export function dateBasisLabel(directions: ReportRowKind[], group: DirectionGroup = 'oddiy'): string {
+  if (group === 'rezka') directions = effectiveDirections({ group, directions })
   if (directions.length === 0) {
     return "Sana asosi: har bir qator o'zining hodisasi bo'yicha (kirim — kelish, chiqim — jo'natilgan sana, moykaga/moykadan — o'z sanasi)"
   }
@@ -515,7 +620,7 @@ export interface ReportDbRow {
   // report_chiqim_rows read (2026-09-14) -- report_query_page/report_totals
   // never emit it any more, 'chiqim_raw'/'chiqim_old_kn' not at all (rolled
   // into 'chiqim_dispatch' server-side).
-  kind: 'kirim' | 'chiqim' | 'chiqim_dispatch' | 'moyka_send' | 'moyka_output'
+  kind: 'kirim' | 'chiqim' | 'chiqim_dispatch' | 'moyka_send' | 'moyka_output' | RezkaRowKind
   row_key: string
   serial: string | null
   barcode2: string | null
@@ -592,6 +697,12 @@ export interface ReportDbRow {
   dispatch_k7?: number | string | null
   dispatch_k8?: number | string | null
   dispatch_kn?: number | string | null
+  // Rezka enrichment (2026-09-28, report_page_enrich / report_query_page) --
+  // null on every non-Rezka serial.
+  rezka_manba?: 'tashqi' | 'ichki' | null
+  rezka_parents?: { barcode2: string; qtyKg: number | string; sourceSerial: string }[] | null
+  state_rezkaga_yuborilgan?: number | string | null
+  state_rezkada?: number | string | null
 }
 
 function num(v: number | string | null | undefined): number | null {
@@ -671,6 +782,32 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow | ChiqimReportR
       kirimSo2MgKg: num(row.so2_mg_kg),
       boxMassKg: num(row.box_mass_kg),
       state: mapState(row) ?? zeroState(),
+    }
+  }
+
+  if (isRezkaKind(row.kind)) {
+    return {
+      kind: row.kind,
+      key: row.row_key,
+      serial: row.serial ?? '',
+      barcode2: row.barcode2 ?? '',
+      orderId: row.order_id ?? '',
+      requestId: row.request_id ?? '',
+      typeId: row.type_id,
+      partiyaNo: num(row.partiya_no),
+      calibreId: row.calibre_id ?? '',
+      ownerId: row.owner_id,
+      plate: row.plate,
+      driver: row.driver,
+      weightKg: Number(row.qty_kg),
+      declaredQty: num(row.declared_qty),
+      boxMassKg: num(row.box_mass_kg),
+      dateBasis: row.date_basis,
+      dateBasisSource: row.date_basis_source,
+      isTashqiKirim: row.kind === 'rezka_kirim' && row.row_key.startsWith('rezka-kirim-'),
+      palletStatus: row.pallet_status,
+      state: mapState(row) ?? zeroState(),
+      rezka: mapRezkaState(row),
     }
   }
 
@@ -779,6 +916,15 @@ export function mapDbRowToReportRow(row: ReportDbRow): ReportRow | ChiqimReportR
     voidInfo,
     boxMassKg: null,
     state: mapState(row) ?? zeroState(),
+  }
+}
+
+function mapRezkaState(row: ReportDbRow): RezkaSerialState {
+  return {
+    manba: row.rezka_manba ?? null,
+    parents: (row.rezka_parents ?? []).map((p) => ({ barcode2: p.barcode2, qtyKg: Number(p.qtyKg), sourceSerial: p.sourceSerial })),
+    rezkagaYuborilgan: Number(row.state_rezkaga_yuborilgan ?? 0),
+    rezkada: Number(row.state_rezkada ?? 0),
   }
 }
 

@@ -1,4 +1,6 @@
 import type { ReportRow, SerialState } from '../../lib/reportQuery'
+import { REZKA_DIRECTION_LABEL, rezkaManbaText, rezkadaText } from '../../lib/rezkaReportLabels'
+import { RezkaRowDetail } from './RezkaRowDetail'
 import type { ReportColumnDef } from '../../lib/reportColumns'
 import { KirimRowDetail } from './KirimRowDetail'
 import { ChiqimDispatchRowDetail } from './ChiqimDispatchRowDetail'
@@ -63,8 +65,12 @@ export function ReportTableRow({
   // real measurement (2026-08-15, matching the existing Tara/boxMassKg
   // convention below, extended to the two new volume columns and the two
   // measurement columns).
-  const declared = row.kind === 'kirim' ? row.declaredQty : null
-  const hisobiy = row.kind === 'kirim' ? row.hisobiyKg : null
+  // Rezka (2026-09-28): only the Tashqi Rezka kirim row carries a declared
+  // figure (it IS a truck arrival); every other Rezka row is blank here.
+  const rezka = 'rezka' in row ? row : null
+  const declared = row.kind === 'kirim' ? row.declaredQty : rezka?.isTashqiKirim ? rezka.declaredQty : null
+  const hisobiy =
+    row.kind === 'kirim' ? row.hisobiyKg : rezka?.isTashqiKirim && rezka.declaredQty !== null ? Math.min(rezka.weightKg, rezka.declaredQty) : null
   const moisture = row.kind === 'kirim' ? row.kirimMoisturePct : row.kind === 'moyka_output' ? row.moisturePct : null
   const so2 = row.kind === 'kirim' ? row.kirimSo2MgKg : row.kind === 'moyka_output' ? row.so2MgKg : null
   // Serial-state columns (2026-08-15) — every row shows its PARENT SERIAL's
@@ -78,7 +84,9 @@ export function ReportTableRow({
       case 'direction':
         return (
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {row.kind === 'kirim'
+            {rezka
+              ? REZKA_DIRECTION_LABEL[rezka.kind]
+              : row.kind === 'kirim'
               ? 'KIRIM'
               : row.kind === 'moyka_send'
                 ? 'MOYKAGA'
@@ -117,11 +125,30 @@ export function ReportTableRow({
         // Neither moyka_output (a serial can produce several calibres) nor
         // chiqim_dispatch (a truck can carry several) has a single value —
         // see MoykaOutputRowDetail/ChiqimDispatchRowDetail for the
-        // per-pallet breakdown.
-        return <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">—</span>
+        // per-pallet breakdown. A Rezka output/chiqim row has one calibre
+        // by construction (Standard) -- shown; Rezka kirim/send are raw.
+        return (
+          <span className="whitespace-nowrap text-slate-700 dark:text-slate-300">
+            {rezka?.calibreId ? calibreLabel(rezka.calibreId) : '—'}
+          </span>
+        )
       case 'barcode2':
         // Same reasoning as 'calibre' above.
-        return <span className="whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">—</span>
+        return <span className="whitespace-nowrap font-mono text-slate-900 dark:text-slate-100">{rezka?.barcode2 || '—'}</span>
+      case 'manba':
+        return <span className="text-slate-700 dark:text-slate-300">{rezka ? rezkaManbaText(rezka) : '—'}</span>
+      case 'rezkaga_yuborilgan':
+        return <StateCell value={rezka?.rezka.rezkagaYuborilgan} />
+      case 'rezkada':
+        return (
+          <span className="whitespace-nowrap tabular-nums text-slate-700 dark:text-slate-300">
+            {rezka ? rezkadaText(rezka.rezka.rezkada) : '—'}
+          </span>
+        )
+      case 'rezkadan_chiqgan':
+        // The bundle's lifetime Moykadan chiqgan IS the Rezka output for a
+        // Rezka serial (non-void pallets of that serial) -- see reportColumns.ts.
+        return <StateCell value={rezka ? rezka.state.moykadanChiqganLifetime : null} />
       case 'netto':
         return (
           <span className="whitespace-nowrap tabular-nums font-medium text-slate-900 dark:text-slate-100">
@@ -199,6 +226,8 @@ export function ReportTableRow({
               </>
             ) : row.kind === 'moyka_send' ? (
               <span className="text-slate-400">Moykaga</span>
+            ) : row.kind === 'rezka_chiqim' ? (
+              <span className="text-slate-700 dark:text-slate-300">Jo'natilgan</span>
             ) : (
               // moyka_output (per-serial aggregate, mixed statuses possible)
               // and chiqim_dispatch (components can carry mixed statuses,
@@ -310,7 +339,9 @@ export function ReportTableRow({
       {expanded && (
         <tr className="border-b border-slate-200 dark:border-slate-700">
           <td colSpan={visibleColumns.length + 1} className="bg-slate-50 px-3 py-3 dark:bg-slate-900/40">
-            {row.kind === 'kirim' ? (
+            {'rezka' in row ? (
+              <RezkaRowDetail row={row} onOpenPassport={onOpenPassport} />
+            ) : row.kind === 'kirim' ? (
               <KirimRowDetail row={row} onOpenPassport={onOpenPassport} />
             ) : row.kind === 'moyka_send' ? (
               <MoykaSendRowDetail row={row} onOpenPassport={onOpenPassport} />

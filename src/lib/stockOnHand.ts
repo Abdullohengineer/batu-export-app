@@ -47,6 +47,10 @@ export interface StockOnHandRow {
   // Eski zaxira toggle/badge, not a bucket of its own for the other kinds.
   isOldStock: boolean
   weightIsEstimate: boolean | null
+  // Rezka (2026-09-28): the row's serial is a process='rezka' line -- its
+  // unsent raw or its Standard pallets. Shown only under the Rezka view;
+  // Joriy excludes it (Rezka is never old stock either).
+  isRezka: boolean
 }
 
 // §3.2.6's five states, in the order the section itself lists them, plus
@@ -96,6 +100,10 @@ export interface StockOnHandFilters {
   // existing "don't surprise the first-time view" convention (see from/to's
   // own comment below).
   oldStockOnly: boolean
+  // Rezka view (2026-09-28) -- the third position of the same exclusive
+  // switch (Joriy | Eski | Rezka). Optional so a filter persisted before it
+  // existed still loads (undefined = off).
+  rezkaOnly?: boolean
 }
 
 // from/to default to '' (no bound), not a recent window like Hisobot's
@@ -105,7 +113,7 @@ export interface StockOnHandFilters {
 // narrow date range would hide most real inventory the first time anyone
 // opens this screen, defeating the point of the rework.
 export function defaultStockOnHandFilters(): StockOnHandFilters {
-  return { ownerId: '', typeIds: [], calibreIds: [], buckets: [], from: '', to: '', search: '', oldStockOnly: false }
+  return { ownerId: '', typeIds: [], calibreIds: [], buckets: [], from: '', to: '', search: '', oldStockOnly: false, rezkaOnly: false }
 }
 
 export function filterStockOnHandRows(rows: StockOnHandRow[], filters: StockOnHandFilters): StockOnHandRow[] {
@@ -120,7 +128,15 @@ export function filterStockOnHandRows(rows: StockOnHandRow[], filters: StockOnHa
     // stock and old stock never render in the same table at once. Off
     // (default) hides old stock entirely, matching this screen's behavior
     // before opening stock existed; on shows old stock only.
-    if (filters.oldStockOnly !== r.isOldStock) return false
+    //
+    // Rezka (2026-09-28): a third position of the same switch. Under Rezka
+    // only Rezka rows; under Joriy/Eski never a Rezka row.
+    if (filters.rezkaOnly) {
+      if (!r.isRezka) return false
+    } else {
+      if (r.isRezka) return false
+      if (filters.oldStockOnly !== r.isOldStock) return false
+    }
     // A null anchorDate (old_kn — a pool has no single arrival event, Stage
     // 1's own deliberate choice over fabricating one) has no date to compare
     // against a chosen range, so it's never excluded by from/to — the same

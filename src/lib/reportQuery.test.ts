@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mapDbRowToReportRow, type ReportDbRow } from './reportQuery.ts'
+import { effectiveDirections, mapDbRowToReportRow, type ReportDbRow } from './reportQuery.ts'
 
 // Filtering, ordering, and totals moved server-side (report_filtered_rows/
 // report_query_page/report_totals — see DECISIONS.md "Reporting engine:
@@ -245,4 +245,49 @@ test('mapDbRowToReportRow: CHIQIM_DISPATCH numeric qty_kg coerced even when the 
   if (row.kind !== 'chiqim_dispatch') throw new Error('expected chiqim_dispatch')
   assert.equal(row.weightKg, 940)
   assert.equal(typeof row.weightKg, 'number')
+})
+
+// Rezka (2026-09-28, Rezka Prompt 4) -- group-aware direction list and the
+// Rezka row mapping (Manba/parents/signed Rezkada, Tashqi vs Ichki kirim).
+test('effectiveDirections: Oddiy with nothing checked stays [] (null over the wire = every Oddiy kind)', () => {
+  assert.deepEqual(effectiveDirections({ group: 'oddiy', directions: [] }), [])
+  assert.deepEqual(effectiveDirections({ directions: [] }), [])
+})
+
+test('effectiveDirections: Rezka with nothing checked names all four Rezka kinds', () => {
+  assert.deepEqual(effectiveDirections({ group: 'rezka', directions: [] }), ['rezka_kirim', 'rezka_send', 'rezka_output', 'rezka_chiqim'])
+})
+
+test('effectiveDirections: kinds from the other group are dropped', () => {
+  assert.deepEqual(effectiveDirections({ group: 'rezka', directions: ['kirim', 'rezka_send'] }), ['rezka_send'])
+  assert.deepEqual(effectiveDirections({ group: 'oddiy', directions: ['kirim', 'rezka_send'] }), ['kirim'])
+})
+
+test('mapDbRowToReportRow: Tashqi Rezka kirim keeps declared, flags isTashqiKirim, maps Manba', () => {
+  const row = mapDbRowToReportRow(
+    kirimDbRow({ kind: 'rezka_kirim', row_key: 'rezka-kirim-s1', rezka_manba: 'tashqi', rezka_parents: [], state_rezkaga_yuborilgan: '70', state_rezkada: '-5' }),
+  )
+  if (!('rezka' in row)) throw new Error('expected a Rezka row')
+  assert.equal(row.kind, 'rezka_kirim')
+  assert.equal(row.isTashqiKirim, true)
+  assert.equal(row.declaredQty, 950)
+  assert.equal(row.rezka.manba, 'tashqi')
+  assert.equal(row.rezka.rezkagaYuborilgan, 70)
+  assert.equal(row.rezka.rezkada, -5)
+})
+
+test('mapDbRowToReportRow: Ichki Rezka kirim (mint) is not Tashqi and carries its parent pallets', () => {
+  const row = mapDbRowToReportRow(
+    kirimDbRow({
+      kind: 'rezka_kirim',
+      row_key: 'rezka-mint-s1',
+      declared_qty: null,
+      rezka_manba: 'ichki',
+      rezka_parents: [{ barcode2: 'PLT-1', qtyKg: '25', sourceSerial: 'p1' }],
+    }),
+  )
+  if (!('rezka' in row)) throw new Error('expected a Rezka row')
+  assert.equal(row.isTashqiKirim, false)
+  assert.deepEqual(row.rezka.parents, [{ barcode2: 'PLT-1', qtyKg: 25, sourceSerial: 'p1' }])
+  assert.equal(row.rezka.rezkada, 0)
 })

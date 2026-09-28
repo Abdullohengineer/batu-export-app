@@ -6,6 +6,7 @@ import { formatStockDate } from '../../lib/oldStock'
 import { formatDate, formatDateTime } from '../../lib/formatDate'
 import { formatLossKg } from '../../lib/formatLoss'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { rezkadaText } from '../../lib/rezkaReportLabels'
 
 type OpenPhoto = (url: string, label: string) => void
 
@@ -99,6 +100,11 @@ export function SerialPassportModal({
                   Partiya: <PartiyaBadge partiyaNo={passport.order.partiyaNo} typeName={typeName(passport.order.typeId)} />
                   {passport.order.partiyaNo === null && <span className="text-slate-400">—</span>}
                   <span className="font-normal text-slate-500 dark:text-slate-400">({typeName(passport.order.typeId)})</span>
+                  {passport.rezka && (
+                    <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-900/50 dark:text-violet-300">
+                      Rezka · {passport.rezka.provenance === 'ichki' ? 'Ichki' : 'Tashqi'}
+                    </span>
+                  )}
                 </span>
               </>
             )}
@@ -199,6 +205,10 @@ function PassportBody({
     pendingDispatches,
     dispatchedByCalibre,
   } = passport
+  // Rezka (2026-09-28, 0146 wrapper). `rezka` is set only on a Rezka serial;
+  // `rezkaDrawsOut` only on a parent Konditerka serial Ichki mints drew from.
+  const rezka = passport.rezka ?? null
+  const rezkaDrawsOut = passport.rezkaDrawsOut ?? []
 
   const effectiveQtyValue = effectiveQty && (
     <>
@@ -240,7 +250,15 @@ function PassportBody({
             <FieldTable
               rows={[
                 { label: 'Qabul qilingan', value: `${joriyHolat.raw.receivedKg.toLocaleString()} kg` },
-                { label: 'Moykaga yuborilgan', value: `${joriyHolat.raw.sentToMoykaKg.toLocaleString()} kg` },
+                // A Rezka serial is sent to Rezka, never to Moyka: its send
+                // figure is the rezka_sends sum, and its open-cycle balance
+                // (signed -- negative reads as Ortiqcha) sits beside it.
+                ...(rezka
+                  ? [
+                      { label: 'Rezkaga yuborilgan', value: `${rezka.sentKg.toLocaleString()} kg` },
+                      { label: 'Rezkada', value: rezkadaText(rezka.rezkadaKg) },
+                    ]
+                  : [{ label: 'Moykaga yuborilgan', value: `${joriyHolat.raw.sentToMoykaKg.toLocaleString()} kg` }]),
                 { label: 'Xom holda jo’natilgan', value: `${joriyHolat.raw.collectedRawKg.toLocaleString()} kg` },
                 ...(joriyHolat.raw.storageLossKg > 0
                   ? [
@@ -271,7 +289,7 @@ function PassportBody({
             <div className={`${label} mb-1 font-semibold uppercase tracking-wide`}>Tayyor mahsulot</div>
             <FieldTable
               rows={[
-                { label: 'Moykadan qaytdi', value: `${joriyHolat.finished.returnedKg.toLocaleString()} kg` },
+                { label: rezka ? 'Rezkadan qaytdi' : 'Moykadan qaytdi', value: `${joriyHolat.finished.returnedKg.toLocaleString()} kg` },
                 { label: "Jo'natildi", value: `${joriyHolat.finished.dispatchedKg.toLocaleString()} kg` },
                 ...(joriyHolat.finished.storageLossKg > 0
                   ? [{ label: 'Saqlashda yo’qolgan', value: `${joriyHolat.finished.storageLossKg.toLocaleString()} kg` }]
@@ -361,7 +379,93 @@ function PassportBody({
             </table>
           </div>
         )}
+        {/* Parent KN serial (2026-09-28): each Ichki Rezka serial minted
+            from this serial's Konditerka pallets, one line per mint. */}
+        {rezkaDrawsOut.length > 0 && (
+          <ul className="mt-2 space-y-1 text-sm">
+            {rezkaDrawsOut.map((d) => (
+              <li key={d.mintedSerial} className="text-slate-700 dark:text-slate-300">
+                Rezkaga yuborilgan KN: <span className="font-medium">{Number(d.kg).toLocaleString()} kg</span> → seriya{' '}
+                <span className="font-mono">{d.mintedSerial}</span>
+                <span className={`${label} font-normal`}>
+                  {' '}
+                  · {formatDateTime(d.drawnAt)} · {d.pallets.map((p) => `${p.barcode2} (${Number(p.qtyKg).toLocaleString()} kg)`).join(', ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
+
+      {/* Rezka (2026-09-28, Rezka Prompt 4) -- a Rezka serial's own story:
+          where it came from, what went to Rezka and back, and per cycle
+          either the open Rezkada balance or the realized Yo'qotish /
+          Ortiqcha. No lab block for Rezka. */}
+      {rezka && (
+        <section>
+          <h3 className={sectionTitle}>Rezka</h3>
+          <div className="mt-2">
+            <FieldTable
+              rows={[
+                {
+                  label: 'Manba',
+                  value:
+                    rezka.provenance === 'ichki'
+                      ? `Ichki — Konditerkadan${rezka.mintedAt ? ` · ${formatDateTime(rezka.mintedAt)}` : ''}`
+                      : `Tashqi — mashinada keldi${rezka.arrivedAt ? ` · ${formatDateTime(rezka.arrivedAt)}` : ''}`,
+                },
+                ...(rezka.parents && rezka.parents.length > 0
+                  ? [
+                      {
+                        label: 'KN palletlar',
+                        value: rezka.parents
+                          .map((p) => `${p.barcode2} (${Number(p.qtyKg).toLocaleString()} kg, seriya ${p.sourceSerial})`)
+                          .join(', '),
+                      },
+                    ]
+                  : []),
+                { label: 'Rezkaga yuborilgan', value: `${Number(rezka.sentKg).toLocaleString()} kg` },
+                { label: 'Rezkadan qaytdi', value: `${Number(rezka.receivedKg).toLocaleString()} kg` },
+                { label: 'Rezkada', value: <span className="font-semibold">{rezkadaText(Number(rezka.rezkadaKg))}</span> },
+              ]}
+            />
+          </div>
+          {rezka.cycles.length > 0 && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={label}>
+                    <th className="px-1 py-1 text-left">Sikl</th>
+                    <th className="px-1 py-1 text-left">Ochildi / yopildi</th>
+                    <th className="px-1 py-1 text-right">Yuborilgan</th>
+                    <th className="px-1 py-1 text-right">Qaytgan</th>
+                    <th className="px-1 py-1 text-right">Rezkada / Yo'qotish</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rezka.cycles.map((c) => (
+                    <tr key={c.cycleNo} className="border-t border-slate-100 dark:border-slate-800">
+                      <td className="px-1 py-1 text-slate-900 dark:text-slate-100">{c.cycleNo}</td>
+                      <td className="px-1 py-1 text-slate-700 dark:text-slate-300">
+                        {formatDate(c.openedAt)} — {c.closedAt ? formatDate(c.closedAt) : 'ochiq'}
+                      </td>
+                      <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{Number(c.sentKg).toLocaleString()} kg</td>
+                      <td className="px-1 py-1 text-right text-slate-700 dark:text-slate-300">{Number(c.receivedKg).toLocaleString()} kg</td>
+                      <td className="px-1 py-1 text-right text-slate-900 dark:text-slate-100">
+                        {c.closedAt === null
+                          ? `Rezkada: ${rezkadaText(Number(c.rezkadaKg))}`
+                          : c.yoqotishKg !== null && Number(c.yoqotishKg) < 0
+                            ? `Ortiqcha +${Math.round(-Number(c.yoqotishKg)).toLocaleString()} kg`
+                            : `Yo'qotish: ${formatLossKg(Number(c.yoqotishKg ?? 0))}`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Kutilayotgan (Pending dispatches, 2026-08-07 — Symptom A fix). A
           request that has reserved this serial's RAW material but hasn't
@@ -598,7 +702,7 @@ function PassportBody({
         ) : (
           <p className={label}>Hali qabul qilinmagan.</p>
         )}
-        {kirimLab ? (
+        {rezka ? null : kirimLab ? (
           <div className="mt-3">
             <div className={`${label} mb-1 font-semibold uppercase tracking-wide`}>Laboratoriya (kirim, tavsiflovchi)</div>
             <FieldTable
@@ -622,6 +726,9 @@ function PassportBody({
           record now (no more wash-cycle repeats), but `cycles` stays a
           0-or-1-length array for shape compatibility with the rest of this
           modal's rendering. */}
+      {/* A Rezka serial never goes to Moyka -- its Rezka section above
+          replaces this one entirely. */}
+      {!rezka && (
       <section>
         <h3 className={sectionTitle}>Moyka</h3>
         {cycles.length === 0 && <p className={`mt-2 ${label}`}>Hali Moykaga yuborilmagan.</p>}
@@ -739,6 +846,7 @@ function PassportBody({
           ))}
         </div>
       </section>
+      )}
 
       {/* Jo'natishlar (Dispatches) */}
       <section>

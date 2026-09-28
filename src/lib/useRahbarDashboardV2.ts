@@ -34,6 +34,9 @@ function mapSnapshot(raw: Record<string, unknown>): RahbarStockSnapshot {
     konditirskiyKg: n(raw.konditirskiyKg as number),
     oldKnKg: n(raw.oldKnKg as number),
     moykadaKg: n(raw.moykadaKg as number),
+    rezkaRawKg: n(raw.rezkaRawKg as number),
+    rezkaKnKg: n(raw.rezkaKnKg as number),
+    rezkadaKg: n(raw.rezkadaKg as number),
     oldKnNote: String(raw.oldKnNote ?? ''),
     totalKg: n(raw.totalKg as number),
     byType: ((raw.byType as { typeId: string; kg: number | string }[]) ?? []).map((t) => ({ typeId: t.typeId, kg: n(t.kg) })),
@@ -102,9 +105,12 @@ function mapLedger(raw: Record<string, unknown>): RahbarDashboardLedger {
 
 // rahbar_stock_snapshot(p_scope) -- live "hozir omborda nima bor" balance,
 // no period involved. Re-fetches whenever scope changes.
-export function useRahbarStockSnapshot(scope: ZaxiraScope) {
+// `enabled` (2026-09-28): the qoldiq screen's Rezka view reads rezkadaKg
+// from this same cached snapshot, only while that view is open.
+export function useRahbarStockSnapshot(scope: ZaxiraScope, enabled = true) {
   const { data, isPending, error } = useQuery({
     queryKey: queryKeys.rahbarStockSnapshot(scope),
+    enabled,
     queryFn: async ({ signal }) => {
       const { data: rpcData, error: rpcError } = await supabase
         .rpc('rahbar_stock_snapshot', { p_scope: scope })

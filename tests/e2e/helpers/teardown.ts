@@ -182,3 +182,25 @@ export async function resyncPartiyaCounter(typeIds: string[]): Promise<void> {
     if (updateErr) throw new Error(`resyncPartiyaCounter: update failed for type ${typeId}: ${updateErr.message}`)
   }
 }
+
+// Void only the pallets that still hold stock (2026-09-28, Rezka Prompt 4).
+// A blanket `status='in_stock'` / `voided_at is null` void also hit pallets
+// that were fully consumed or had already DEPARTED on a CHIQIM truck --
+// their status never leaves 'in_stock', consumption lives in
+// chiqim_pallet_consumption -- which rewrote history: PLT-280926-024-RKN-1
+// (30 kg, departed) was voided and its serial's Olib ketilgan read 0.
+// finished_pallet_availability.available_kg > 0 is "still on the shelf";
+// anything at 0 is left exactly as the run left it.
+export async function voidPalletsWithStock(db: SupabaseClient, serials: string[], now: string): Promise<void> {
+  if (serials.length === 0) return
+  const { data, error } = await db.from('finished_pallet_availability').select('barcode2').in('serial', serials).gt('available_kg', 0)
+  if (error) throw new Error(`finished_pallet_availability: ${error.message}`)
+  const barcodes = (data ?? []).map((r: { barcode2: string }) => r.barcode2)
+  if (barcodes.length === 0) return
+  const { error: voidError } = await db
+    .from('finished_pallets')
+    .update({ status: 'bekor_qilindi', voided_at: now })
+    .in('barcode2', barcodes)
+    .is('voided_at', null)
+  if (voidError) throw new Error(`void pallets: ${voidError.message}`)
+}

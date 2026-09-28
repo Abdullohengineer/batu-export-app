@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Owner } from '../../lib/useOwners'
 import type { ProductType } from '../../lib/useProductTypes'
 import type { Calibre } from '../../lib/useCalibres'
-import { type ReportRowKind, type LabVerdictFilter } from '../../lib/reportQuery'
+import { type DirectionGroup, type ReportRowKind, type LabVerdictFilter } from '../../lib/reportQuery'
 import { defaultDateRange, todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 
 const inputClass =
@@ -32,6 +32,15 @@ const DIRECTION_OPTIONS: { value: ReportRowKind; label: string }[] = [
   { value: 'moyka_send', label: 'MOYKAGA' },
   { value: 'moyka_output', label: 'MOYKADAN' },
 ]
+// Rezka group (2026-09-28, Rezka Prompt 4): exactly these four, and only
+// these, under the Rezka switch -- the two groups never mix in one query.
+const REZKA_DIRECTION_OPTIONS: { value: ReportRowKind; label: string }[] = [
+  { value: 'rezka_kirim', label: 'Rezka kirim' },
+  { value: 'rezka_send', label: 'Rezkaga yuborildi' },
+  { value: 'rezka_output', label: 'Rezkadan chiqdi' },
+  { value: 'rezka_chiqim', label: 'Rezka chiqim' },
+]
+const DIRECTION_GROUP_LABEL: Record<DirectionGroup, string> = { oddiy: 'Oddiy', rezka: 'Rezka' }
 const VERDICT_LABEL: Record<Exclude<LabVerdictFilter, ''>, string> = {
   o_tdi: "O'tdi",
   qayta_yuvish: 'Qayta yuvish',
@@ -175,6 +184,8 @@ export function ReportFilterBar({
   onSearchChange,
   searchPlaceholder = 'Qidirish',
 
+  directionGroup = 'oddiy',
+  onDirectionGroupChange,
   directions,
   onDirectionsChange,
   serial,
@@ -220,6 +231,10 @@ export function ReportFilterBar({
   onSearchChange?: (value: string) => void
   searchPlaceholder?: string
 
+  // Yo'nalish group switch (Oddiy | Rezka), rendered above the direction
+  // multi-select only when a caller wires the handler (Hisobot).
+  directionGroup?: DirectionGroup
+  onDirectionGroupChange?: (g: DirectionGroup) => void
   directions?: ReportRowKind[]
   onDirectionsChange?: (d: ReportRowKind[]) => void
   serial?: string
@@ -252,12 +267,31 @@ export function ReportFilterBar({
 
   return (
     <div className="w-full space-y-3">
+      {onDirectionGroupChange && (
+        <div className="inline-flex rounded-full border border-slate-300 p-0.5 dark:border-slate-700" role="group" aria-label="Yo'nalish guruhi">
+          {(['oddiy', 'rezka'] as DirectionGroup[]).map((g) => (
+            <button
+              key={g}
+              type="button"
+              aria-pressed={directionGroup === g}
+              onClick={() => directionGroup !== g && onDirectionGroupChange(g)}
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                directionGroup === g
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              {DIRECTION_GROUP_LABEL[g]}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {onDirectionsChange && directions && (
           <FilterField
             label="Yo'nalish"
             allLabel="Hammasi"
-            options={DIRECTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            options={(directionGroup === 'rezka' ? REZKA_DIRECTION_OPTIONS : DIRECTION_OPTIONS).map((o) => ({ value: o.value, label: o.label }))}
             selected={directions}
             onChange={(vals) => onDirectionsChange(vals as ReportRowKind[])}
             multi

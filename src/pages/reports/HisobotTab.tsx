@@ -11,8 +11,8 @@ import { useCalibres } from '../../lib/useCalibres'
 import { useReportQuery, ExportTooLargeError } from '../../lib/useReportQuery'
 import { useChiqimTruckTypes } from '../../lib/useChiqimTruckTypes'
 import { downloadReportExcel } from '../../lib/reportExport'
-import { dateBasisLabel, defaultReportFilters, type PalletStatusFilter } from '../../lib/reportQuery'
-import { REPORT_COLUMNS, defaultVisibleColumnKeys } from '../../lib/reportColumns'
+import { dateBasisLabel, defaultReportFilters, type DirectionGroup, type PalletStatusFilter } from '../../lib/reportQuery'
+import { columnsForGroup, defaultVisibleColumnKeys } from '../../lib/reportColumns'
 import { ReportResultsTable } from './ReportResultsTable'
 import { SerialPassportModal } from './SerialPassportModal'
 import { ChiqimRequestPassportModal } from './ChiqimRequestPassportModal'
@@ -52,7 +52,19 @@ export function HisobotTab() {
   // stay filterable via ReportFilterBar even when hidden here). Local
   // component state, not persisted — resets to the spec'd defaults on
   // reload, same as every other piece of UI-only state on this screen.
-  const [visibleColumnKeys, setVisibleColumnKeys] = usePersistentState<Set<string>>('hisobot.columns', () => defaultVisibleColumnKeys())
+  // One column set per Yo'nalish group (2026-09-28, Rezka Prompt 4): the
+  // Oddiy key is unchanged, so an existing saved Oddiy selection survives;
+  // Rezka gets its own key and its own defaults. `group` is the DRAFT
+  // filter's group -- the picker edits what the next search will show.
+  const group: DirectionGroup = filters.group ?? 'oddiy'
+  const [oddiyColumnKeys, setOddiyColumnKeys] = usePersistentState<Set<string>>('hisobot.columns', () => defaultVisibleColumnKeys('oddiy'))
+  const [rezkaColumnKeys, setRezkaColumnKeys] = usePersistentState<Set<string>>('hisobot.columns.rezka', () => defaultVisibleColumnKeys('rezka'))
+  const groupColumns = columnsForGroup(group)
+  const groupKeys = group === 'rezka' ? rezkaColumnKeys : oddiyColumnKeys
+  // Intersected with the group's own columns, so a key from the other group
+  // (or one saved before the split) can never render here.
+  const visibleColumnKeys = new Set(groupColumns.filter((c) => groupKeys.has(c.key)).map((c) => c.key))
+  const setVisibleColumnKeys = group === 'rezka' ? setRezkaColumnKeys : setOddiyColumnKeys
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -136,7 +148,12 @@ export function HisobotTab() {
       <div className="space-y-4">
         {/* applied, not draft: the label must describe the data on screen,
             not the filters the user is midway through editing. */}
-        <TotalsStrip totals={totals} dateBasisText={dateBasisLabel(search.applied.directions)} visibleColumnKeys={visibleColumnKeys} />
+        <TotalsStrip
+          totals={totals}
+          dateBasisText={dateBasisLabel(search.applied.directions, search.applied.group ?? 'oddiy')}
+          visibleColumnKeys={visibleColumnKeys}
+          group={search.applied.group ?? 'oddiy'}
+        />
 
         {/* 2026-09-19 (post-debounce incident) -- report_query_page/
             report_totals failing (previously: silent, rendered as a false
@@ -182,6 +199,10 @@ export function HisobotTab() {
               statusValues={filters.status ? [filters.status] : []}
               onStatusValuesChange={(values) => setFilters({ ...filters, status: (values[0] ?? '') as PalletStatusFilter })}
               owners={owners}
+              directionGroup={group}
+              // Switching group clears the direction checks: the two groups'
+              // kinds never mix in one query.
+              onDirectionGroupChange={(g) => setFilters({ ...filters, group: g, directions: [] })}
               directions={filters.directions}
               onDirectionsChange={(d) => setFilters({ ...filters, directions: d })}
               serial={filters.serial}
@@ -196,7 +217,7 @@ export function HisobotTab() {
               onLabVerdictChange={(v) => setFilters({ ...filters, labVerdict: v })}
               partiya={filters.partiya}
               onPartiyaChange={(v) => setFilters({ ...filters, partiya: v })}
-              onReset={() => setFilters(defaultReportFilters(filters.from, filters.to))}
+              onReset={() => setFilters({ ...defaultReportFilters(filters.from, filters.to), group })}
             />
             <SearchTrigger isDirty={search.isDirty} loading={loading} onSearch={search.search} />
             </div>
@@ -239,8 +260,8 @@ export function HisobotTab() {
               <FilterField
                 label="Ustunlar"
                 allLabel="Hammasi"
-                options={REPORT_COLUMNS.map((c) => ({ value: c.key, label: c.label }))}
-                selected={REPORT_COLUMNS.filter((c) => visibleColumnKeys.has(c.key)).map((c) => c.key)}
+                options={groupColumns.map((c) => ({ value: c.key, label: c.label }))}
+                selected={groupColumns.filter((c) => visibleColumnKeys.has(c.key)).map((c) => c.key)}
                 onChange={(keys) => setVisibleColumnKeys(new Set(keys))}
                 multi
                 compact

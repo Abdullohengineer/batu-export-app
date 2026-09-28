@@ -119,6 +119,41 @@ input (Prompt 11, 2026-08-29).
 - `RezkaBadge` provenance is now optional.
 - `useFinishedCalibreAvailability` moved onto React Query (same query).
 
+## Prompt 4 — reporting layer (branch `rezka-prompt-4`) — BUILT, `0146` APPLIED — **REZKA BUILD COMPLETE**
+- Decision: `docs/decisions/0226`. Spec: §3.2.11, §5.R.2 (v1.70).
+- `0146` (applied 2026-09-28 09:32 UTC, stored md5 `fecdbebd…`): `report_rezka_rows`; Rezka
+  kinds only when named; Rezka lines out of every Oddiy kind (fixed four TEST Ichki mints
+  leaking into Oddiy MOYKADAN); Rezka columns on `report_totals` / `report_page_enrich` /
+  `report_query_page`; `rahbar_stock_snapshot` and `get_serial_passport` are wrappers over
+  unchanged `*_core` bodies. `0145` is a comment-only record of the unused number.
+- Regression: every Oddiy read identical except the four leak rows. R5 identity on TEST Rezka
+  E2E: 590 = 590.
+- Frontend: Hisobot Oddiy | Rezka group with the four Rezka directions, per-group columns and
+  saved sets, Manba, Rezka chips and Excel; dashboard Rezka button; qoldiq Joriy | Eski | Rezka;
+  passport Rezka block and parent draw lines.
+- Spec cleanup fixed: `voidPalletsWithStock` voids only pallets with available kg > 0
+  (`rezka-menejer`, `rezka-ombor`). New read-only `rezka-hisobot.spec.ts`.
+
+## Post-Rezka cleanup prompt (collected; none started)
+1. **Owner-scoped FIFO and availability** — `attribute_chiqim_line_fifo` /
+   `finished_calibre_availability` match type + calibre only (product decision needed).
+2. **`hasRawRemainder` ignores raw dispatch** — Moykaga badge and intake Window 2.
+3. **KIRIM raw void path** — no way to clear stranded `TEST-` (or mistaken) raw.
+4. **Kalibrlangan calibre list not filtered by the type's category.**
+5. **Same type + same process on one truck collide in the KIRIM save-panel serial link.**
+6. **`check-rpc-wrapper` misses multi-line `supabase\n  .from(` chains** (`KirimForm.tsx`).
+7. **Client report / portal Rezka block** — out of scope for Prompt 4.
+8. **Voided-departed TEST pallet `PLT-280926-024-RKN-1`** (30 kg, departed, voided by the old
+   cleanup before the fix) — TEST data, void is one-way; its serial's Olib ketilgan reads 0.
+9. **`rahbar_dashboard_ledger` reads Rezka raw as Oddiy raw** (origin filter only;
+   `receivedKg`/`closingKg` include Tashqi Rezka raw that the snapshot moved out of `rawKg`;
+   `byCalibreType.dispatched` carries Standard — frontend now drops it from the bars). 0 kg live.
+10. Pre-existing, found in passing: Hisobot Excel export writes Partiya blank (no `'partiya'`
+    case in `reportExport.ts`); export uses draft filters while totals use applied ones.
+11. Carried from below: TEST- filter for Ombor section 3 Window 2 (Rezka); `fixtures.ts`
+    outdated `wash_cycles` shape; stale Ombor link names in three specs; `chiqim-undo-scan`
+    deletion; `full-chain` plates/hard-delete design.
+
 ## Prompt 3 follow-ups (logged, not fixed)
 - **Kalibrlangan doesn't filter calibres by the type's category.** The CHIQIM calibre select
   lists every category's calibres; Prompt 3 only removed `is_rezka_output`.
@@ -211,8 +246,9 @@ Frontend:
 - ~~**Prompt 3 (Menejer):** KIRIM per-line process select; CHIQIM Rezka tab = ordinary
   `finished` line on the Standard calibre. Migrate `useAvailableFinishedStock` onto React
   Query while there (`docs/decisions/0223`).~~ Done — see Prompt 3 above.
-- **Prompt 4 (Hisobot/dashboard/qoldig'i):** Rezka directions, Yangi/Eski/Rezka toggle,
-  passport Rezka lines. `RahbarHome` `grandTotal` and the client panel mirror read the
+- ~~**Prompt 4 (Hisobot/dashboard/qoldig'i):** Rezka directions, Yangi/Eski/Rezka toggle,
+  passport Rezka lines.~~ Done — see Prompt 4 above (Standard excluded from the
+  `isNumberless` sums in `computeDashboardDerived`). `RahbarHome` `grandTotal` and the client panel mirror read the
   snapshot keys by name — `rezkaRawKg`/`rezkaKnKg` are new and currently unread; `byCalibre`
   still carries Standard with `isNumberless: true`, so any frontend that sums
   `isNumberless` rows must exclude `is_rezka_output`.

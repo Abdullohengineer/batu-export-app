@@ -4,6 +4,7 @@ import { fetchAllReportRowsForExport } from './useReportQuery'
 import { fetchChiqimDispatchDetailRows, type ChiqimDispatchDetailRow } from './chiqimDispatchDetail'
 import { REPORT_COLUMNS, type ReportColumnDef } from './reportColumns'
 import { toExcelDate, EXCEL_DATE_FORMAT } from './formatDate'
+import { REZKA_DIRECTION_LABEL, rezkaManbaText } from './rezkaReportLabels'
 
 // §3.2.4/§3.2.2 "Excel export on every view, respecting the active filter,
 // with the date basis and weight basis printed in the header." Uses
@@ -50,6 +51,7 @@ export interface ExportTextOverrides {
 // its own function (not re-imported from there) because that file returns
 // JSX, this needs a plain string.
 function directionLabel(row: ReportRow): string {
+  if ('rezka' in row) return REZKA_DIRECTION_LABEL[row.kind]
   switch (row.kind) {
     case 'kirim':
       return 'KIRIM'
@@ -78,6 +80,7 @@ function statusText(row: ReportRow): string {
     return ''
   }
   if (row.kind === 'moyka_send') return 'Moykaga'
+  if (row.kind === 'rezka_chiqim') return "Jo'natilgan"
   return ''
 }
 
@@ -91,8 +94,11 @@ function statusText(row: ReportRow): string {
 // to share the two switches directly (one returns JSX, this returns values).
 function columnValue(row: ReportRow, key: string, lookups: ExportLookups, overrides?: ExportTextOverrides): string | number | Date {
   const qty = row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg
-  const declared = row.kind === 'kirim' ? row.declaredQty : null
-  const hisobiy = row.kind === 'kirim' ? row.hisobiyKg : null
+  // Rezka rows (2026-09-28) -- same rules as ReportTableRow.tsx's cells.
+  const rezka = 'rezka' in row ? row : null
+  const declared = row.kind === 'kirim' ? row.declaredQty : rezka?.isTashqiKirim ? rezka.declaredQty : null
+  const hisobiy =
+    row.kind === 'kirim' ? row.hisobiyKg : rezka?.isTashqiKirim && rezka.declaredQty !== null ? Math.min(rezka.weightKg, rezka.declaredQty) : null
   const moisture = row.kind === 'kirim' ? row.kirimMoisturePct : row.kind === 'moyka_output' ? row.moisturePct : null
   const so2 = row.kind === 'kirim' ? row.kirimSo2MgKg : row.kind === 'moyka_output' ? row.so2MgKg : null
 
@@ -111,9 +117,19 @@ function columnValue(row: ReportRow, key: string, lookups: ExportLookups, overri
     // dispatch line, 2026-09-14) have no single calibre/barcode2 any more —
     // see reportQuery.ts's MoykaOutputReportRow/ChiqimDispatchReportRow.
     case 'calibre':
-      return ''
+      return rezka?.calibreId ? lookups.calibreLabel(rezka.calibreId) : ''
     case 'barcode2':
-      return ''
+      return rezka?.barcode2 ?? ''
+    case 'manba':
+      return rezka ? rezkaManbaText(rezka) : ''
+    // Numeric and signed (negative = Ortiqcha), like Yo'qotish below --
+    // summable in Excel; the on-screen "Ortiqcha +X" wording is display only.
+    case 'rezkaga_yuborilgan':
+      return rezka?.rezka.rezkagaYuborilgan ?? ''
+    case 'rezkada':
+      return rezka?.rezka.rezkada ?? ''
+    case 'rezkadan_chiqgan':
+      return rezka?.state.moykadanChiqganLifetime ?? ''
     case 'netto':
       return row.kind === 'kirim' && row.provisional ? 'tarozi kutilmoqda' : qty
     case 'declared':
@@ -215,7 +231,7 @@ export async function buildReportWorkbook(
   const sheet = wb.addWorksheet('Hisobot')
 
   sheet.addRow([overrides?.title ?? 'BATU EXPORT — Hisobot']).font = { bold: true }
-  sheet.addRow([overrides?.dateBasisText ?? dateBasisLabel(filters.directions)])
+  sheet.addRow([overrides?.dateBasisText ?? dateBasisLabel(filters.directions, filters.group ?? 'oddiy')])
   sheet.addRow([overrides?.weightBasisText ?? WEIGHT_BASIS_LABEL])
   sheet.addRow([overrides?.periodLabel ? overrides.periodLabel(filters.from, filters.to) : `Davr: ${filters.from} — ${filters.to}`])
   sheet.addRow([])
@@ -241,6 +257,15 @@ export async function buildReportWorkbook(
   sheet.addRow([summary.net, totals.net])
   sheet.addRow([summary.taraIn, totals.taraIn])
   sheet.addRow([summary.taraOut, totals.taraOut])
+  // Rezka export (2026-09-28): the Rezka movement + state totals the strip
+  // shows. Kirim/Chiqim above already hold Tashqi Rezka kirim and Rezka
+  // chiqim (report_totals' rule); an Ichki mint is in neither.
+  if (filters.group === 'rezka') {
+    sheet.addRow(['Rezkaga yuborilgan, davrda (kg)', totals.totalToRezka])
+    sheet.addRow(['Rezkadan chiqgan, davrda (kg)', totals.totalFromRezka])
+    sheet.addRow(['Rezkaga yuborilgan, jami (kg)', totals.stateRezkagaYuborilgan])
+    sheet.addRow(['Rezkada (kg, manfiy = Ortiqcha)', totals.stateRezkada])
+  }
 
   sheet.columns.forEach((col) => {
     col.width = 18

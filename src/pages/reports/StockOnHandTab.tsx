@@ -4,6 +4,7 @@ import { useOwners } from '../../lib/useOwners'
 import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useStockOnHand } from '../../lib/useStockOnHand'
+import { useRahbarStockSnapshot } from '../../lib/useRahbarDashboardV2'
 import {
   defaultStockOnHandFilters,
   filterStockOnHandRows,
@@ -21,6 +22,15 @@ import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { StatusNote } from '../../components/ui/StatusNote'
 
 const STATUS_OPTIONS = STOCK_BUCKET_ORDER.map((b) => ({ value: b, label: STOCK_BUCKET_LABEL[b] }))
+
+// Joriy | Eski | Rezka (2026-09-28, Rezka Prompt 4) -- one exclusive switch;
+// Rezka rows appear only under Rezka (filterStockOnHandRows).
+type StockView = 'joriy' | 'eski' | 'rezka'
+const VIEWS: { key: StockView; label: string }[] = [
+  { key: 'joriy', label: 'Joriy zaxira' },
+  { key: 'eski', label: 'Eski zaxira' },
+  { key: 'rezka', label: 'Rezka' },
+]
 
 // §3.2.6 Ombor qoldig'i (stock on hand) — reworked this task from a pure
 // now-snapshot into a filterable lookup surface (SPEC.md §3.2.6, updated
@@ -43,6 +53,11 @@ export function StockOnHandTab() {
   const { productTypes } = useProductTypes(true)
   const { calibres } = useCalibres(true)
   const { rows, turnaroundAvgDays, loading, refreshing, error } = useStockOnHand()
+  const view: StockView = filters.rezkaOnly ? 'rezka' : filters.oldStockOnly ? 'eski' : 'joriy'
+  // Rezkada caption (Rezka view only): the same snapshot figure the Rahbar
+  // dashboard shows (0146 rezkadaKg) -- read, not recomputed here. The
+  // 'hammasi' snapshot is shared/cached with the dashboard's own Hammasi.
+  const { snapshot: rezkaSnapshot } = useRahbarStockSnapshot('hammasi', view === 'rezka')
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -69,28 +84,21 @@ export function StockOnHandTab() {
           old stock never render together -- see stockOnHand.ts's own
           filterStockOnHandRows comment for why. */}
       <div className="inline-flex rounded-full border border-slate-300 p-0.5 dark:border-slate-700">
-        <button
-          type="button"
-          onClick={() => setFilters({ ...filters, oldStockOnly: false })}
-          className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-            !filters.oldStockOnly
-              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-        >
-          Joriy zaxira
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilters({ ...filters, oldStockOnly: true })}
-          className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-            filters.oldStockOnly
-              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-        >
-          Eski zaxira
-        </button>
+        {VIEWS.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            aria-pressed={view === v.key}
+            onClick={() => setFilters({ ...filters, oldStockOnly: v.key === 'eski', rezkaOnly: v.key === 'rezka' })}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              view === v.key
+                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+          >
+            {v.label}
+          </button>
+        ))}
       </div>
 
       <ReportFilterBar
@@ -119,6 +127,13 @@ export function StockOnHandTab() {
       />
 
       <StockOnHandHeader totals={totals} turnaroundAvgDays={turnaroundAvgDays} />
+      {view === 'rezka' && rezkaSnapshot && (
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {rezkaSnapshot.rezkadaKg < 0
+            ? `Ochiq Rezka sikllari: Ortiqcha +${Math.round(-rezkaSnapshot.rezkadaKg).toLocaleString()} kg (qaytgan yuborilgandan ko'p)`
+            : `Rezkada (ochiq sikllar, yuborilgan − qaytgan): ${Math.round(rezkaSnapshot.rezkadaKg).toLocaleString()} kg`}
+        </p>
+      )}
 
       {error && <StatusNote tone="problem">{error}</StatusNote>}
       {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}

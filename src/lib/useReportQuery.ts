@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { queryClient, queryKeys } from './queryClient'
 import { callRpc } from './rpc'
-import { mapDbRowToReportRow, type ReportFilters, type ReportRow, type ChiqimReportRow, type ReportTotals, type ReportDbRow } from './reportQuery'
+import { effectiveDirections, mapDbRowToReportRow, type ReportFilters, type ReportRow, type ChiqimReportRow, type ReportTotals, type ReportDbRow } from './reportQuery'
 
 // §3.2.1-3.2.4 — the shared query engine, now a thin client over the
 // server-side query (see DECISIONS.md "Reporting engine: server-side
@@ -50,7 +50,12 @@ interface RpcParams {
 // signal to send over the wire.
 function toRpcParams(filters: ReportFilters): RpcParams {
   return {
-    p_directions: filters.directions.length > 0 ? filters.directions : null,
+    // Group-aware (2026-09-28): Rezka + nothing checked sends all four Rezka
+    // kinds by name -- the server never emits Rezka rows for a null list.
+    p_directions: (() => {
+      const d = effectiveDirections(filters)
+      return d.length > 0 ? d : null
+    })(),
     p_from: filters.from,
     p_to: filters.to,
     p_owner_id: filters.ownerId || null,
@@ -243,6 +248,10 @@ export function useReportQuery(filters: ReportFilters, reloadToken = 0) {
     stateK7: 0,
     stateK8: 0,
     stateKn: 0,
+    totalToRezka: 0,
+    totalFromRezka: 0,
+    stateRezkagaYuborilgan: 0,
+    stateRezkada: 0,
   })
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
@@ -417,6 +426,10 @@ export function useReportQuery(filters: ReportFilters, reloadToken = 0) {
               state_k7: number | string
               state_k8: number | string
               state_kn: number | string
+              total_kg_to_rezka: number | string
+              total_kg_from_rezka: number | string
+              state_rezkaga_yuborilgan: number | string
+              state_rezkada: number | string
             }
           | undefined
         const kgIn = Number(t?.total_kg_in ?? 0)
@@ -458,6 +471,10 @@ export function useReportQuery(filters: ReportFilters, reloadToken = 0) {
           stateK7: Number(t?.state_k7 ?? 0),
           stateK8: Number(t?.state_k8 ?? 0),
           stateKn: Number(t?.state_kn ?? 0),
+          totalToRezka: Number(t?.total_kg_to_rezka ?? 0),
+          totalFromRezka: Number(t?.total_kg_from_rezka ?? 0),
+          stateRezkagaYuborilgan: Number(t?.state_rezkaga_yuborilgan ?? 0),
+          stateRezkada: Number(t?.state_rezkada ?? 0),
         })
         setTotalCount(Number(t?.total_count ?? 0))
         setVoidedBarcodeMatch(voided)

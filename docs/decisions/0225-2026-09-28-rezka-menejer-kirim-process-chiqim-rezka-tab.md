@@ -95,6 +95,27 @@ Live definitions were read on 2026-09-28.
 | `finished_pallet_availability` | Nets out consumption and Rezka draws; admits `rezka_cycles` pallets | No |
 | The 0142 overdraw trigger | Guards each pallet's weight | No calibre logic at all |
 
+## Scope deviation: voided CHIQIM requests hidden from Qorovul's gate queue
+
+This fix was outside Prompt 3's scope. It was made at the product owner's explicit instruction on
+2026-09-28, after the e2e runs exposed the bug.
+
+**The bug**
+- `useChiqimTrips`, which feeds Qorovul's CHIQIM tab, read every `chiqim_requests` row with no
+  voided filter.
+- `useOmborChiqimRequests` has always had `.is('voided_at', null)`.
+- So a request voided after gate stage 1 stayed in Qorovul's "Faol yuklar" as in-progress
+  forever. There was no app path to remove it: completing weigh-out would have marked a truck
+  with nothing loaded as departed. A request voided before the gate sat in the not-started list.
+- Hit live: `afterAll` voided `TEST-RZM-C-MUKZYH9MH683-5` after its gate stage 1, and
+  `rezka-menejer` test 3's own void would have stranded a request on every run.
+- It affects real voided requests, not just tests.
+
+**The fix**
+- The same `.is('voided_at', null)` on the request query in `useChiqimTrips`.
+- The gate history (`useGateHistory`) reads completed weighings only. A voided request can no
+  longer reach weigh-out, so the history needs no twin change.
+
 ## Found while reading, flagged not fixed
 
 - **FIFO and availability are not owner-scoped.**

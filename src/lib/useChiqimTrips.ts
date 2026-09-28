@@ -76,6 +76,10 @@ export function useChiqimTrips() {
         supabase
           .from('chiqim_requests')
           .select('id, request_date, plate, driver, owner_id, status, truck_type')
+          // Voided requests never reach the gate (2026-09-28, docs/decisions/
+          // 0225) -- same filter as useOmborChiqimRequests. Without it a
+          // request voided after gate stage 1 sat in "Faol yuklar" forever.
+          .is('voided_at', null)
           .order('created_at', { ascending: false })
           .abortSignal(signal),
         supabase.from('chiqim_lines').select('type_id, calibre_id, line_kind, qty_kg, request_id').abortSignal(signal),

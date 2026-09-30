@@ -1,0 +1,45 @@
+-- Incident fix (2026-09-30): client Приход tab stuck / not loading.
+--
+-- ROOT CAUSE, confirmed live via query_logs/execute_sql against the live
+-- project (not assumed): `alter role authenticator set pgrst.db_pre_request
+-- = 'public.pgrst_statement_cap'` (applied 2026-09-22, docs/data-corrections/
+-- 2026-09-22_hisobot_split_rows_enrich_and_request_cap.sql, decision 0218)
+-- drops statement_timeout from the role default (12s, migration 0136) down
+-- to 5s for exactly four paths: report_query_page_rows, report_page_enrich,
+-- report_totals, report_query_page. ClientPrihodTab.tsx (useReportQuery.ts)
+-- calls report_query_page_rows + report_totals on every load.
+--
+-- Postgres logs 2026-09-30 13:19:50-15:04:25 show a real client session
+-- (desktop Chrome) repeatedly hitting "canceling statement due to statement
+-- timeout" (57014) on both RPCs, each preceded by "pgrst_statement_cap MATCH
+-- path=/rpc/report_totals statement_timeout=5s" -- confirming the cap is
+-- live and biting, not the "STILL UNVERIFIED" state the 2026-09-22 file left
+-- it in. report_totals in particular was deliberately left UNMODIFIED by
+-- that change (still the heavier pre-split shape) and is the one most often
+-- losing the 5s race under real concurrent traffic. Surfaces to the browser
+-- as a bare HTTP 500 with no rows -- "not loading at all".
+--
+-- RULED OUT, with evidence (both raised in the incident report, neither is
+-- it):
+--   - ed49c48 (Phase 3 Stage A) touched only rahbar_stock_snapshot /
+--     rahbar_dashboard_ledger; its own commit message says a full
+--     pg_proc/pg_views scan found neither function has any database
+--     dependant. Confirmed again here: nothing in the Приход path calls
+--     either.
+--   - client_serial_ledger (migration 0119's stopgap restore) is still live
+--     (never re-dropped, the decision 0174 follow-up was never done) but
+--     nothing calls it any more -- ClientPrihodTab.tsx was rewritten
+--     (decisions 0171/0174) onto report_query_page/report_totals directly,
+--     confirmed by grep: zero references to client_serial_ledger anywhere
+--     in src/ outside of comments. Dead code, not today's bug -- tracked
+--     separately in docs/decisions/0236.
+--
+-- FIX: revert the per-path cap for these four RPCs, restoring the 12s role
+-- default that was already measured safe for this traffic shape (decision
+-- 0213: "Hisobot fixed... zero timeouts" at 12s, before this 5s cap existed).
+-- This is the exact "instant, no redeploy" rollback the 2026-09-22 change
+-- itself pre-documented. pgrst_statement_cap() is left in place (harmless
+-- while unbound) rather than dropped, so it can be re-wired later at a
+-- verified-safe value instead of 5s, without re-deriving this function body.
+alter role authenticator reset pgrst.db_pre_request;
+notify pgrst, 'reload config';

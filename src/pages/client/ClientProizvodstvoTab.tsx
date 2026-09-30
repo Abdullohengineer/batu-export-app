@@ -17,6 +17,9 @@ import {
 } from '../../lib/clientProductionLedger'
 import { downloadClientProductionLedgerExcel } from '../../lib/clientProductionLedgerExport'
 import { todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
+import { formatDate } from '../../lib/formatDate'
+import { formatLossKg } from '../../lib/formatLoss'
+import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 // Производство sub-tab (NEW, CLAUDE.md task "Rebuild the client portal..."
 // Part B.4) — per-serial calendar view of pack output within the filter
@@ -53,6 +56,18 @@ function TotalsBlock({ totals }: { totals: ClientProductionLedger['totals'] }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm dark:border-sky-900 dark:bg-sky-950">
       <span className="text-slate-700 dark:text-slate-300">
+        Приход нетто: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.nettoKg)}</span>
+      </span>
+      <span className="text-slate-700 dark:text-slate-300">
+        Отправлено на мойку: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.moykagaYuborilganKg)}</span>
+      </span>
+      <span className="text-slate-700 dark:text-slate-300">
+        В мойке: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.moykadaKg)}</span>
+      </span>
+      <span className="text-slate-700 dark:text-slate-300">
+        Остаток сырья: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.ostatokSyryaKg)}</span>
+      </span>
+      <span className="text-slate-700 dark:text-slate-300">
         Всего произведено: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(totals.totalKg)}</span>
       </span>
       {totals.byCalibre.map((c) => (
@@ -60,6 +75,9 @@ function TotalsBlock({ totals }: { totals: ClientProductionLedger['totals'] }) {
           {c.label}: <span className="font-medium text-slate-900 dark:text-slate-100">{kg(c.kg)}</span>
         </span>
       ))}
+      <span className="text-slate-700 dark:text-slate-300">
+        Потеря: <span className="font-medium text-slate-900 dark:text-slate-100">{formatLossKg(totals.poteryaKg, 'кг')}</span>
+      </span>
     </div>
   )
 }
@@ -171,23 +189,31 @@ export function ClientProizvodstvoTab() {
 
       {!loading && !error && ledger && (
         <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-          <table className="w-full min-w-[900px] border-collapse text-sm">
+          <table className="w-full min-w-[1800px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
                 <th className="px-3 py-2">Серия</th>
+                <th className="px-3 py-2">Партия</th>
                 <th className="px-3 py-2">Вид сырья</th>
+                <th className="px-3 py-2">Дата прихода</th>
+                <th className="px-3 py-2 text-right">По накладной</th>
+                <th className="px-3 py-2 text-right">Приход нетто</th>
+                <th className="px-3 py-2 text-right">Отправлено на мойку</th>
+                <th className="px-3 py-2 text-right">В мойке</th>
+                <th className="px-3 py-2 text-right">Остаток сырья</th>
                 <th className="px-3 py-2 text-right">Всего произведено (кг)</th>
                 {PRODUCTION_CALIBRE_CODES.map((code) => (
                   <th key={code} className="px-3 py-2 text-right">
                     {COLUMN_LABEL[code]}
                   </th>
                 ))}
+                <th className="px-3 py-2 text-right">Потеря</th>
               </tr>
             </thead>
             <tbody>
               {ledger.rows.length === 0 && (
                 <tr>
-                  <td colSpan={3 + PRODUCTION_CALIBRE_CODES.length} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={9 + PRODUCTION_CALIBRE_CODES.length} className="px-3 py-6 text-center text-slate-400">
                     Ничего не найдено
                   </td>
                 </tr>
@@ -195,7 +221,16 @@ export function ClientProizvodstvoTab() {
               {ledger.rows.map((row) => (
                 <tr key={row.serial} className="border-b border-slate-100 dark:border-slate-800">
                   <td className="px-3 py-2 whitespace-nowrap">{row.serial}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />
+                  </td>
                   <td className="px-3 py-2">{typeName(row.typeId)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.kirimDate)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.nakladnoyKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.nettoKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.moykagaYuborilganKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.moykadaKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{kg(row.ostatokSyryaKg)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{kg(row.totalKg)}</td>
                   {PRODUCTION_CALIBRE_CODES.map((code) => {
                     const v = calibreKgByCode(row.calibres, code)
@@ -205,6 +240,9 @@ export function ClientProizvodstvoTab() {
                       </td>
                     )
                   })}
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {row.poteryaKg != null ? formatLossKg(row.poteryaKg, 'кг') : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>

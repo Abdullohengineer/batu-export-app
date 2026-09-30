@@ -15,13 +15,30 @@ export interface ClientProductionCalibre {
 export interface ClientProductionRow {
   serial: string
   typeId: string
+  partiyaNo: number | null
+  kirimDate: string | null
+  nakladnoyKg: number
+  nettoKg: number
+  moykagaYuborilganKg: number
+  moykadaKg: number
+  ostatokSyryaKg: number
   totalKg: number
   calibres: ClientProductionCalibre[]
+  // null = cycle still open within the period (В мойке explains why) --
+  // never coerced to 0, same as report_totals' own state_yoqotish/loss_range
+  // convention this reuses (kirim_line_loss_range).
+  poteryaKg: number | null
 }
 
 export interface ClientProductionTotals {
+  nettoKg: number
+  moykagaYuborilganKg: number
+  moykadaKg: number
+  ostatokSyryaKg: number
   totalKg: number
   byCalibre: ClientProductionCalibre[]
+  // Sum of non-null poteryaKg rows only (server-side, see migration 0154).
+  poteryaKg: number
 }
 
 export interface ClientProductionLedger {
@@ -65,13 +82,29 @@ interface RpcCalibre {
 interface RpcRow {
   serial: string
   typeId: string
+  partiyaNo: number | null
+  kirimDate: string | null
+  nakladnoyKg: number | string
+  nettoKg: number | string
+  moykagaYuborilganKg: number | string
+  moykadaKg: number | string
+  ostatokSyryaKg: number | string
   totalKg: number | string
   calibres: RpcCalibre[]
+  poteryaKg: number | string | null
 }
 interface RpcResponse {
   period: { from: string; to: string }
   rows: RpcRow[]
-  totals: { totalKg: number | string; byCalibre: RpcCalibre[] }
+  totals: {
+    nettoKg: number | string
+    moykagaYuborilganKg: number | string
+    moykadaKg: number | string
+    ostatokSyryaKg: number | string
+    totalKg: number | string
+    byCalibre: RpcCalibre[]
+    poteryaKg: number | string
+  }
 }
 
 function n(v: number | string): number {
@@ -100,12 +133,25 @@ export async function fetchClientProductionLedger(
     rows: d.rows.map((r) => ({
       serial: r.serial,
       typeId: r.typeId,
+      partiyaNo: r.partiyaNo,
+      kirimDate: r.kirimDate,
+      nakladnoyKg: n(r.nakladnoyKg),
+      nettoKg: n(r.nettoKg),
+      moykagaYuborilganKg: n(r.moykagaYuborilganKg),
+      moykadaKg: n(r.moykadaKg),
+      ostatokSyryaKg: n(r.ostatokSyryaKg),
       totalKg: n(r.totalKg),
       calibres: r.calibres.map(mapCalibre),
+      poteryaKg: r.poteryaKg == null ? null : n(r.poteryaKg),
     })),
     totals: {
+      nettoKg: n(d.totals.nettoKg),
+      moykagaYuborilganKg: n(d.totals.moykagaYuborilganKg),
+      moykadaKg: n(d.totals.moykadaKg),
+      ostatokSyryaKg: n(d.totals.ostatokSyryaKg),
       totalKg: n(d.totals.totalKg),
       byCalibre: d.totals.byCalibre.map(mapCalibre),
+      poteryaKg: n(d.totals.poteryaKg),
     },
   }
 }

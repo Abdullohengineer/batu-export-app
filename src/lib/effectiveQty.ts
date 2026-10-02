@@ -86,7 +86,7 @@ export async function fetchEffectiveQty(
       ? Promise.resolve({ data: prefetched.intakes })
       : supabase.from('storage_intake').select('serial, actual_qty, box_mass_kg'),
     supabase.from('gate_weighings').select('order_id, net_kg, completed_at').eq('dir', 'kirim').in('order_id', orderIds),
-    supabase.from('kirim_orders').select('order_id, declared_total').in('order_id', orderIds),
+    supabase.from('kirim_orders').select('order_id, declared_total, truck_type').in('order_id', orderIds),
     prefetched?.sends ? Promise.resolve({ data: prefetched.sends }) : supabase.from('moyka_sends').select('serial, sent_date'),
   ])
   const intakes = intakesResult.data
@@ -105,6 +105,9 @@ export async function fetchEffectiveQty(
   const intakeBySerial = new Map((intakes ?? []).map((i) => [i.serial, i]))
   const weighingByOrder = new Map((weighings ?? []).map((w) => [w.order_id, w]))
   const declaredTotalByOrder = new Map((orders ?? []).map((o) => [o.order_id, o.declared_total]))
+  // KIRIM fura (SPEC.md "KIRIM fura"): never weighed at the gate, so the
+  // ladder's gate/box-mass branches never apply to it (see deriveEffectiveQty).
+  const isFuraByOrder = new Map((orders ?? []).map((o) => [o.order_id, o.truck_type === 'fura']))
 
   // Earliest send per serial, date-only — moyka_sends has no created_at, so
   // this is the finest-grained "was this sent while still provisional"
@@ -176,6 +179,7 @@ export async function fetchEffectiveQty(
       gateNet,
       gateStage2Done,
       totalBoxMassKg,
+      isFura: isFuraByOrder.get(orderId) ?? false,
     })
 
     const declaredTotal = declaredTotalByOrder.get(orderId) ?? null

@@ -31,6 +31,7 @@ export type WeightAuthorityBasis =
   | 'intake_provisional' // intake exists, but gate stage 2 and/or box mass aren't both known yet — "tarozi kutilmoqda" / "quti massasi kutilmoqda" (§2.15.2, §2.16)
   | 'intake_multi_line_final' // multi-line truck, gate stage 2 + box mass both known — value is still intake, true net never adopted (§2.15.1)
   | 'gate_net_final' // single-line truck, gate stage 2 + box mass both known — the accounting truth, box-mass-adjusted (§2.15, §2.16)
+  | 'fura_intake_final' // KIRIM fura (SPEC.md "KIRIM fura"): never weighed at the gate, so intake's own actual_qty is final the moment it exists — never provisional, no gate/box-mass input to wait on
 
 // Which of the two independent pending inputs (§2.16) is still missing.
 // Only meaningful while basis === 'intake_provisional' — every other basis
@@ -47,6 +48,11 @@ export interface WeightAuthorityInput {
   gateNet: number | null // raw gruzheny_kg − pustoy_kg, box-inclusive — never used directly as effective_qty once box mass exists
   gateStage2Done: boolean
   totalBoxMassKg: number | null // Σ box_mass_kg across the order's lines; null until every line is accepted (§2.16)
+  // KIRIM fura (SPEC.md "KIRIM fura"): never weighed at the gate at all, so
+  // gate/box-mass are never waited on — intake's own actual_qty is final the
+  // moment it exists. Defaults to false via the `?? false` at every call
+  // site below, so a caller that doesn't know about fura yet is unaffected.
+  isFura?: boolean
 }
 
 export interface WeightAuthorityResult {
@@ -61,6 +67,9 @@ const NOTHING_PENDING: PendingOn = { gate: false, boxMass: false }
 export function deriveEffectiveQty(input: WeightAuthorityInput): WeightAuthorityResult {
   if (input.intakeActualQty === null) {
     return { value: input.declaredQty, provisional: false, basis: 'declared_pre_intake', pendingOn: NOTHING_PENDING }
+  }
+  if (input.isFura) {
+    return { value: input.intakeActualQty, provisional: false, basis: 'fura_intake_final', pendingOn: NOTHING_PENDING }
   }
   if (!input.gateStage2Done || input.totalBoxMassKg === null) {
     return {

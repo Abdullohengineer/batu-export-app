@@ -26,6 +26,7 @@ export function ReportRowCard({
   typeName,
   calibreLabel,
   truckType,
+  kirimTruckType,
   onOpenPassport,
   onOpenChiqimRequest,
 }: {
@@ -40,6 +41,8 @@ export function ReportRowCard({
   // drift from the table one (this file's own header warns about exactly
   // that hazard).
   truckType: (requestId: string) => string
+  // KIRIM truck type resolver (SPEC.md "KIRIM fura") — see useKirimTruckTypes.ts.
+  kirimTruckType: (orderId: string) => string
   onOpenPassport: (serial: string) => void
   onOpenChiqimRequest: (requestId: string) => void
 }) {
@@ -80,6 +83,7 @@ export function ReportRowCard({
         <SerialChip>{row.kind === 'chiqim_dispatch' ? row.plate || '—' : row.serial}</SerialChip>
         {row.kind !== 'chiqim_dispatch' && <PartiyaBadge partiyaNo={row.partiyaNo} typeName={typeName(row.typeId)} />}
         {row.kind === 'chiqim_dispatch' && row.requestId ? <FuraBadge truckType={truckType(row.requestId)} /> : null}
+        {row.kind === 'kirim' ? <FuraBadge truckType={kirimTruckType(row.orderId)} /> : null}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-slate-900 dark:text-slate-100">
             {ownerName(row.ownerId)}

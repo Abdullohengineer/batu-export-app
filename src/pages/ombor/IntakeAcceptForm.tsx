@@ -10,7 +10,7 @@ import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 
 export interface IntakeAcceptValues {
   actualQty: number
-  boxMassKg: number
+  boxMassKg: number | null
   pilePhoto: File
   komment: string
 }
@@ -35,6 +35,10 @@ export function IntakeAcceptForm({
   onCancel: () => void
   onSubmit: (values: IntakeAcceptValues) => Promise<void>
 }) {
+  // SPEC.md "KIRIM fura": never weighed at the gate, so box mass (which
+  // exists only to subtract from a gate net) is not required -- there is
+  // no gate net to reconcile against.
+  const isFura = line.truck_type === 'fura'
   const [actualQty, setActualQty] = useState(String(line.declared_qty))
   const [boxMassKg, setBoxMassKg] = useState('')
   const [pilePhoto, setPilePhoto] = useState<File | null>(null)
@@ -56,9 +60,11 @@ export function IntakeAcceptForm({
       setError('Aniq miqdorni kiriting.')
       return
     }
-    // §2.16 box mass (KIRIM only): mandatory — net product can't be derived
-    // without it, so the form cannot be completed without an explicit value.
-    if (boxMassKg === '' || boxMass < 0) {
+    // §2.16 box mass (KIRIM only): mandatory for a normal truck — net
+    // product can't be derived without it. A fura is never weighed at the
+    // gate, so there is nothing to derive net from -- box mass is skipped
+    // entirely (SPEC.md "KIRIM fura").
+    if (!isFura && (boxMassKg === '' || boxMass < 0)) {
       setError('Quti massasini kiriting.')
       return
     }
@@ -69,7 +75,7 @@ export function IntakeAcceptForm({
 
     setSubmitting(true)
     try {
-      await onSubmit({ actualQty: actual, boxMassKg: boxMass, pilePhoto, komment })
+      await onSubmit({ actualQty: actual, boxMassKg: isFura ? null : boxMass, pilePhoto, komment })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saqlashda xatolik yuz berdi.')
     } finally {
@@ -142,19 +148,23 @@ export function IntakeAcceptForm({
       </div>
 
       {/* §2.16 box mass (KIRIM only): net product = darvoza netto − quti
-          massasi. Mandatory — Ombor counts the boxes off this line's own
-          pile and enters their total mass; the form cannot be completed
-          without it (see handleSubmit's own check above). */}
-      <FormField label="Quti massasi (kg)">
-        <TextInput
-          type="number"
-          min="0"
-          step="0.1"
-          required
-          value={boxMassKg}
-          onChange={(e) => setBoxMassKg(e.target.value)}
-        />
-      </FormField>
+          massasi. Mandatory for a normal truck — Ombor counts the boxes off
+          this line's own pile and enters their total mass; the form cannot
+          be completed without it (see handleSubmit's own check above).
+          Skipped entirely for a fura (SPEC.md "KIRIM fura") -- never weighed
+          at the gate, so there is no net to derive. */}
+      {!isFura && (
+        <FormField label="Quti massasi (kg)">
+          <TextInput
+            type="number"
+            min="0"
+            step="0.1"
+            required
+            value={boxMassKg}
+            onChange={(e) => setBoxMassKg(e.target.value)}
+          />
+        </FormField>
+      )}
 
       <PhotoField label="Uyum rasmi" required onChange={setPilePhoto} />
 

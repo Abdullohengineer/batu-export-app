@@ -49,6 +49,10 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
   const [plate, setPlate] = useState('')
   const [driver, setDriver] = useState('')
   const [ownerId, setOwnerId] = useState('')
+  // 'regular' | 'fura' (SPEC.md "KIRIM fura") -- mirrors kirim_orders.truck_type's
+  // own default and CHECK constraint (migration 0155), same pattern as
+  // ChiqimForm's own truckType state.
+  const [truckType, setTruckType] = useState<'regular' | 'fura'>('regular')
   const [rows, setRows] = useState<TypeRow[]>([newRow()])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoSizes, setPhotoSizes] = useState<{ original: number; compressed: number } | null>(null)
@@ -133,6 +137,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
           owner_id: ownerId,
           doc_photo: docPhotoPath,
           declared_total: jamiAvto,
+          truck_type: truckType,
           created_by: profile?.id,
         })
         .select('order_id')
@@ -167,6 +172,7 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
       setPlate('')
       setDriver('')
       setOwnerId('')
+      setTruckType('regular')
       setRows([newRow()])
       setPhotoFile(null)
       setPhotoSizes(null)
@@ -232,6 +238,41 @@ export function KirimForm({ onSaved }: { onSaved: () => void }) {
             ))}
           </select>
         </FormField>
+      </div>
+
+      {/* Transport turi (SPEC.md "KIRIM fura") -- same control and wording
+          as ChiqimForm's own Transport turi. Immutable once saved (DB
+          trigger, migration 0155) -- this form has no edit mode at all,
+          and KirimOrdersList's own Tahrirlash touches only date/plate/
+          driver, so there is no UI path to change it either. */}
+      <div className="space-y-1">
+        <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">Transport turi</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              ['regular', 'Odatiy'],
+              ['fura', 'Fura'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTruckType(value)}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${
+                truckType === value
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {truckType === 'fura' && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Fura darvozada o'lchanmaydi — hisobiy og'irlik Ombor qabul qilgan aniq miqdor bo'ladi.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

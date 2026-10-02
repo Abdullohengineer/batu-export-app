@@ -70,7 +70,7 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
       ] = await Promise.all([
         supabase
           .from('kirim_orders')
-          .select('order_id, order_date, plate, driver, owner_id, status, origin')
+          .select('order_id, order_date, plate, driver, owner_id, status, origin, truck_type')
           .in('order_id', orderIds)
           // Opening stock (Stage 1) and internal_reprocess (Stage 3) never
           // arrived by a real truck -- neither has a real storage_intake
@@ -114,10 +114,15 @@ export function useIntakeHistory(filters: IntakeHistoryFilters) {
             driver: order.driver,
             owner_id: order.owner_id,
             order_status: order.status,
+            truck_type: order.truck_type,
             gruzheny_kg: weighing?.gruzheny_kg ?? null,
             pustoy_kg: weighing?.pustoy_kg ?? null,
             net_kg: weighing?.net_kg ?? null,
             gate_completed_at: weighing?.completed_at ?? null,
+            // History twin of useIntakeLines -- every row here already HAS
+            // a storage_intake row (that's what this view is a history of),
+            // so "acceptable" is trivially true regardless of truck type.
+            acceptable: true,
             intake,
           }
         })

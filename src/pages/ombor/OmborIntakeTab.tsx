@@ -24,6 +24,7 @@ import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { RezkaBadge } from '../../components/ui/RezkaBadge'
 import { FormField, TextInput } from '../../components/ui/FormField'
+import { FuraBadge } from '../../components/ui/FuraBadge'
 
 // Tara correction (2026-08-15) -- tara is the only figure Ombor enters
 // himself (declared/gate/lab figures are read-only here, per this task's
@@ -272,7 +273,8 @@ export function OmborIntakeTab() {
         <div className="mt-2 space-y-2">
           {pending.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan reys yo'q.</p>}
           {pending.map((line) => {
-            const acceptable = line.gruzheny_kg !== null
+            const acceptable = line.acceptable
+            const isFura = line.truck_type === 'fura'
             const isActive = activeSerial === line.serial
 
             return (
@@ -280,6 +282,7 @@ export function OmborIntakeTab() {
                 <div className="flex items-center gap-2">
                   <SerialChip>{line.serial}</SerialChip>
                   <PartiyaBadge partiyaNo={line.partiyaNo} typeName={typeName(line.type_id)} />
+                  <FuraBadge truckType={line.truck_type} />
                   {line.process === 'rezka' && <RezkaBadge provenance="tashqi" />}
                   <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                     {ownerName(line.owner_id)} · {typeName(line.type_id)}
@@ -292,7 +295,9 @@ export function OmborIntakeTab() {
                 {!acceptable && (
                   <div className="mt-2">
                     <StatusNote tone="pending">
-                      ⏳ Tarozi kutilmoqda — hozircha e'lon qilingan miqdor ko'rsatilmoqda
+                      {isFura
+                        ? "⏳ Qorovul kirdi belgisi kutilmoqda — hozircha e'lon qilingan miqdor ko'rsatilmoqda"
+                        : "⏳ Tarozi kutilmoqda — hozircha e'lon qilingan miqdor ko'rsatilmoqda"}
                     </StatusNote>
                   </div>
                 )}
@@ -304,7 +309,7 @@ export function OmborIntakeTab() {
                       {line.declared_qty.toLocaleString()} kg
                     </span>
                   </div>
-                  {acceptable && (
+                  {acceptable && !isFura && (
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500 dark:text-slate-400">Darvoza (yuk bilan)</span>
                       <span className="font-medium text-slate-900 dark:text-slate-100">
@@ -355,6 +360,7 @@ export function OmborIntakeTab() {
                   <div className="flex items-center gap-2">
                     <SerialChip variant="emphasized">{line.serial}</SerialChip>
                     <PartiyaBadge partiyaNo={line.partiyaNo} typeName={typeName(line.type_id)} />
+                    <FuraBadge truckType={line.truck_type} />
                     {line.process === 'rezka' && <RezkaBadge provenance="tashqi" />}
                     <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                       {ownerName(line.owner_id)} · {typeName(line.type_id)}
@@ -382,9 +388,11 @@ export function OmborIntakeTab() {
                       }}
                     />
                   )}
-                  <IconButton label="Tahrirlash" onClick={() => startTaraEdit(line)}>
-                    ✎
-                  </IconButton>
+                  {line.truck_type !== 'fura' && (
+                    <IconButton label="Tahrirlash" onClick={() => startTaraEdit(line)}>
+                      ✎
+                    </IconButton>
+                  )}
                   <IconButton label="Batafsil" onClick={() => setExpandedSerial(expandedSerial === line.serial ? null : line.serial)}>
                     ⋯
                   </IconButton>

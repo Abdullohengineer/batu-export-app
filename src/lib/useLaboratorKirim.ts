@@ -24,7 +24,13 @@ export interface AwaitingLine {
   order_date: string
   declared_qty: number
   actual_qty: number | null // Ombor's own intake weight, if accepted yet — informational only, no longer the trigger
-  gruzheny_kg: number | null // gate stage 1 weight — null means visible but not yet enterable
+  truck_type: string // SPEC.md "KIRIM fura" -- 'regular' | 'fura'
+  gruzheny_kg: number | null // gate stage 1 weight — null means visible but not yet enterable (normal truck only)
+  // SPEC.md "KIRIM fura": whether this line is enterable -- gate stage 1 for
+  // a normal truck, Qorovul's kirdi photo for a fura (there is no gate row
+  // to wait on). Computed here so LaboratorKirimTab doesn't duplicate the
+  // OR-with-fura logic.
+  enterable: boolean
   target_moisture_pct: number | null
   target_so2_mg_kg: number | null
   // Explicit natural/sulphured flag (2026-08-14), replacing the
@@ -85,7 +91,7 @@ export function useLaboratorKirim() {
   const { data, isPending, isFetching, error, refetch } = useQuery({
     queryKey: queryKeys.laboratorKirim(),
     queryFn: async ({ signal }): Promise<LaboratorKirimData> => {
-      const [{ data: lines, error: linesErr }, { data: intakes }, { data: weighings }, { data: results }] = await Promise.all([
+      const [{ data: lines, error: linesErr }, { data: intakes }, { data: weighings }, { data: results }, { data: furaKirdiPhotos }] = await Promise.all([
         supabase
           .from('kirim_lines')
           .select('serial, order_id, type_id, declared_qty, target_moisture_pct, target_so2_mg_kg, is_sulfured, partiya_no')
@@ -112,6 +118,10 @@ export function useLaboratorKirim() {
           // non-deterministically between the original and the correction.
           .order('created_at', { ascending: false })
           .abortSignal(signal),
+        // SPEC.md "KIRIM fura": a fura order has no gate row, ever --
+        // Qorovul's kirdi photo replaces gate stage 1 as the "ready to
+        // sample" signal. Just the existence per order, so only 'kirdi'.
+        supabase.from('kirim_fura_photos').select('order_id').eq('kind', 'kirdi').abortSignal(signal),
       ])
       if (linesErr) throw new Error(linesErr.message)
 
@@ -121,11 +131,12 @@ export function useLaboratorKirim() {
         if (!resultBySerial.has(r.parent_serial)) resultBySerial.set(r.parent_serial, r)
       }
       const gruzhenyByOrder = new Map((weighings ?? []).map((w) => [w.order_id, w.gruzheny_kg]))
+      const ordersWithKirdi = new Set((furaKirdiPhotos ?? []).map((p) => p.order_id))
 
       const orderIds = [...new Set((lines ?? []).map((l) => l.order_id))]
       const { data: orders, error: ordersErr } = await supabase
         .from('kirim_orders')
-        .select('order_id, order_date, plate, owner_id, origin')
+        .select('order_id, order_date, plate, owner_id, origin, truck_type')
         .in('order_id', orderIds)
         // Opening stock (Stage 1) and internal_reprocess (Stage 3) never had
         // a real arrival for Laborator to sample — opening_stock has no gate
@@ -150,6 +161,7 @@ export function useLaboratorKirim() {
 
         const result = resultBySerial.get(line.serial)
         if (!result) {
+          const isFura = order.truck_type === 'fura'
           awaitingRows.push({
             serial: line.serial,
             type_id: line.type_id,
@@ -159,7 +171,9 @@ export function useLaboratorKirim() {
             order_date: order.order_date,
             declared_qty: line.declared_qty,
             actual_qty: intakeBySerial.get(line.serial)?.actual_qty ?? null,
+            truck_type: order.truck_type,
             gruzheny_kg: gruzhenyByOrder.get(line.order_id) ?? null,
+            enterable: isFura ? ordersWithKirdi.has(line.order_id) : gruzhenyByOrder.get(line.order_id) != null,
             target_moisture_pct: line.target_moisture_pct,
             target_so2_mg_kg: line.target_so2_mg_kg,
             is_sulfured: line.is_sulfured,

@@ -6,6 +6,7 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useOwners } from '../../lib/useOwners'
 import { useKirimTrips, type KirimTrip } from '../../lib/useKirimTrips'
 import { GateStageForm, type GateStageValues } from './GateStageForm'
+import { FuraPhotoForm } from './FuraPhotoForm'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { SectionHeading } from '../../components/ui/SectionHeading'
@@ -14,11 +15,24 @@ import { StatusNote } from '../../components/ui/StatusNote'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
 import { RezkaBadge } from '../../components/ui/RezkaBadge'
+import { FuraBadge } from '../../components/ui/FuraBadge'
+import { GatePhoto } from '../../components/GatePhoto'
 import { formatDate } from '../../lib/formatDate'
 
 async function uploadGatePhoto(file: File) {
   const path = `${crypto.randomUUID()}.jpg`
   const { error } = await supabase.storage.from('gate-photos').upload(path, file)
+  if (error) throw error
+  return path
+}
+
+// SPEC.md "KIRIM fura" -- same shape as QorovulChiqimTab.tsx's own
+// FURA_BUCKET/uploadFuraPhoto, pointed at the new KIRIM-scoped table/bucket.
+const FURA_BUCKET = 'kirim-fura-photos'
+
+async function uploadKirimFuraPhoto(orderId: string, kind: 'kirdi' | 'chiqdi', file: File) {
+  const path = `${orderId}/${kind}-${crypto.randomUUID()}.jpg`
+  const { error } = await supabase.storage.from(FURA_BUCKET).upload(path, file)
   if (error) throw error
   return path
 }
@@ -41,7 +55,7 @@ export function QorovulKirimTab() {
   const { owners } = useOwners(true)
   const { trips, loading, refreshing, error: loadError, refresh } = useKirimTrips()
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
-  const [activeStage, setActiveStage] = useState<1 | 2 | null>(null)
+  const [activeStage, setActiveStage] = useState<1 | 2 | 'kirdi' | 'chiqdi' | null>(null)
 
   function typeName(typeId: string) {
     return productTypes.find((t) => t.id === typeId)?.name ?? typeId
@@ -130,21 +144,61 @@ export function QorovulKirimTab() {
     invalidateReportData()
   }
 
+  // SPEC.md "KIRIM fura" -- mirrors QorovulChiqimTab.tsx's own
+  // handleFuraPhoto exactly: one append-only row, nothing else moves. It
+  // does not touch kirim_orders, does not create a gate_weighings row, and
+  // does not affect intake acceptability by itself (that's the EXISTENCE of
+  // the kirdi row, read by useIntakeLines/useLaboratorKirim, not this
+  // handler).
+  async function handleFuraPhoto(trip: KirimTrip, kind: 'kirdi' | 'chiqdi', photo: File) {
+    const path = await uploadKirimFuraPhoto(trip.order.order_id, kind, photo)
+    const { error } = await supabase.from('kirim_fura_photos').insert({
+      order_id: trip.order.order_id,
+      kind,
+      photo_url: path,
+      uploaded_by: profile?.id,
+    })
+    if (error) throw error
+    closeForm()
+    refresh()
+  }
+
   if (loading) return null
 
-  const notStarted = trips.filter((t) => t.order.status === 'kutilmoqda' && !t.weighing)
+  // SPEC.md "KIRIM fura" -- mirrors QorovulChiqimTab.tsx's own
+  // isGateWeighed/furaAwaitingKirdi/furaAwaitingChiqdi split exactly: a
+  // fura never enters the weighed flow, and its Window membership is driven
+  // by its OWN photos, never by kirim_orders.status -- Ombor's intake
+  // confirm flips status (complete_kirim_fura, 0155) the moment every line
+  // is accepted, which would yank the Chiqdi affordance out from under the
+  // guard before he ever photographed the truck leaving, if status decided
+  // membership instead.
+  const isGateWeighed = (t: KirimTrip) => t.order.truck_type !== 'fura'
+
+  const furaAwaitingKirdi = trips.filter((t) => !isGateWeighed(t) && !t.kirdiPhoto)
+  const furaAwaitingChiqdi = trips.filter((t) => !isGateWeighed(t) && t.kirdiPhoto && !t.chiqdiPhoto)
+
+  const notStarted = trips.filter((t) => isGateWeighed(t) && t.order.status === 'kutilmoqda' && !t.weighing)
   const inProgress = trips.filter(
-    (t) => t.order.status === 'kutilmoqda' && t.weighing && !t.weighing.completed_at,
+    (t) => isGateWeighed(t) && t.order.status === 'kutilmoqda' && t.weighing && !t.weighing.completed_at,
   )
-  const completed = trips.filter((t) => t.order.status !== 'kutilmoqda')
-  const activeWindow = [...notStarted, ...inProgress]
+  // A fura leaves the active view once BOTH captures exist -- photo-driven,
+  // not status-driven, for the same reason as above.
+  const completed = trips.filter((t) =>
+    isGateWeighed(t) ? t.order.status !== 'kutilmoqda' : Boolean(t.kirdiPhoto && t.chiqdiPhoto),
+  )
+  const activeWindow = [...notStarted, ...furaAwaitingKirdi, ...inProgress, ...furaAwaitingChiqdi]
 
   return (
     <div className="space-y-6">
       {loadError && <StatusNote tone="problem">{loadError}</StatusNote>}
       <div className="grid grid-cols-3 gap-3">
-        <Stat value={notStarted.length} label="Kutilmoqda" />
-        <Stat value={inProgress.length} label="Bo'shatilmoqda" tone={inProgress.length > 0 ? 'problem' : 'neutral'} />
+        <Stat value={notStarted.length + furaAwaitingKirdi.length} label="Kutilmoqda" />
+        <Stat
+          value={inProgress.length + furaAwaitingChiqdi.length}
+          label="Bo'shatilmoqda"
+          tone={inProgress.length + furaAwaitingChiqdi.length > 0 ? 'problem' : 'neutral'}
+        />
         <Stat value={completed.length} label="Yakunlandi" tone="ok" />
       </div>
       {refreshing && <p className="text-xs text-slate-400">yangilanmoqda…</p>}
@@ -154,16 +208,27 @@ export function QorovulKirimTab() {
         <div className="mt-2 space-y-2">
           {activeWindow.length === 0 && <p className="text-sm text-slate-400">Faol reys yo'q.</p>}
           {activeWindow.map((trip) => {
-            const isRed = Boolean(trip.weighing && !trip.weighing.completed_at)
+            // A fura's "red" state is having its entry photo but not its
+            // exit one -- same two-stage shape the weighed flow has, with
+            // photos in place of weights (SPEC.md "KIRIM fura").
+            const isFura = !isGateWeighed(trip)
+            const isRed = isFura
+              ? Boolean(trip.kirdiPhoto && !trip.chiqdiPhoto)
+              : Boolean(trip.weighing && !trip.weighing.completed_at)
             const isActive = activeOrderId === trip.order.order_id
+            const furaStage: 'kirdi' | 'chiqdi' = trip.kirdiPhoto ? 'chiqdi' : 'kirdi'
             // Plate/driver stay in the meta line in BOTH states -- not just
             // the mockup's own "who is this truck" cue, but also how e2e
             // finds this exact row once it's red (hasText: <plate>); the
             // red-state text must not drop it in favour of the saved-weight
             // phrase alone.
-            const meta = isRed
-              ? `Yuk bilan ${trip.weighing!.gruzheny_kg?.toLocaleString() ?? '—'} kg · bo'sh vazn kutilmoqda · ${trip.order.driver} · ${trip.order.plate}`
-              : `${trip.order.declared_total != null ? `So'ralgan ${trip.order.declared_total.toLocaleString()} kg · ` : ''}${trip.order.driver} · ${trip.order.plate}`
+            const meta = isFura
+              ? isRed
+                ? `Kirdi qayd etilgan · chiqish rasmi kutilmoqda · ${trip.order.driver} · ${trip.order.plate}`
+                : `O'lchovsiz · moshina rasmi kutilmoqda · ${trip.order.driver} · ${trip.order.plate}`
+              : isRed
+                ? `Yuk bilan ${trip.weighing!.gruzheny_kg?.toLocaleString() ?? '—'} kg · bo'sh vazn kutilmoqda · ${trip.order.driver} · ${trip.order.plate}`
+                : `${trip.order.declared_total != null ? `So'ralgan ${trip.order.declared_total.toLocaleString()} kg · ` : ''}${trip.order.driver} · ${trip.order.plate}`
 
             return (
               <Card key={trip.order.order_id} tone={isRed ? 'problem' : 'neutral'}>
@@ -172,6 +237,7 @@ export function QorovulKirimTab() {
                     <div className="flex items-center gap-2">
                       <SerialChip>{primarySerial(trip)}</SerialChip>
                     <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} typeName={primaryTypeName(trip)} />
+                    <FuraBadge truckType={trip.order.truck_type} />
                     {hasRezka(trip) && <RezkaBadge provenance="tashqi" />}
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(trip.order.owner_id)} · {typeSummary(trip)}
@@ -185,15 +251,29 @@ export function QorovulKirimTab() {
                       size="lg"
                       onClick={() => {
                         setActiveOrderId(trip.order.order_id)
-                        setActiveStage(isRed ? 2 : 1)
+                        setActiveStage(isFura ? furaStage : isRed ? 2 : 1)
                       }}
                     >
-                      {isRed ? 'Yakunlash' : 'Qabul qilish'}
+                      {isFura ? (isRed ? 'Chiqdi' : 'Kirdi') : isRed ? 'Yakunlash' : 'Qabul qilish'}
                     </Button>
                   )}
                 </div>
 
-                {isActive && activeStage && (
+                {isActive && activeStage && isFura && (activeStage === 'kirdi' || activeStage === 'chiqdi') && (
+                  <FuraPhotoForm
+                    stage={activeStage}
+                    tripInfo={[
+                      { label: 'Seriya', value: primarySerial(trip) },
+                      { label: 'Buyurtmachi', value: ownerName(trip.order.owner_id) },
+                      { label: 'Tur', value: typeSummary(trip) },
+                      { label: 'Moshina · haydovchi', value: `${trip.order.plate} · ${trip.order.driver}` },
+                    ]}
+                    onCancel={closeForm}
+                    onSubmit={(photo) => handleFuraPhoto(trip, activeStage, photo)}
+                  />
+                )}
+
+                {isActive && activeStage && !isFura && (activeStage === 1 || activeStage === 2) && (
                   <GateStageForm
                     stage={activeStage}
                     tripInfo={
@@ -232,6 +312,7 @@ export function QorovulKirimTab() {
                   <div className="flex items-center gap-2">
                     <SerialChip>{primarySerial(trip)}</SerialChip>
                     <PartiyaBadge partiyaNo={primaryPartiyaNo(trip)} typeName={primaryTypeName(trip)} />
+                    <FuraBadge truckType={trip.order.truck_type} />
                     {hasRezka(trip) && <RezkaBadge provenance="tashqi" />}
                     <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                       {ownerName(trip.order.owner_id)} · {typeSummary(trip)}
@@ -240,14 +321,30 @@ export function QorovulKirimTab() {
                   <div className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {trip.order.driver} · {trip.order.plate}
                   </div>
+                  {/* A fura's whole gate record is these two captures (SPEC.md
+                      "KIRIM fura") -- the weighed flow shows a net kg here,
+                      so showing nothing at all would make the row read as
+                      incomplete. */}
+                  {!isGateWeighed(trip) && (
+                    <div className="mt-1 flex items-center gap-2">
+                      <GatePhoto path={trip.kirdiPhoto} label="Moshina rasmi (kirdi)" bucket={FURA_BUCKET} thumbnail />
+                      <GatePhoto path={trip.chiqdiPhoto} label="Chiqish rasmi (chiqdi)" bucket={FURA_BUCKET} thumbnail />
+                    </div>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div className="text-right">
                     <div className="text-base font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                      {trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg
+                      {isGateWeighed(trip)
+                        ? `${trip.weighing?.net_kg?.toLocaleString() ?? '—'} kg`
+                        : `${trip.receivedKg.toLocaleString()} kg`}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {trip.weighing?.completed_at ? formatTripTime(trip.weighing.completed_at) : ''}
+                      {isGateWeighed(trip)
+                        ? trip.weighing?.completed_at
+                          ? formatTripTime(trip.weighing.completed_at)
+                          : ''
+                        : "fura — tortilmagan"}
                     </div>
                   </div>
                   <span className="text-lg text-emerald-600 dark:text-emerald-400">✓</span>

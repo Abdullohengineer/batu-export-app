@@ -10,6 +10,7 @@ import { useProductTypes } from '../../lib/useProductTypes'
 import { useCalibres } from '../../lib/useCalibres'
 import { useReportQuery, ExportTooLargeError } from '../../lib/useReportQuery'
 import { useChiqimTruckTypes } from '../../lib/useChiqimTruckTypes'
+import { useKirimTruckTypes } from '../../lib/useKirimTruckTypes'
 import { downloadReportExcel } from '../../lib/reportExport'
 import { dateBasisLabel, defaultReportFilters, type DirectionGroup, type PalletStatusFilter } from '../../lib/reportQuery'
 import { columnsForGroup, defaultVisibleColumnKeys } from '../../lib/reportColumns'
@@ -112,6 +113,9 @@ export function HisobotTab() {
   // ownerName/typeName/calibreLabel, not a row source. See
   // useChiqimTruckTypes.ts for why it is not threaded through report_rows_v2.
   const { truckType } = useChiqimTruckTypes()
+  // KIRIM truck type badge (SPEC.md "KIRIM fura") -- same resolver pattern,
+  // keyed by orderId instead of requestId. See useKirimTruckTypes.ts.
+  const { truckType: kirimTruckType } = useKirimTruckTypes()
 
   function ownerName(id: string) {
     return owners.find((o) => o.id === id)?.name ?? id
@@ -300,6 +304,7 @@ export function HisobotTab() {
             typeName={typeName}
             calibreLabel={calibreLabel}
             truckType={truckType}
+            kirimTruckType={kirimTruckType}
             onOpenPassport={setPassportSerial}
             onOpenChiqimRequest={setChiqimRequestId}
           />

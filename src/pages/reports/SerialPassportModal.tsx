@@ -661,12 +661,37 @@ function PassportBody({
         )}
       </section>
 
-      {/* Darvoza (Gate) */}
+      {/* Darvoza (Gate). SPEC.md "KIRIM fura": a fura is never weighed at
+          the gate, so `gate` is null throughout for one -- buildGateRows()
+          would render nothing at all (a silently blank section), not "fura
+          — tortilmagan". Replaced with Qorovul's own kirdi/chiqdi record,
+          same branch shape as each CHIQIM dispatch's own truckType check
+          below. */}
       <section>
         <h3 className={sectionTitle}>Darvoza (KIRIM)</h3>
         <div className="mt-2">
           <FieldTable
-            rows={buildGateRows(gate, 'Yuk bilan (1-bosqich)', "Bo'sh (2-bosqich)", onOpenPhoto, intake ? intake.boxMassKg : null)}
+            rows={
+              order && order.truckType === 'fura'
+                ? [
+                    { label: 'Transport turi', value: 'Fura — tortilmagan' },
+                    ...(order.furaPhotos?.kirdi
+                      ? [{
+                          label: 'Moshina rasmi (kirdi)',
+                          value: <GatePhoto path={order.furaPhotos.kirdi} label="Moshina rasmi (kirdi)"
+                                   bucket="kirim-fura-photos" thumbnail onOpen={onOpenPhoto} />,
+                        }]
+                      : []),
+                    ...(order.furaPhotos?.chiqdi
+                      ? [{
+                          label: 'Chiqish rasmi (chiqdi)',
+                          value: <GatePhoto path={order.furaPhotos.chiqdi} label="Chiqish rasmi (chiqdi)"
+                                   bucket="kirim-fura-photos" thumbnail onOpen={onOpenPhoto} />,
+                        }]
+                      : []),
+                  ]
+                : buildGateRows(gate, 'Yuk bilan (1-bosqich)', "Bo'sh (2-bosqich)", onOpenPhoto, intake ? intake.boxMassKg : null)
+            }
           />
         </div>
       </section>

@@ -48,6 +48,12 @@ export interface PassportOrder {
   // Buyurtma/Darvoza sections are near-empty by design; mintOrigin below
   // is where its actual beginning is recorded.
   isMinted: boolean
+  // SPEC.md "KIRIM fura" -- mirrors PassportDispatch's own truckType/photos:
+  // a fura is never weighed at the gate, so `gate` (below) is null
+  // throughout for one, permanently and by design. furaPhotos is Qorovul's
+  // own kirdi/chiqdi record in its place -- null for a regular order.
+  truckType: string
+  furaPhotos: PassportFuraPhotos | null
 }
 
 // Stage 3 -- what a minted serial was born from. Null for every ordinary

@@ -37,6 +37,7 @@ export function ReportResultsTable({
   typeName,
   calibreLabel,
   truckType,
+  kirimTruckType,
   onOpenPassport,
   onOpenChiqimRequest,
 }: {
@@ -48,6 +49,7 @@ export function ReportResultsTable({
   typeName: (id: string) => string
   calibreLabel: (id: string) => string
   truckType: (requestId: string) => string
+  kirimTruckType: (orderId: string) => string
   onOpenPassport: (serial: string) => void
   onOpenChiqimRequest: (requestId: string) => void
 }) {
@@ -79,6 +81,7 @@ export function ReportResultsTable({
                 typeName={typeName}
                 calibreLabel={calibreLabel}
                 truckType={truckType}
+                kirimTruckType={kirimTruckType}
                 onOpenPassport={onOpenPassport}
                 onOpenChiqimRequest={onOpenChiqimRequest}
               />
@@ -98,6 +101,7 @@ export function ReportResultsTable({
             typeName={typeName}
             calibreLabel={calibreLabel}
             truckType={truckType}
+            kirimTruckType={kirimTruckType}
             onOpenPassport={onOpenPassport}
             onOpenChiqimRequest={onOpenChiqimRequest}
           />

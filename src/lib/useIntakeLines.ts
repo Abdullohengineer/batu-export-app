@@ -4,7 +4,7 @@ import { queryKeys } from './queryClient'
 
 export interface IntakeRecord {
   actual_qty: number
-  box_mass_kg: number
+  box_mass_kg: number | null // SPEC.md "KIRIM fura": null for a fura line, never required
   pile_photo: string | null
   komment: string | null
   barcode1: string | null
@@ -26,10 +26,16 @@ export interface IntakeLine {
   driver: string
   owner_id: string
   order_status: string
+  truck_type: string // SPEC.md "KIRIM fura" -- 'regular' | 'fura'
   gruzheny_kg: number | null
   pustoy_kg: number | null
   net_kg: number | null
   gate_completed_at: string | null
+  // SPEC.md "KIRIM fura": whether THIS line is ready to accept -- gate
+  // stage 1 for a normal truck, Qorovul's kirdi photo for a fura (there is
+  // no gate row to wait on). Computed here so OmborIntakeTab doesn't
+  // duplicate the OR-with-fura logic.
+  acceptable: boolean
   intake: IntakeRecord | null
 }
 
@@ -60,7 +66,7 @@ export function useIntakeLines() {
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<IntakeLine[]> => {
-      const [{ data: orders }, { data: kLines }, { data: weighings }, { data: intakes }] = await Promise.all([
+      const [{ data: orders }, { data: kLines }, { data: weighings }, { data: intakes }, { data: furaKirdiPhotos }] = await Promise.all([
         supabase
           .from('kirim_orders')
           // origin='delivery' only (2026-08-02) — this screen accepts
@@ -73,7 +79,7 @@ export function useIntakeLines() {
           // predicate) — and accepting one would have written a real
           // storage_intake row, materialising ~52 t of phantom raw stock in
           // qoldig'i. A positive allowlist, so future origins are covered.
-          .select('order_id, order_date, plate, driver, owner_id, status')
+          .select('order_id, order_date, plate, driver, owner_id, status, truck_type')
           .eq('origin', 'delivery')
           .order('created_at', { ascending: false }),
         // Voided TEST lines (0152) never appear in intake Windows 1-2.
@@ -85,17 +91,23 @@ export function useIntakeLines() {
         supabase
           .from('storage_intake')
           .select('serial, actual_qty, box_mass_kg, pile_photo, komment, barcode1, status, confirmed_at, moisture_pct, so2_mg_kg'),
+        // SPEC.md "KIRIM fura": a fura order has no gate row, ever -- Qorovul's
+        // kirdi photo is what replaces gate stage 1 as the "ready to accept"
+        // signal. Just the existence per order, so only 'kirdi' is fetched.
+        supabase.from('kirim_fura_photos').select('order_id').eq('kind', 'kirdi'),
       ])
 
       const orderById = new Map((orders ?? []).map((o) => [o.order_id, o]))
       const weighingByOrder = new Map((weighings ?? []).map((w) => [w.order_id, w]))
       const intakeBySerial = new Map((intakes ?? []).map((i) => [i.serial, i]))
+      const ordersWithKirdi = new Set((furaKirdiPhotos ?? []).map((p) => p.order_id))
 
       const combined: IntakeLine[] = (kLines ?? [])
         .map((line): IntakeLine | null => {
           const order = orderById.get(line.order_id)
           if (!order) return null
           const weighing = weighingByOrder.get(line.order_id) ?? null
+          const isFura = order.truck_type === 'fura'
 
           return {
             serial: line.serial,
@@ -109,10 +121,12 @@ export function useIntakeLines() {
             driver: order.driver,
             owner_id: order.owner_id,
             order_status: order.status,
+            truck_type: order.truck_type,
             gruzheny_kg: weighing?.gruzheny_kg ?? null,
             pustoy_kg: weighing?.pustoy_kg ?? null,
             net_kg: weighing?.net_kg ?? null,
             gate_completed_at: weighing?.completed_at ?? null,
+            acceptable: isFura ? ordersWithKirdi.has(order.order_id) : weighing?.gruzheny_kg != null,
             intake: intakeBySerial.get(line.serial) ?? null,
           }
         })

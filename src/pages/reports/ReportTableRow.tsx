@@ -46,6 +46,7 @@ export function ReportTableRow({
   onOpenPassport,
   onOpenChiqimRequest,
   truckType,
+  kirimTruckType,
 }: {
   row: ReportRow
   visibleColumns: ReportColumnDef[]
@@ -58,6 +59,8 @@ export function ReportTableRow({
   onOpenChiqimRequest: (requestId: string) => void
   // CHIQIM truck type resolver (2026-08-30) — see useChiqimTruckTypes.ts.
   truckType: (requestId: string) => string
+  // KIRIM truck type resolver (SPEC.md "KIRIM fura") — see useKirimTruckTypes.ts.
+  kirimTruckType: (orderId: string) => string
 }) {
   const qty = row.kind === 'kirim' ? row.effectiveQtyKg : row.weightKg
   // Blank, not zero, wherever a figure doesn't exist for this row kind —
@@ -188,6 +191,7 @@ export function ReportTableRow({
           <span className="inline-flex items-center gap-1 whitespace-nowrap text-slate-700 dark:text-slate-300">
             {row.plate || '—'}
             {row.kind === 'chiqim_dispatch' && row.requestId ? <FuraBadge truckType={truckType(row.requestId)} /> : null}
+            {row.kind === 'kirim' ? <FuraBadge truckType={kirimTruckType(row.orderId)} /> : null}
           </span>
         )
       case 'driver':

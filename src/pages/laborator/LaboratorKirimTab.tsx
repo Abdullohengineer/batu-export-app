@@ -16,6 +16,7 @@ import { StatusNote } from '../../components/ui/StatusNote'
 import { TextInput } from '../../components/ui/FormField'
 import { SerialChip } from '../../components/ui/SerialChip'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { FuraBadge } from '../../components/ui/FuraBadge'
 import { Stat } from '../../components/ui/Stat'
 import { formatDate } from '../../lib/formatDate'
 
@@ -201,7 +202,8 @@ export function LaboratorKirimTab() {
           {awaiting.length === 0 && <p className="text-sm text-slate-400">Kutilayotgan serial yo'q.</p>}
           {awaiting.map((line) => {
             const isActive = activeTahlil === line.serial
-            const enterable = line.gruzheny_kg !== null
+            const enterable = line.enterable
+            const isFura = line.truck_type === 'fura'
             return (
               <Card key={line.serial}>
                 <div className="flex items-center justify-between gap-3">
@@ -209,6 +211,7 @@ export function LaboratorKirimTab() {
                     <div className="flex items-center gap-2">
                       <SerialChip>{line.serial}</SerialChip>
                       <PartiyaBadge partiyaNo={line.partiyaNo} typeName={typeName(line.type_id)} />
+                      <FuraBadge truckType={line.truck_type} />
                       <span className="min-w-0 flex-1 truncate font-semibold text-slate-900 dark:text-slate-100">
                         {ownerName(line.owner_id)} · {typeName(line.type_id)}
                       </span>
@@ -225,7 +228,9 @@ export function LaboratorKirimTab() {
                 </div>
                 {!enterable && (
                   <div className="mt-2">
-                    <StatusNote tone="pending">⏳ Darvoza (1-bosqich) kutilmoqda</StatusNote>
+                    <StatusNote tone="pending">
+                      {isFura ? "⏳ Qorovul kirdi belgisi kutilmoqda" : '⏳ Darvoza (1-bosqich) kutilmoqda'}
+                    </StatusNote>
                   </div>
                 )}
                 {isActive && (

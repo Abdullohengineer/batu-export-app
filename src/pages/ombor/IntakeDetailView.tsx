@@ -28,6 +28,12 @@ export function IntakeDetailView({
   }, [line.intake.pile_photo])
 
   const gateStage2Done = line.gate_completed_at !== null
+  // SPEC.md "KIRIM fura": never weighed at the gate, no box mass taken --
+  // both sections below must read "fura — tortilmagan", not "kutilmoqda"
+  // (which implies someone still has to do it) or a crash on a null box
+  // mass (.toLocaleString() on null throws).
+  const isFura = line.truck_type === 'fura'
+  const FURA_LABEL = 'fura — tortilmagan'
 
   return (
     <div className="space-y-3 border-t border-slate-200 px-3 py-3 text-sm dark:border-slate-700">
@@ -54,16 +60,22 @@ export function IntakeDetailView({
       <div>
         <div className="font-medium text-slate-700 dark:text-slate-300">Darvoza</div>
         <div className="text-slate-500 dark:text-slate-400">
-          Yuk bilan: {line.gruzheny_kg !== null ? `${line.gruzheny_kg.toLocaleString()} kg` : 'kutilmoqda'} · Bo'sh:{' '}
-          {gateStage2Done && line.pustoy_kg !== null ? `${line.pustoy_kg.toLocaleString()} kg` : 'kutilmoqda'} · Net:{' '}
-          {gateStage2Done && line.net_kg !== null ? `${line.net_kg.toLocaleString()} kg` : 'kutilmoqda'}
+          {isFura ? (
+            FURA_LABEL
+          ) : (
+            <>
+              Yuk bilan: {line.gruzheny_kg !== null ? `${line.gruzheny_kg.toLocaleString()} kg` : 'kutilmoqda'} · Bo'sh:{' '}
+              {gateStage2Done && line.pustoy_kg !== null ? `${line.pustoy_kg.toLocaleString()} kg` : 'kutilmoqda'} · Net:{' '}
+              {gateStage2Done && line.net_kg !== null ? `${line.net_kg.toLocaleString()} kg` : 'kutilmoqda'}
+            </>
+          )}
         </div>
       </div>
 
       <div>
         <div className="font-medium text-slate-700 dark:text-slate-300">Ombor</div>
         <div className="text-slate-500 dark:text-slate-400">
-          Quti massasi: {line.intake.box_mass_kg.toLocaleString()} kg
+          Quti massasi: {line.intake.box_mass_kg !== null ? `${line.intake.box_mass_kg.toLocaleString()} kg` : FURA_LABEL}
           {line.intake.komment ? ` · ${line.intake.komment}` : ''}
         </div>
         {pileUrl && (

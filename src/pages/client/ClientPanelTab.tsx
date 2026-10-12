@@ -238,6 +238,7 @@ export function ClientPanelTab() {
           dispatchedByCalibre={derived.dispatchedByCalibre}
           dispatchedKnRows={derived.dispatchedKnRows}
           dispatchedMax={derived.dispatchedMax}
+          finishedOnHandKg={snapshot ? snapshot.finishedCalibredKg + snapshot.konditirskiyKg : 0}
         />
       )}
     </div>

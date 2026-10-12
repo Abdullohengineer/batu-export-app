@@ -69,6 +69,12 @@ export interface OmborHozirSectionProps {
   dispatchedByCalibre: CalibreKgRow[]
   dispatchedKnRows: CalibreKgRow[]
   dispatchedMax: number
+  // Same snapshot.finishedCalibredKg + snapshot.konditirskiyKg the hero
+  // tiles read directly (not stockCalibredTotal/stockKnTotal above, which
+  // re-sum the Turlar-filtered bars) -- so this caption can never again
+  // disagree with the tiles above it. See docs/decisions/ "omborda qolgan
+  // caption pointed at hero tile source instead of ledger.finished.closingKg".
+  finishedOnHandKg: number
 }
 
 export function OmborHozirSection({
@@ -88,6 +94,7 @@ export function OmborHozirSection({
   dispatchedByCalibre,
   dispatchedKnRows,
   dispatchedMax,
+  finishedOnHandKg,
 }: OmborHozirSectionProps) {
   const t = STRINGS[locale]
   const activeTypeIds = selectedTypeIds ?? productTypes.map((t) => t.id)
@@ -187,13 +194,13 @@ export function OmborHozirSection({
             {locale === 'ru' ? (
               <>
                 Всего отгружено <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.dispatchedKg)} кг</strong> · осталось на складе{' '}
-                <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.closingKg)} кг</strong> (калиброванная и кондитерка вместе — плитка{' '}
+                <strong className="text-slate-700 dark:text-slate-300">{fmt(finishedOnHandKg)} кг</strong> (калиброванная и кондитерка вместе — плитка{' '}
                 <em>Готовая продукция · калиброванная</em> выше показывает только K1–K8). Проценты — доля от общего отгруженного по этому калибру.
               </>
             ) : (
               <>
                 Jami olib ketilgan <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.dispatchedKg)} kg</strong> · omborda qolgan{' '}
-                <strong className="text-slate-700 dark:text-slate-300">{fmt(ledger.finished.closingKg)} kg</strong> (kalibrli va konditerka birgalikda — yuqoridagi{' '}
+                <strong className="text-slate-700 dark:text-slate-300">{fmt(finishedOnHandKg)} kg</strong> (kalibrli va konditerka birgalikda — yuqoridagi{' '}
                 <em>Tayyor · kalibrli</em> katakchasi faqat K1–K8ni ko'rsatadi). Foizlar — o'sha kalibrning jami olib ketilgan miqdoridan qancha qismi.
               </>
             )}

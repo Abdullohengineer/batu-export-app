@@ -1,0 +1,3 @@
+# 0241 — client_production_ledger: 'consumed' pallets are production, not excluded
+
+2026-10-14 — `client_production_ledger`'s `scoped_pallets` filter dropped `status='consumed'` from its exclusion list (kept `bekor_qilindi`, `storage_loss`): a consumed pallet physically came out of Moyka and was later reused (mostly minted into Rezka), so for a historical Производство period report it IS production that happened — excluding it understated Global Export's Sep 2026 total by 18,080 kg (93,810 → 111,890, verified live). Current-stock views (`stock_on_hand_rows`, `rahbar_stock_snapshot`) are untouched and correctly keep excluding `consumed`. `supabase/migrations/0159_client_production_ledger_include_consumed.sql`.

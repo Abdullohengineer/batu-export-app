@@ -62,9 +62,18 @@ Rahbar JWT, exact PostgREST call shape, three scenarios:
 The current (old) functions on the same three scenarios, same shape: the
 batch did not finish inside a 55 s statement timeout.
 
-**Not yet applied to the live project** — per CLAUDE.md, waiting for
-explicit approval. After applying: re-check `postgres_logs` for 57014 on
-these paths and re-run the Hisobot screen as rahbar.
+**Applied to the live project 2026-10-17 11:05:10 UTC** (migration version
+`20261017110510`), on the user's explicit approval. Re-checked live right
+after: the three wrappers are plpgsql with `plan_cache_mode=force_custom_plan`,
+`*_impl` are the untouched SQL bodies, ACLs identical to the originals.
+Same scenario 1 as above (rahbar JWT, PostgREST call shape), 3 runs:
+rows 171–269 ms, totals 397–475 ms — the same call measured 1.7–5.4 s
+minutes before applying (by then the org was already on the $25 Pro plan;
+the database had 25 days' uptime, so compute was unchanged by the plan
+switch). Not verified over real HTTP from this session (the container's
+egress proxy refuses `*.supabase.co`): the last report-RPC 500s in
+`edge_logs` are 10:55–10:56, before the apply; confirm with the next real
+Hisobot load.
 
 ## Flagged, not done (scope)
 

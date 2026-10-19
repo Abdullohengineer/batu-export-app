@@ -20,6 +20,7 @@ import { RezkaBadge } from '../../components/ui/RezkaBadge'
 import type { Tone } from '../../components/ui/tokens'
 import { SerialPassportModal } from '../reports/SerialPassportModal'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
+import { KirimOrderDocumentsPanel } from './KirimOrderDocumentsPanel'
 
 // kirim_orders.status has exactly these two values (confirmed against the
 // live DB, not assumed) -- a plain display-label + tone map, no new status
@@ -91,6 +92,9 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
   const [editDraft, setEditDraft] = useState<EditDraft>({ order_date: '', plate: '', driver: '' })
   const [editBusy, setEditBusy] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  // "Qo'shimcha hujjatlar" (0243) -- which orders have their documents panel
+  // open. Independent of `expanded` and of Tahrirlash's gate lock.
+  const [docsOpen, setDocsOpen] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     if (!profile) return
@@ -199,6 +203,15 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
     limits.kam_chiqdi_pct ?? 5,
   )
 
+  function toggleDocs(orderId: string) {
+    setDocsOpen((prev) => {
+      const next = new Set(prev)
+      if (next.has(orderId)) next.delete(orderId)
+      else next.add(orderId)
+      return next
+    })
+  }
+
   function toggle(orderId: string) {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -243,6 +256,19 @@ export function KirimOrdersList({ refreshKey }: { refreshKey: number }) {
               {STATUS_LABEL[order.status]?.label ?? order.status}
             </StatusPill>
           </button>
+          {/* Qo'shimcha hujjatlar (0243) -- its own control, deliberately
+              outside both the expand toggle and Tahrirlash's gate-lock
+              block below: documents attach to any load however old. */}
+          <div className="mt-1">
+            <Button variant="secondary" size="md" onClick={() => toggleDocs(order.order_id)} aria-expanded={docsOpen.has(order.order_id)}>
+              Qo'shimcha hujjatlar
+            </Button>
+            {docsOpen.has(order.order_id) && (
+              <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                <KirimOrderDocumentsPanel orderId={order.order_id} />
+              </div>
+            )}
+          </div>
           {expanded.has(order.order_id) && (
             <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 dark:border-slate-700">
               {order.kirim_lines.map((line) => {

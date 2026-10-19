@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { fetchSerialPassport, type SerialPassport, type PassportGate } from '../../lib/serialPassport'
 import { GatePhoto } from '../../components/GatePhoto'
 import { Lightbox } from '../../components/Lightbox'
+import { KIRIM_PHOTOS_BUCKET, useKirimOrderDocuments } from '../../lib/kirimOrderDocuments'
 import { formatStockDate } from '../../lib/oldStock'
 import { formatDate, formatDateTime } from '../../lib/formatDate'
 import { formatLossKg } from '../../lib/formatLoss'
@@ -209,6 +210,10 @@ function PassportBody({
   // `rezkaDrawsOut` only on a parent Konditerka serial Ichki mints drew from.
   const rezka = passport.rezka ?? null
   const rezkaDrawsOut = passport.rezkaDrawsOut ?? []
+  // Qo'shimcha hujjatlar (0243) -- per ORDER, so every serial on a multi-line
+  // load shows its parent order's documents. Read beside the passport RPC,
+  // not folded into get_serial_passport.
+  const { documents: orderDocuments } = useKirimOrderDocuments(order?.orderId ?? null)
 
   const effectiveQtyValue = effectiveQty && (
     <>
@@ -649,6 +654,29 @@ function PassportBody({
                             thumbnail
                             onOpen={onOpenPhoto}
                           />
+                        ),
+                      },
+                    ]
+                  : []),
+                // Qo'shimcha hujjatlar (0243) -- beside the nakladnoy, never
+                // in its place.
+                ...(orderDocuments.length > 0
+                  ? [
+                      {
+                        label: "Qo'shimcha hujjatlar",
+                        value: (
+                          <div className="flex flex-wrap gap-2">
+                            {orderDocuments.map((doc, i) => (
+                              <GatePhoto
+                                key={doc.id}
+                                path={doc.photoPath}
+                                label={`Qo'shimcha hujjat ${i + 1}`}
+                                bucket={KIRIM_PHOTOS_BUCKET}
+                                thumbnail
+                                onOpen={onOpenPhoto}
+                              />
+                            ))}
+                          </div>
                         ),
                       },
                     ]

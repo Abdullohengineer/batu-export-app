@@ -5,6 +5,8 @@ import { GatePhoto } from './GatePhoto'
 import { formatDateTime } from '../lib/formatDate'
 import { useCalibres } from '../lib/useCalibres'
 import { RezkaBadge } from './ui/RezkaBadge'
+import { PartiyaBadge } from './ui/PartiyaBadge'
+import { useSerialPartiyaMoisture } from '../lib/useSerialPartiyaMoisture'
 
 function fmt(ts: string | null) {
   return ts ? formatDateTime(ts) : '—'
@@ -73,6 +75,8 @@ export function ChiqimRequestDetail({
   // for either caller (FinishedChiqimList, ChiqimRequestPassportModal).
   const { calibres } = useCalibres(true)
   const rezkaCalibreIds = new Set(calibres.filter((c) => c.is_rezka_output).map((c) => c.id))
+  // Partiya + latest CHIQIM namligi beside each pallet's serial.
+  const serialInfo = useSerialPartiyaMoisture(manifestLines.map((m) => m.serial))
   return (
     <div className="space-y-3">
       <div>
@@ -194,6 +198,10 @@ export function ChiqimRequestDetail({
                     </button>
                   ) : (
                     m.serial
+                  )}{' '}
+                  <PartiyaBadge partiyaNo={serialInfo.get(m.serial)?.partiyaNo} typeName={typeName(m.type_id)} />
+                  {serialInfo.get(m.serial)?.chiqimMoisturePct != null && (
+                    <> · Namligi {serialInfo.get(m.serial)!.chiqimMoisturePct}%</>
                   )}{' '}
                   · {typeName(m.type_id)} · {calibreLabel(m.calibre_id)}
                 </span>

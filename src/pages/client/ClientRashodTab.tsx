@@ -20,6 +20,9 @@ import {
   type ClientChiqimTruckRow,
 } from '../../lib/clientChiqimLedger'
 import { formatDate } from '../../lib/formatDate'
+import { useCalibres } from '../../lib/useCalibres'
+import { ChiqimRequestPassportModal } from '../reports/ChiqimRequestPassportModal'
+import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { downloadClientChiqimLedgerExcel } from '../../lib/clientChiqimLedgerExport'
 import { todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 
@@ -57,9 +60,31 @@ function TipBadges({ tips }: { tips: ClientTip[] }) {
   )
 }
 
-function ExpandedTruck({ row, typeName }: { row: ClientChiqimTruckRow; typeName: (id: string) => string }) {
+function ExpandedTruck({
+  row,
+  typeName,
+  onOpenRequest,
+}: {
+  row: ClientChiqimTruckRow
+  typeName: (id: string) => string
+  onOpenRequest: (requestId: string) => void
+}) {
   return (
     <div className="border-t border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/40">
+      {/* Same "So'rov tafsilotlarini ko'rish" detail as staff Hisobot, in its
+          client view (no staff names, no photos -- see ChiqimRequestDetail). */}
+      <div className="mb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenRequest(row.requestId)
+          }}
+          className="whitespace-nowrap text-sm font-medium text-slate-700 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+        >
+          So'rov tafsilotlarini ko'rish →
+        </button>
+      </div>
       <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">По видам сырья</p>
       <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700 dark:text-slate-300">
         {row.typeBreakdown.map((t) => (
@@ -128,6 +153,8 @@ export function ClientRashodTab() {
   )
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
+  const [openRequestId, setOpenRequestId] = useState<string | null>(null)
+  const { calibres } = useCalibres(true)
 
   // 2026-09-19 (Phase 1B): was a bare useEffect that re-fired
   // client_chiqim_ledger on every filter object change — no debounce, no
@@ -153,6 +180,9 @@ export function ClientRashodTab() {
 
   function typeName(id: string): string {
     return productTypes.find((t) => t.id === id)?.name ?? '—'
+  }
+  function calibreLabel(id: string): string {
+    return calibres.find((c) => c.id === id)?.label ?? '—'
   }
 
   function toggle(requestId: string) {
@@ -292,7 +322,7 @@ export function ClientRashodTab() {
                     {isOpen && (
                       <tr key={`${row.requestId}-panel`}>
                         <td colSpan={6} className="p-0">
-                          <ExpandedTruck row={row} typeName={typeName} />
+                          <ExpandedTruck row={row} typeName={typeName} onOpenRequest={setOpenRequestId} />
                         </td>
                       </tr>
                     )}
@@ -304,6 +334,17 @@ export function ClientRashodTab() {
         </div>
       )}
       </StaleResults>
+      {openRequestId && (
+        <ErrorBoundary label="So'rov tafsilotlari">
+          <ChiqimRequestPassportModal
+            requestId={openRequestId}
+            onClose={() => setOpenRequestId(null)}
+            typeName={typeName}
+            calibreLabel={calibreLabel}
+            clientView
+          />
+        </ErrorBoundary>
+      )}
     </div>
   )
 }

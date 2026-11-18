@@ -31,6 +31,7 @@ export function ChiqimRequestPassportModal({
   typeName,
   calibreLabel,
   onOpenPassport,
+  clientView = false,
 }: {
   requestId: string
   onClose: () => void
@@ -42,7 +43,10 @@ export function ChiqimRequestPassportModal({
   // list rendered inline in ChiqimDispatchRowDetail.tsx's own expand panel.
   // Root cause was ChiqimRequestDetail never taking an onOpenPassport prop
   // at all (not a wiring break -- it never existed). Threaded through here.
-  onOpenPassport: (serial: string) => void
+  onOpenPassport?: (serial: string) => void
+  // Client portal (ClientRashodTab): see ChiqimRequestDetail's own clientView.
+  // No onOpenPassport there -- the client has no serial passport (§3.6).
+  clientView?: boolean
 }) {
   const { request, loading, error } = useChiqimRequestById(requestId)
   const { lines: manifestLines, loading: manifestLoading } = useDispatchManifestLines(requestId)
@@ -105,6 +109,7 @@ export function ChiqimRequestPassportModal({
               calibreLabel={calibreLabel}
               actorName={actorName}
               onOpenPassport={onOpenPassport}
+              clientView={clientView}
             />
           )}
         </div>

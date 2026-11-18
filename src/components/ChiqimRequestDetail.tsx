@@ -53,6 +53,7 @@ export function ChiqimRequestDetail({
   calibreLabel,
   actorName,
   onOpenPassport,
+  clientView = false,
 }: {
   request: FinishedChiqimRequest
   manifestLines: ManifestLine[]
@@ -67,6 +68,11 @@ export function ChiqimRequestDetail({
   // ChiqimRequestPassportModal.tsx (Hisobot) passes it. Plain text, same as
   // before, when omitted.
   onOpenPassport?: (serial: string) => void
+  // Client portal (Rasxod tab, SPEC §3.6): cargo content and gate weights
+  // only. No staff names or timestamps (a client can read only its own
+  // profile, so names would render as raw ids), no photos (§3.6 "no photo /
+  // nakladnoy links", reconfirmed 2026-11-18), no Ombor-internal notes.
+  clientView?: boolean
 }) {
   const w = request.weighing
   // Rezka Prompt 3: a Rezka CHIQIM line is an ordinary 'finished' line on
@@ -79,6 +85,8 @@ export function ChiqimRequestDetail({
   const serialInfo = useSerialPartiyaMoisture(manifestLines.map((m) => m.serial))
   return (
     <div className="space-y-3">
+      {!clientView && (
+      <>
       <div>
         <div className="font-medium text-slate-700 dark:text-slate-300">Menejer</div>
         <div className="text-slate-500 dark:text-slate-400">
@@ -92,6 +100,8 @@ export function ChiqimRequestDetail({
           {actorName(request.ombor_finished_by)} · {fmt(request.ombor_finished_at)}
         </div>
       </div>
+      </>
+      )}
 
       {/* Fura (2026-09-15 follow-up, see this file's own header comment and
           docs/decisions/ "Fura nakladnoy photo missing from
@@ -102,7 +112,22 @@ export function ChiqimRequestDetail({
           don't append" treatment SerialPassportModal.tsx already gives this
           exact case for a serial's own dispatches. Ordinary trucks are
           untouched. */}
-      {request.truck_type === 'fura' ? (
+      {clientView ? (
+        request.truck_type === 'fura' ? (
+          <div>
+            <div className="font-medium text-slate-700 dark:text-slate-300">Transport</div>
+            <div className="text-slate-500 dark:text-slate-400">Fura — darvozada o'lchanmaydi</div>
+          </div>
+        ) : (
+          <div>
+            <div className="font-medium text-slate-700 dark:text-slate-300">Darvoza</div>
+            <div className="text-slate-500 dark:text-slate-400">
+              Bo'sh vazn (kirish): {w?.pustoy_kg?.toLocaleString() ?? '—'} kg · Yuk bilan vazn (chiqish):{' '}
+              {w?.gruzheny_kg?.toLocaleString() ?? '—'} kg
+            </div>
+          </div>
+        )
+      ) : request.truck_type === 'fura' ? (
         <div>
           <div className="font-medium text-slate-700 dark:text-slate-300">Qorovul — Fura</div>
           <div className="text-slate-500 dark:text-slate-400">Darvozada o'lchanmaydi</div>
@@ -159,6 +184,7 @@ export function ChiqimRequestDetail({
               (() => {
                 const collections = oldKnCollectionsByLine[line.id] ?? []
                 if (collections.length === 0) {
+                  if (clientView) return null
                   return (
                     <div className="pl-3 text-xs text-amber-700 dark:text-amber-400">
                       Hali yig'ib olinmagan — Ombor "Yuklashni yakunlash" bosmagan, shu tufayli Hisobotda ko'rinmaydi.
@@ -169,7 +195,7 @@ export function ChiqimRequestDetail({
                   <ul className="pl-3">
                     {collections.map((c) => (
                       <li key={c.id} className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                        <span>Yig'ib olindi — {actorName(c.created_by)} · {fmt(c.collected_at)}</span>
+                        <span>{clientView ? "Yig'ib olindi" : `Yig'ib olindi — ${actorName(c.created_by)} · ${fmt(c.collected_at)}`}</span>
                         <span>{c.collected_kg.toLocaleString()} kg</span>
                       </li>
                     ))}

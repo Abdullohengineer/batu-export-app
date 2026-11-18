@@ -3,6 +3,7 @@ import type { ChiqimDispatchReportRow } from '../../lib/reportQuery'
 import { useDispatchManifestLines } from '../../lib/useDispatchManifestLines'
 import { supabase } from '../../lib/supabase'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { useSerialPartiyaMoisture } from '../../lib/useSerialPartiyaMoisture'
 
 // Raw-dispatch/old-KN totals for this one request (2026-09-14) — the
 // pallet breakdown below comes from useDispatchManifestLines; these two
@@ -92,6 +93,7 @@ export function ChiqimDispatchRowDetail({
   const { lines, loading } = useDispatchManifestLines(row.requestId)
   const { rawKg, oldKnKg, loading: loadingOther } = useDispatchRawAndOldKn(row.requestId)
   const palletTotal = lines.reduce((sum, l) => sum + l.weight_kg, 0)
+  const serialInfo = useSerialPartiyaMoisture(lines.map((l) => l.serial))
 
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -137,7 +139,7 @@ export function ChiqimDispatchRowDetail({
                   >
                     {l.serial}
                   </button>
-                  <PartiyaBadge partiyaNo={null} typeName={typeName(l.type_id)} />
+                  <PartiyaBadge partiyaNo={serialInfo.get(l.serial)?.partiyaNo} typeName={typeName(l.type_id)} />
                 </td>
                 <td className="py-1 pr-3">{calibreLabel(l.calibre_id)}</td>
                 <td className="py-1 text-right tabular-nums">{l.weight_kg.toLocaleString()}</td>

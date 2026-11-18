@@ -84,6 +84,9 @@ export const queryKeys = {
   laboratorKirim: () => ['laborator_kirim'] as const,
   laboratorChiqim: () => ['laborator_chiqim'] as const,
   kirimTrips: () => ['kirim_trips'] as const,
+  // Partiya + latest CHIQIM namligi per serial, for the CHIQIM request detail.
+  // Serials sorted so the same set is one cache entry whatever the order.
+  serialPartiyaMoisture: (serials: string[]) => ['serial_partiya_moisture', [...serials].sort()] as const,
   // "Qo'shimcha hujjatlar" (0161) -- per order; read by both Menejer's KIRIM
   // list and the serial passport, invalidated after every add/replace/delete.
   kirimOrderDocuments: (orderId: string) => ['kirim_order_documents', orderId] as const,

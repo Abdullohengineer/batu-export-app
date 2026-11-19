@@ -35,8 +35,8 @@ export interface OutputSerial {
   partiyaNo: number | null
   category_id: string
   owner_id: string
-  labStatus: LabGateStatus // Laborator v2 (2026-07-28): hard gate on Barcode #2 assignment —
-  // 'passed' required before this serial can be packed; OmborTayyorTab.tsx reads this to gate the receive action.
+  labStatus: LabGateStatus // Display only since 0162 (decision 0246): no longer gates packing;
+  // ReceiveFromMoykaForm shows it on the chip.
   // Opening stock, Stage 3 (2026-08-02): origin='internal_reprocess' — this
   // serial was minted from consumed old-stock pallets, not delivered. Read
   // by OmborTayyorTab so every pallet packed out of it gets a note

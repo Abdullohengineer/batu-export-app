@@ -23,7 +23,7 @@ import { todayInTashkent } from '../../lib/dateRange'
 // §5.3 Tayyor Mahsulot: single-tile receive picker (2026-08-28 — see
 // DECISIONS.md "Section 3 single-tile receive picker"). Replaces the old
 // per-serial card list: one dashed tile, "+ Moykadan qabul qilish", opens a
-// chip picker (ReceiveFromMoykaForm) over every in-Moyka, lab-passed serial.
+// chip picker (ReceiveFromMoykaForm) over every in-Moyka serial.
 // No old/new-stock split, unlike section 2 — a serial's origin (delivery vs
 // minted from old stock) is metadata FinishedReceiptForm already reads
 // internally (isMinted), never a workflow choice Ombor makes here.
@@ -47,14 +47,10 @@ import { todayInTashkent } from '../../lib/dateRange'
 // Sourced from the same useMoykaOutput() call already made for the tile
 // above (its new `receivedSerials` view) — no new hook, no new read.
 //
-// Laborator v2 (2026-07-28 — see DECISIONS.md "Lab moves inside Moyka,
-// wash-cycle concept removed"): the hard gate is at packing — Barcode #2
-// assignment (handleReceipt) is blocked until the serial's CURRENT lab
-// verdict is a pass (labStatus, from useMoykaOutput.ts via labVerdict.ts's
-// currentLabStatus). This is a UI convenience only; the real enforcement is
-// a Postgres RLS policy on finished_pallets' INSERT (0035_lab_relocation_
-// core.sql) that refuses the write outright. An untested/rejected serial
-// doesn't appear as a receivable chip at all (not shown-but-blocked).
+// Lab no longer gates packing (2026-11-19, docs/decisions/0246, supersedes
+// Laborator v2's packing gate): Ombor packs any in-Moyka serial whether or
+// not Laborator has tested it yet; the verdict is recorded and shown, not
+// enforced (migration 0162 relaxed finished_pallets' INSERT policy).
 export function MoykaReceiveSection() {
   const { profile } = useAuth()
   // §3.3: includeInactive=true -- typeName/ownerName/calibreLabel resolve
@@ -90,9 +86,8 @@ export function MoykaReceiveSection() {
   // changed (ReceiveFromMoykaForm.tsx now owns keeping its own form open
   // across saves); this write logic stays byte-for-byte identical.
   //
-  // The real hard gate is the RLS policy on this INSERT (see file header) —
-  // if it somehow fires (a lab verdict flipping between render and submit),
-  // this throws and FinishedReceiptForm's own error handling surfaces it.
+  // Any RLS refusal on this INSERT throws and FinishedReceiptForm's own
+  // error handling surfaces it.
   async function handleReceipt(serial: OutputSerial, values: ReceiptValues) {
     const { error } = await supabase.from('finished_pallets').insert({
       barcode2: values.barcode2,
@@ -209,15 +204,14 @@ export function MoykaReceiveSection() {
             // Yakunlash button: visible on the COLLAPSED row (below the
             // toggle, not inside the expanded pallet list — it's an action
             // on the serial, not on individual pallets, per the task's own
-            // placement requirement). Gated exactly per spec: still open,
-            // a real residual to book, and lab-passed (closing a serial
-            // that never passed makes no sense — same reasoning as the
-            // server-side RPC's own check). close_wash_cycle_serial itself
+            // placement requirement). Gated on: still open and a real
+            // residual to book. No lab requirement since 0162 (decision
+            // 0246), matching close_wash_cycle_serial. close_wash_cycle_serial itself
             // only ever targets a serial's single currently-open cycle (the
             // partial unique index guarantees at most one), so passing
             // s.serial to handleYakunlash below is still correct even
             // though this row is now cycle-scoped.
-            const canYakunlash = s.closedAt === null && s.labStatus === 'passed' && residualKg > 0
+            const canYakunlash = s.closedAt === null && residualKg > 0
             const confirming = confirmingClose === rowKey
             return (
               <Card key={rowKey} padding="compact">

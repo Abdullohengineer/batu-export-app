@@ -2,12 +2,15 @@ import { supabase } from './supabase'
 
 export type LabGateStatus = 'passed' | 'failed' | 'untested'
 
-// Hard gate (SPEC.md; Laborator v2, 2026-07-28 — see DECISIONS.md "Lab moves
-// inside Moyka, wash-cycle concept removed"): a serial's lab check must
-// carry a CURRENT (latest) verdict='o_tdi' for its output to be available —
-// for CHIQIM dispatch (useAvailableFinishedStock.ts, chiqimScan.ts) and,
-// since this change, for Barcode #2 assignment itself
-// (OmborTayyorTab.tsx) — the hard gate moved to packing, not just dispatch.
+// 2026-11-19 (docs/decisions/0246, migration 0162): NO LONGER A GATE. Lab
+// verdicts no longer block packing or CHIQIM dispatch; this status is read
+// for display only (Ombor's receive chips). The history below is kept for
+// the derivation rules, which still apply.
+//
+// Was a hard gate (SPEC.md; Laborator v2, 2026-07-28 — see DECISIONS.md "Lab
+// moves inside Moyka, wash-cycle concept removed"): a serial's lab check had
+// to carry a CURRENT (latest) verdict='o_tdi' for its output to be available
+// for CHIQIM dispatch and for Barcode #2 assignment itself.
 // No wash_cycles row at all means the serial hasn't been sent to Moyka yet;
 // a wash_cycles row with no matching lab_results row means it's sent but
 // Laborator hasn't tested it yet. Both read as 'untested', not 'passed' —

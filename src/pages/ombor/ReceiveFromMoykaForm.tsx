@@ -16,9 +16,10 @@ import { todayInTashkent } from '../../lib/dateRange'
 // FinishedReceiptForm already reads off the serial internally
 // (`serial.isMinted`), never a workflow branch Ombor has to choose.
 //
-// Chips are scoped to `labStatus === 'passed'` — an untested/rejected
-// serial does not appear here at all (not shown-but-blocked, per the task
-// brief). `serials` is already pre-filtered to a positive live in-Moyka
+// Every in-Moyka serial is receivable (2026-11-19, docs/decisions/0246):
+// the lab gate on packing is gone, so a serial no longer waits for a lab
+// pass to appear here. Its lab status is shown on the chip for information
+// only. `serials` is already pre-filtered to a positive live in-Moyka
 // balance by useMoykaOutput itself (isInMoyka), so no further balance math
 // is needed here.
 export function ReceiveFromMoykaForm({
@@ -38,7 +39,7 @@ export function ReceiveFromMoykaForm({
   onCancel: () => void
   onSubmit: (serial: OutputSerial, values: ReceiptValues) => Promise<void>
 }) {
-  const available = serials.filter((s) => s.labStatus === 'passed')
+  const available = serials
   const [selected, setSelected] = useState<OutputSerial | null>(null)
   const [lastReceipt, setLastReceipt] = useState<ReceiptValues | null>(null)
   const [expandedHistory, setExpandedHistory] = useState(false)
@@ -133,6 +134,11 @@ export function ReceiveFromMoykaForm({
                 <span className="font-mono">{s.serial}</span>
                 <PartiyaBadge partiyaNo={s.partiyaNo} typeName={typeName(s.type_id)} />
                 <span className="ml-1.5">~{Math.round(s.inProcess).toLocaleString()} kg</span>
+                {s.labStatus !== 'passed' && (
+                  <span className="ml-1.5 text-amber-700 dark:text-amber-400">
+                    · {s.labStatus === 'failed' ? 'qayta yuvish' : "tahlil yo'q"}
+                  </span>
+                )}
               </button>
             ))}
           </div>

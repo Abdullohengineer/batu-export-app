@@ -59,5 +59,13 @@ definitions.
 - Frontend: build passes, 89/89 unit tests pass, `lint:rpc-wrapper` passes.
   Not exercised in a browser.
 
+**Applied live 2026-11-19** on the user's go-ahead ("just need web to work
+well"; the Android APK is not being updated). Re-checked right after: the
+policy is `my_role() = 'ombor'`, no `o_tdi` left in the FIFO or Yakunlash
+functions, `security_invoker` kept, availability and Qoldiq available are
+both 66,900 kg, and Qoldiq buckets are now only available / old_kn /
+raw_not_washed. The un-updated APK keeps the old, stricter receive list;
+the database no longer blocks it, so it is merely conservative, not wrong.
+
 SPEC §1.1 (Lab row), §2.13, §3.2.9 (Tahlil kechikdi) and §3.2.6 (stock
 states) amended inline. Changelog v1.72.

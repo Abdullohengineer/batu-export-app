@@ -113,6 +113,18 @@ export function RahbarHome() {
   // 'yangi' scope filter -- never re-added to the main/Yangi dashboard.
   const oldKnSeries = snapshot ? snapshot.oldKnByType.map((t) => ({ label: t.typeName, kg: t.kg })) : []
 
+  // Per-type lines under the Jami / Xom / Moykada tiles (decision 0247).
+  // "Jami" per type = raw + moykada + finished, the same composition as
+  // derived.grandTotal, so the lines add up to the big number.
+  function typeLines(...lists: { typeId: string; kg: number }[][]) {
+    const byType = new Map<string, number>()
+    for (const list of lists) for (const t of list) byType.set(t.typeId, (byType.get(t.typeId) ?? 0) + t.kg)
+    return [...byType.entries()]
+      .filter(([, kg]) => Math.round(kg) !== 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([typeId, kg]) => ({ label: typeName(typeId), kg }))
+  }
+
   return (
     <div className="space-y-4">
       {/* Filters */}
@@ -202,7 +214,7 @@ export function RahbarHome() {
         <HeroTiles
           className={scope === 'yangi' ? 'grid grid-cols-2 gap-3 lg:grid-cols-5' : 'grid grid-cols-2 gap-3 lg:grid-cols-6'}
           tiles={[
-            { key: 'jami', label: 'Jami yuvilgan va yuvilmagan mahsulot', value: derived.grandTotal, unit: 'kg', caption: 'Hozirgi holat — xom, moykada va tayyor', ...tileStyle('neutral') },
+            { key: 'jami', label: 'Jami yuvilgan va yuvilmagan mahsulot', value: derived.grandTotal, unit: 'kg', caption: 'Hozirgi holat — xom, moykada va tayyor', breakdown: typeLines(snapshot.rawByType, snapshot.moykadaByType, snapshot.finishedByType), ...tileStyle('neutral') },
             // "Xom · yuvilmagan" -- shown at Yangi (new raw only) and Hammasi
             // (combined new+old, since snapshot.rawKg is already the
             // unfiltered total at that scope -- no separate arithmetic).
@@ -212,9 +224,9 @@ export function RahbarHome() {
             // it duplicated the new "Старое сырьё" tile below. "Старое
             // сырьё" takes over at Eski instead.
             ...(scope !== 'eski'
-              ? [{ key: 'xom', label: 'Xom · yuvilmagan', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi holat — yuvishga tayyor', ...tileStyle('raw') }]
+              ? [{ key: 'xom', label: 'Xom · yuvilmagan', value: snapshot.rawKg, unit: 'kg', caption: 'Hozirgi holat — yuvishga tayyor', breakdown: typeLines(snapshot.rawByType), ...tileStyle('raw') }]
               : []),
-            { key: 'moyka', label: 'Moykada', value: snapshot.moykadaKg, unit: 'kg', caption: "Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan", ...tileStyle('moyka') },
+            { key: 'moyka', label: 'Moykada', value: snapshot.moykadaKg, unit: 'kg', caption: "Hozirgi holat — yuvilmoqda, xomdan chegirilgan, tayyorga hali qo'shilmagan", breakdown: typeLines(snapshot.moykadaByType), ...tileStyle('moyka') },
             // 2026-08-31: both tiles now name their own calibre set in the
             // label. This tile reads 11,210 kg where the two sentences lower
             // down the page read 17,580 kg, and the gap between them is

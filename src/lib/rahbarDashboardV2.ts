@@ -76,6 +76,12 @@ export interface RahbarStockSnapshot {
   /** Still returned, deliberately unused since the Zaxira tarkibi donut was
    *  removed (2026-08-30). Left in the payload rather than churning the RPC. */
   byType: StockByType[]
+  // Per-type splits of the three headline tiles (migration 0163, decision
+  // 0247): rawKg, moykadaKg, and finishedCalibredKg + konditirskiyKg. Each
+  // partitions exactly the rows its headline sums, so they add up to it.
+  rawByType: StockByType[]
+  moykadaByType: StockByType[]
+  finishedByType: StockByType[]
   byCalibre: StockByCalibre[]
   distinctTypeCount: number
 }

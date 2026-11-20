@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import type { ClientProductionLedger } from './clientProductionLedger'
+import type { SerialPartiyaMoisture } from './useSerialPartiyaMoisture'
 import { toExcelDate, EXCEL_DATE_FORMAT } from './formatDate'
 
 // Производство sub-tab Excel export. One row per serial, one column per
@@ -9,11 +10,14 @@ import { toExcelDate, EXCEL_DATE_FORMAT } from './formatDate'
 // export only widens to calibres with real data, so a period with no
 // Кондитерка output doesn't carry an all-zero column downstream.
 const KG_FMT = '#,##0'
+// Moisture % (decision 0248): one decimal, never the kg format's rounding.
+const PCT_FMT = '0.0'
 // Fixed columns before the variable calibre block, same order as the
 // on-screen table (2026-09-30, see docs/decisions/0237): Серия | Партия |
 // Вид сырья | Дата прихода | По накладной | Приход нетто | Отправлено на
 // мойку | В мойке | Остаток сырья | Всего произведено -- then the calibre
-// columns, then Потеря.
+// columns, then Потеря. 2026-11-20 (decision 0248): + Влажность прихода
+// after Приход нетто, + Влажность после мойки after Всего произведено.
 const FIXED_HEADERS_BEFORE_CALIBRES = [
   'Серия',
   'Партия',
@@ -21,16 +25,21 @@ const FIXED_HEADERS_BEFORE_CALIBRES = [
   'Дата прихода',
   'По накладной',
   'Приход нетто',
+  'Влажность прихода',
   'Отправлено на мойку',
   'В мойке',
   'Остаток сырья',
   'Всего произведено (кг)',
+  'Влажность после мойки',
 ]
 const FIXED_COLUMN_COUNT = FIXED_HEADERS_BEFORE_CALIBRES.length
+// 1-based column indexes of the two moisture columns (kept out of KG_FMT).
+const MOISTURE_COLS = new Set([7, 12])
 
 export async function buildClientProductionLedgerWorkbook(
   ledger: ClientProductionLedger,
   typeName: (id: string) => string,
+  moisture: Map<string, SerialPartiyaMoisture> = new Map(),
 ): Promise<ExcelJS.Workbook> {
   const wb = new ExcelJS.Workbook()
   const sheet = wb.addWorksheet('Производство')
@@ -56,15 +65,17 @@ export async function buildClientProductionLedgerWorkbook(
       toExcelDate(row.kirimDate),
       row.nakladnoyKg,
       row.nettoKg,
+      moisture.get(row.serial)?.kirimMoisturePct ?? '',
       row.moykagaYuborilganKg,
       row.moykadaKg,
       row.ostatokSyryaKg,
       row.totalKg,
+      moisture.get(row.serial)?.chiqimMoisturePct ?? '',
       ...calibreCols.map((c) => row.calibres.find((rc) => rc.calibreId === c.calibreId)?.kg ?? 0),
       row.poteryaKg ?? '',
     ])
     excelRow.getCell(4).numFmt = EXCEL_DATE_FORMAT
-    for (let i = 5; i <= FIXED_COLUMN_COUNT; i++) excelRow.getCell(i).numFmt = KG_FMT
+    for (let i = 5; i <= FIXED_COLUMN_COUNT; i++) excelRow.getCell(i).numFmt = MOISTURE_COLS.has(i) ? PCT_FMT : KG_FMT
     calibreCols.forEach((_, i) => {
       excelRow.getCell(FIXED_COLUMN_COUNT + 1 + i).numFmt = KG_FMT
     })
@@ -78,15 +89,17 @@ export async function buildClientProductionLedgerWorkbook(
     '',
     '',
     ledger.totals.nettoKg,
+    '',
     ledger.totals.moykagaYuborilganKg,
     ledger.totals.moykadaKg,
     ledger.totals.ostatokSyryaKg,
     ledger.totals.totalKg,
+    '',
     ...calibreCols.map((c) => c.kg),
     ledger.totals.poteryaKg,
   ])
   totalRow.font = { bold: true }
-  for (let i = 6; i <= FIXED_COLUMN_COUNT; i++) totalRow.getCell(i).numFmt = KG_FMT
+  for (let i = 6; i <= FIXED_COLUMN_COUNT; i++) if (!MOISTURE_COLS.has(i)) totalRow.getCell(i).numFmt = KG_FMT
   calibreCols.forEach((_, i) => {
     totalRow.getCell(FIXED_COLUMN_COUNT + 1 + i).numFmt = KG_FMT
   })
@@ -102,8 +115,12 @@ export async function buildClientProductionLedgerWorkbook(
   return wb
 }
 
-export async function downloadClientProductionLedgerExcel(ledger: ClientProductionLedger, typeName: (id: string) => string): Promise<void> {
-  const wb = await buildClientProductionLedgerWorkbook(ledger, typeName)
+export async function downloadClientProductionLedgerExcel(
+  ledger: ClientProductionLedger,
+  typeName: (id: string) => string,
+  moisture?: Map<string, SerialPartiyaMoisture>,
+): Promise<void> {
+  const wb = await buildClientProductionLedgerWorkbook(ledger, typeName, moisture)
   const buffer = await wb.xlsx.writeBuffer()
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(blob)

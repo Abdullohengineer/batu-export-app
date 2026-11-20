@@ -133,7 +133,7 @@ export function ClientProizvodstvoTab() {
     if (!ledger) return
     setExporting(true)
     try {
-      await downloadClientProductionLedgerExcel(ledger, typeName)
+      await downloadClientProductionLedgerExcel(ledger, typeName, moisture)
     } finally {
       setExporting(false)
     }

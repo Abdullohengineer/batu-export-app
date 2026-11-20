@@ -17,5 +17,9 @@ reads its own `lab_results` through `client_read_own_lab_results`. I
 checked this live, read-only, as the Global Export client account; for
 example, 091126-002 reads 21.5% on arrival and 23.5% after Moyka.
 
-Not added to the Excel export (`clientProductionLedgerExport.ts`), which
-was out of the request.
+**Excel export** (`clientProductionLedgerExport.ts`, added on request) has
+the same two columns in the same positions. They use number format `0.0`
+rather than the kg format `#,##0`, so 21.5 stays 21.5. They're blank when
+untested, and blank on the ИТОГО row. I checked this by generating a
+workbook and reading it back: the headers are aligned, the values are
+21.5 / 23.5 with `0.0`, and the calibre columns shifted correctly.

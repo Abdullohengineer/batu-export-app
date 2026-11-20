@@ -11,8 +11,11 @@ import { queryKeys } from './queryClient'
 //     Moyka. A serial can carry several CHIQIM tests (re-tests, several wash
 //     cycles); the passport shows the latest per cycle, this shows the latest
 //     overall (decided with the user: "latest test").
+//   - kirimMoisturePct (2026-11-20, client Производство): the serial's
+//     latest scope='kirim' reading -- the incoming load's moisture.
 export interface SerialPartiyaMoisture {
   partiyaNo: number | null
+  kirimMoisturePct: number | null
   chiqimMoisturePct: number | null
 }
 
@@ -27,24 +30,28 @@ export function useSerialPartiyaMoisture(serials: string[]) {
         run(
           supabase
             .from('lab_results')
-            .select('parent_serial, moisture_pct, created_at')
-            .eq('scope', 'chiqim')
+            .select('parent_serial, scope, moisture_pct, created_at')
+            .in('scope', ['kirim', 'chiqim'])
             .in('parent_serial', unique)
             .order('created_at', { ascending: false })
             .abortSignal(signal),
         ),
       ])
       const out = new Map<string, SerialPartiyaMoisture>()
-      for (const s of unique) out.set(s, { partiyaNo: null, chiqimMoisturePct: null })
+      for (const s of unique) out.set(s, { partiyaNo: null, kirimMoisturePct: null, chiqimMoisturePct: null })
       for (const l of (lines as { serial: string; partiya_no: number | null }[] | null) ?? []) {
         out.get(l.serial)!.partiyaNo = l.partiya_no
       }
-      // Rows arrive newest first: keep the first moisture seen per serial.
+      // Rows arrive newest first: keep the first moisture seen per serial
+      // and scope.
       const seen = new Set<string>()
-      for (const r of (labs as { parent_serial: string; moisture_pct: number | null }[] | null) ?? []) {
-        if (seen.has(r.parent_serial)) continue
-        seen.add(r.parent_serial)
-        out.get(r.parent_serial)!.chiqimMoisturePct = r.moisture_pct === null ? null : Number(r.moisture_pct)
+      for (const r of (labs as { parent_serial: string; scope: 'kirim' | 'chiqim'; moisture_pct: number | null }[] | null) ?? []) {
+        const key = `${r.scope}:${r.parent_serial}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const pct = r.moisture_pct === null ? null : Number(r.moisture_pct)
+        if (r.scope === 'kirim') out.get(r.parent_serial)!.kirimMoisturePct = pct
+        else out.get(r.parent_serial)!.chiqimMoisturePct = pct
       }
       return out
     },

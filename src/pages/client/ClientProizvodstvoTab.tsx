@@ -20,6 +20,7 @@ import { todayInTashkent, firstOfMonthInTashkent } from '../../lib/dateRange'
 import { formatDate } from '../../lib/formatDate'
 import { formatLossKg } from '../../lib/formatLoss'
 import { PartiyaBadge } from '../../components/ui/PartiyaBadge'
+import { useSerialPartiyaMoisture } from '../../lib/useSerialPartiyaMoisture'
 
 // Производство sub-tab (NEW, CLAUDE.md task "Rebuild the client portal..."
 // Part B.4) — per-serial calendar view of pack output within the filter
@@ -38,6 +39,12 @@ const pillClass =
 
 function kg(v: number): string {
   return `${Math.round(v).toLocaleString()} кг`
+}
+
+// Влажность прихода / после мойки (2026-11-20): latest KIRIM / CHIQIM lab
+// reading per serial (useSerialPartiyaMoisture); '—' when not tested yet.
+function pct(v: number | null | undefined): string {
+  return v == null ? '—' : `${v}%`
 }
 
 const COLUMN_LABEL: Record<(typeof PRODUCTION_CALIBRE_CODES)[number], string> = {
@@ -116,6 +123,7 @@ export function ClientProizvodstvoTab() {
     queryFn: ({ signal }) => fetchClientProductionLedger(search.applied, signal),
   })
   const error = queryError ? (queryError.message ?? 'Ошибка загрузки') : productTypesError
+  const moisture = useSerialPartiyaMoisture(ledger?.rows.map((r) => r.serial) ?? [])
 
   function typeName(id: string): string {
     return productTypes.find((t) => t.id === id)?.name ?? '—'
@@ -125,7 +133,7 @@ export function ClientProizvodstvoTab() {
     if (!ledger) return
     setExporting(true)
     try {
-      await downloadClientProductionLedgerExcel(ledger, typeName)
+      await downloadClientProductionLedgerExcel(ledger, typeName, moisture)
     } finally {
       setExporting(false)
     }
@@ -198,10 +206,12 @@ export function ClientProizvodstvoTab() {
                 <th className="px-3 py-2">Дата прихода</th>
                 <th className="px-3 py-2 text-right">По накладной</th>
                 <th className="px-3 py-2 text-right">Приход нетто</th>
+                <th className="px-3 py-2 text-right">Влажность прихода</th>
                 <th className="px-3 py-2 text-right">Отправлено на мойку</th>
                 <th className="px-3 py-2 text-right">В мойке</th>
                 <th className="px-3 py-2 text-right">Остаток сырья</th>
                 <th className="px-3 py-2 text-right">Всего произведено (кг)</th>
+                <th className="px-3 py-2 text-right">Влажность после мойки</th>
                 {PRODUCTION_CALIBRE_CODES.map((code) => (
                   <th key={code} className="px-3 py-2 text-right">
                     {COLUMN_LABEL[code]}
@@ -213,7 +223,7 @@ export function ClientProizvodstvoTab() {
             <tbody>
               {ledger.rows.length === 0 && (
                 <tr>
-                  <td colSpan={9 + PRODUCTION_CALIBRE_CODES.length} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={11 + PRODUCTION_CALIBRE_CODES.length} className="px-3 py-6 text-center text-slate-400">
                     Ничего не найдено
                   </td>
                 </tr>
@@ -228,10 +238,12 @@ export function ClientProizvodstvoTab() {
                   <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.kirimDate)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{kg(row.nakladnoyKg)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{kg(row.nettoKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pct(moisture.get(row.serial)?.kirimMoisturePct)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{kg(row.moykagaYuborilganKg)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{kg(row.moykadaKg)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{kg(row.ostatokSyryaKg)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{kg(row.totalKg)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pct(moisture.get(row.serial)?.chiqimMoisturePct)}</td>
                   {PRODUCTION_CALIBRE_CODES.map((code) => {
                     const v = calibreKgByCode(row.calibres, code)
                     return (

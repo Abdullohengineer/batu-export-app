@@ -16,6 +16,8 @@ export interface HeroTileConfig {
   caption: string
   bg: string
   fg: string
+  // Optional small per-type lines under the big number (decision 0247).
+  breakdown?: { label: string; kg: number }[]
 }
 
 export interface HeroTilesProps {
@@ -23,7 +25,7 @@ export interface HeroTilesProps {
   className?: string
 }
 
-function Tile({ label, value, unit, caption, bg, fg }: Omit<HeroTileConfig, 'key'>) {
+function Tile({ label, value, unit, caption, bg, fg, breakdown }: Omit<HeroTileConfig, 'key'>) {
   return (
     <div className="rounded-xl p-4" style={{ background: bg }}>
       <div className="text-xs font-semibold uppercase tracking-wide opacity-75" style={{ color: fg }}>
@@ -33,6 +35,15 @@ function Tile({ label, value, unit, caption, bg, fg }: Omit<HeroTileConfig, 'key
         {fmt(value)}
         {unit && <span className="ml-1 text-sm font-semibold opacity-60">{unit}</span>}
       </div>
+      {breakdown && breakdown.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs font-medium tabular-nums opacity-80" style={{ color: fg }}>
+          {breakdown.map((b) => (
+            <span key={b.label}>
+              {b.label} {fmt(b.kg)}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="mt-1.5 text-xs opacity-70" style={{ color: fg }}>
         {caption}
       </div>
@@ -44,7 +55,7 @@ export function HeroTiles({ tiles, className }: HeroTilesProps) {
   return (
     <div className={className ?? 'grid grid-cols-2 gap-3 lg:grid-cols-6'}>
       {tiles.map((t) => (
-        <Tile key={t.key} label={t.label} value={t.value} unit={t.unit} caption={t.caption} bg={t.bg} fg={t.fg} />
+        <Tile key={t.key} label={t.label} value={t.value} unit={t.unit} caption={t.caption} bg={t.bg} fg={t.fg} breakdown={t.breakdown} />
       ))}
     </div>
   )

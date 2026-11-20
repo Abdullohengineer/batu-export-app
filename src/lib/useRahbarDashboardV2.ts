@@ -40,6 +40,9 @@ function mapSnapshot(raw: Record<string, unknown>): RahbarStockSnapshot {
     oldKnNote: String(raw.oldKnNote ?? ''),
     totalKg: n(raw.totalKg as number),
     byType: ((raw.byType as { typeId: string; kg: number | string }[]) ?? []).map((t) => ({ typeId: t.typeId, kg: n(t.kg) })),
+    rawByType: ((raw.rawByType as { typeId: string; kg: number | string }[]) ?? []).map((t) => ({ typeId: t.typeId, kg: n(t.kg) })),
+    moykadaByType: ((raw.moykadaByType as { typeId: string; kg: number | string }[]) ?? []).map((t) => ({ typeId: t.typeId, kg: n(t.kg) })),
+    finishedByType: ((raw.finishedByType as { typeId: string; kg: number | string }[]) ?? []).map((t) => ({ typeId: t.typeId, kg: n(t.kg) })),
     byCalibre: (
       (raw.byCalibre as { typeId: string; calibreId: string; isNumberless: boolean; kg: number | string }[]) ?? []
     ).map((c) => ({ typeId: c.typeId, calibreId: c.calibreId, isNumberless: Boolean(c.isNumberless), kg: n(c.kg) })),

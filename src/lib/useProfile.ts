@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
-export type UserRole = 'rahbar' | 'menejer' | 'qorovul' | 'ombor' | 'laborator' | 'client'
+export type UserRole = 'rahbar' | 'menejer' | 'qorovul' | 'ombor' | 'laborator' | 'client' | 'buxgalter'
 
 export interface Profile {
   id: string

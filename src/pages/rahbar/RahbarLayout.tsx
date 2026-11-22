@@ -15,6 +15,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/rahbar/hisobotlar', label: 'Hisobotlar' },
   { to: '/rahbar/qoldiq', label: "Ombor qoldig'i" },
   { to: '/rahbar/mijoz-hisoboti', label: 'Mijoz hisoboti' },
+  // Buxgalteriya (decision 0249): read-only finance output.
+  { to: '/rahbar/moliya', label: "Moliyaviy ko'rsatkichlar" },
 ]
 
 export function RahbarLayout() {

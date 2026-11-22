@@ -1,3 +1,4 @@
+import { Link, useLocation } from 'react-router-dom'
 import { useAccountBalances } from '../../lib/useAccountBalances'
 import { Card } from '../../components/ui/Card'
 import { SectionHeading } from '../../components/ui/SectionHeading'
@@ -13,6 +14,9 @@ function som(v: number): string {
 
 export function MoliyaHome() {
   const { accounts, loading, error } = useAccountBalances()
+  // Rahbar/Menejer reach the read-only Tarix from here; the buxgalter has it as an input tab.
+  const { pathname } = useLocation()
+  const tarixHref = pathname.startsWith('/buxgalter') ? '/buxgalter/kirim/tarix' : `${pathname.replace(/\/$/, '')}/tarix`
 
   return (
     <div className="space-y-4">
@@ -38,6 +42,9 @@ export function MoliyaHome() {
         </div>
       )}
 
+      <Link to={tarixHref} className="inline-block text-sm font-medium text-slate-700 underline dark:text-slate-300">
+        Barcha yozuvlar (Tarix) →
+      </Link>
       <p className="text-xs text-slate-400">To'liq ko'rinish (grafiklar, xarajat tarkibi, prognoz) 4-bosqichda quriladi.</p>
     </div>
   )

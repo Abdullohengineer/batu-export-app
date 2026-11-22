@@ -84,8 +84,18 @@ export const queryKeys = {
   laboratorKirim: () => ['laborator_kirim'] as const,
   laboratorChiqim: () => ['laborator_chiqim'] as const,
   kirimTrips: () => ['kirim_trips'] as const,
-  // Buxgalteriya (decision 0249): current balance per money account.
-  accountBalances: (asOf: string) => ['account_balances', asOf] as const,
+  // Buxgalteriya (decisions 0249/0250): every finance read lives under the
+  // 'fin' prefix so one invalidateFinance() refreshes all of them after a write.
+  accountBalances: (asOf: string) => ['fin', 'account_balances', asOf] as const,
+  finCategories: () => ['fin', 'categories'] as const,
+  finCounterparties: (kind: string) => ['fin', 'counterparties', kind] as const,
+  finPeriodStatus: () => ['fin', 'period_status'] as const,
+  finRates: () => ['fin', 'monthly_rates'] as const,
+  finExpenses: (sinceMonth: string) => ['fin', 'expenses', sinceMonth] as const,
+  finCashIns: (sinceMonth: string) => ['fin', 'cash_ins', sinceMonth] as const,
+  finTransfers: (sinceMonth: string) => ['fin', 'transfers', sinceMonth] as const,
+  finRecurring: () => ['fin', 'recurring'] as const,
+  finMoykaKg: (ownerId: string, month: string) => ['fin', 'moyka_kg', ownerId, month] as const,
   // Partiya + latest CHIQIM namligi per serial, for the CHIQIM request detail.
   // Serials sorted so the same set is one cache entry whatever the order.
   serialPartiyaMoisture: (serials: string[]) => ['serial_partiya_moisture', [...serials].sort()] as const,

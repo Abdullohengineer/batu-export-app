@@ -8,6 +8,11 @@ import { BuxgalterLayout } from './pages/buxgalter/BuxgalterLayout'
 import { BuxgalteriyaTabsLayout } from './pages/buxgalter/BuxgalteriyaTabsLayout'
 import { BuxgalteriyaPlaceholder } from './pages/buxgalter/BuxgalteriyaPlaceholder'
 import { MoliyaHome } from './pages/moliya/MoliyaHome'
+import { XarajatPage } from './pages/buxgalter/XarajatPage'
+import { TushumPage } from './pages/buxgalter/TushumPage'
+import { BalansPage } from './pages/buxgalter/BalansPage'
+import { DoimiyPage } from './pages/buxgalter/DoimiyPage'
+import { TarixPage } from './pages/buxgalter/TarixPage'
 import { RahbarHome } from './pages/rahbar/RahbarHome'
 import { UsersAdminPage } from './pages/admin/UsersAdminPage'
 import { MenejerHome } from './pages/menejer/MenejerHome'
@@ -82,6 +87,7 @@ function AppRoutes() {
         <Route path="qoldiq" element={<StockOnHandTab />} />
         <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
         <Route path="moliya" element={<MoliyaHome />} />
+        <Route path="moliya/tarix" element={<TarixPage />} />
       </Route>
 
       <Route
@@ -105,6 +111,7 @@ function AppRoutes() {
         <Route path="sozlamalar" element={<MenejerSettingsTab />} />
         <Route path="foydalanuvchilar" element={<UsersAdminPage />} />
         <Route path="moliya" element={<MoliyaHome />} />
+        <Route path="moliya/tarix" element={<TarixPage />} />
       </Route>
 
       {/* Buxgalteriya (decision 0249): role home /buxgalter -> input tabs
@@ -119,13 +126,13 @@ function AppRoutes() {
       >
         <Route index element={<Navigate to="/buxgalter/kirim" replace />} />
         <Route path="kirim" element={<BuxgalteriyaTabsLayout />}>
-          <Route index element={<BuxgalteriyaPlaceholder title="Yangi xarajat" phase={2} />} />
-          <Route path="tushum" element={<BuxgalteriyaPlaceholder title="Yangi tushum" phase={2} />} />
-          <Route path="balans" element={<BuxgalteriyaPlaceholder title="Hisobdan hisobga o'tkazma" phase={2} />} />
-          <Route path="doimiy" element={<BuxgalteriyaPlaceholder title="Doimiy xarajatlar" phase={2} />} />
+          <Route index element={<XarajatPage />} />
+          <Route path="tushum" element={<TushumPage />} />
+          <Route path="balans" element={<BalansPage />} />
+          <Route path="doimiy" element={<DoimiyPage />} />
           <Route path="kutilayotgan" element={<BuxgalteriyaPlaceholder title="Kutilayotgan majburiyatlar" phase={3} />} />
           <Route path="oyni-yopish" element={<BuxgalteriyaPlaceholder title="Oyni yopish" phase={3} />} />
-          <Route path="tarix" element={<BuxgalteriyaPlaceholder title="Tarix" phase={2} />} />
+          <Route path="tarix" element={<TarixPage />} />
         </Route>
         <Route path="moliya" element={<MoliyaHome />} />
       </Route>

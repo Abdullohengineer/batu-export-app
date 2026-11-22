@@ -51,6 +51,7 @@ export interface ExpenseRow {
   note: string | null
   receipt_path: string | null
   recurring_expense_id: string | null
+  upcoming_obligation_id: string | null
   status: 'pending' | 'confirmed'
   voided_at: string | null
   created_at: string
@@ -157,7 +158,7 @@ export function useExpenses(sinceMonth: string) {
         supabase
           .from('expenses')
           .select(
-            'id, amount, payment_date, period_month, category_id, counterparty_id, source_account_id, expense_type, note, receipt_path, recurring_expense_id, status, voided_at, created_at',
+            'id, amount, payment_date, period_month, category_id, counterparty_id, source_account_id, expense_type, note, receipt_path, recurring_expense_id, upcoming_obligation_id, status, voided_at, created_at',
           )
           .is('voided_at', null)
           .gte('period_month', sinceMonth)
@@ -255,6 +256,116 @@ export function useMoykaOutputKg(ownerId: string | null, month: string) {
     },
   })
   return { kg: data ?? null, loading: !!ownerId && isPending }
+}
+
+export type Recurrence = 'monthly' | 'quarterly' | 'yearly' | 'one_off'
+
+export const RECURRENCE_LABEL: Record<Recurrence, string> = {
+  monthly: 'Oylik',
+  quarterly: 'Choraklik',
+  yearly: 'Yillik',
+  one_off: 'Bir martalik',
+}
+
+export interface ObligationRow {
+  id: string
+  name: string
+  category_id: string | null
+  estimated_amount: number
+  due_date: string
+  period_month: string
+  source_account_id: string | null
+  recurrence: Recurrence
+  reminder_days_before: number
+  note: string | null
+  status: 'pending' | 'paid' | 'skipped'
+}
+
+/** Pending obligations, soonest first. Paid/skipped ones live on as expenses / in the audit trail. */
+export function useObligations() {
+  const { data, isPending, error } = useQuery({
+    queryKey: queryKeys.finObligations(),
+    queryFn: async ({ signal }) =>
+      ((await run(
+        supabase
+          .from('upcoming_obligations')
+          .select('id, name, category_id, estimated_amount, due_date, period_month, source_account_id, recurrence, reminder_days_before, note, status')
+          .eq('status', 'pending')
+          .order('due_date')
+          .abortSignal(signal),
+      )) as ObligationRow[] | null) ?? [],
+  })
+  return { obligations: data ?? [], loading: isPending, error: error ? error.message : null }
+}
+
+export interface PeriodEvent {
+  id: string
+  period_month: string
+  action: 'close' | 'reopen'
+  reason: string | null
+  actor: string | null
+  at: string
+}
+
+/** Every close/reopen, newest first (append-only). */
+export function usePeriodEvents() {
+  const { data, error } = useQuery({
+    queryKey: queryKeys.finPeriodEvents(),
+    queryFn: async ({ signal }) =>
+      ((await run(
+        supabase.from('period_close_events').select('id, period_month, action, reason, actor, at').order('at', { ascending: false }).abortSignal(signal),
+      )) as PeriodEvent[] | null) ?? [],
+  })
+  return { events: data ?? [], error: error ? error.message : null }
+}
+
+export type BlockerCode = 'recurring_missing' | 'pending' | 'cash_in_missing' | 'uncategorized' | 'obligations_open'
+
+export interface CloseBlocker {
+  code: BlockerCode
+  blocking: boolean
+  n: number
+  detail: Record<string, unknown>[]
+}
+
+/** The month-closing checklist -- period_close_blockers() is the single source of truth; the DB refuses a close it doesn't allow. */
+export function useCloseBlockers(month: string, enabled = true) {
+  const { data, isPending, error } = useQuery({
+    queryKey: queryKeys.finCloseBlockers(month),
+    enabled,
+    queryFn: async ({ signal }) => (await callRpc<CloseBlocker[]>('period_close_blockers', { p_month: month }, signal)) ?? [],
+  })
+  return { blockers: data ?? [], loading: enabled && isPending, error: error ? error.message : null }
+}
+
+export interface AuditEntry {
+  id: number
+  table_name: string
+  row_id: string
+  actor: string | null
+  action: string
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  at: string
+}
+
+/** Edits, voids and confirms of every expense / cash-in / obligation that belongs to `month`, newest first. */
+export function usePeriodAudit(month: string, enabled: boolean) {
+  const { data, isPending, error } = useQuery({
+    queryKey: queryKeys.finPeriodAudit(month),
+    enabled,
+    queryFn: async ({ signal }) => {
+      const ids = async (table: string) =>
+        (((await run(supabase.from(table).select('id').eq('period_month', month).abortSignal(signal))) as { id: string }[] | null) ?? []).map((r) => r.id)
+      const [e, c, o] = await Promise.all([ids('expenses'), ids('cash_ins'), ids('upcoming_obligations')])
+      const all = [...e, ...c, ...o]
+      if (all.length === 0) return [] as AuditEntry[]
+      return ((await run(
+        supabase.from('audit_log').select('id, table_name, row_id, actor, action, before, after, at').in('row_id', all).order('at', { ascending: false }).abortSignal(signal),
+      )) as AuditEntry[] | null) ?? []
+    },
+  })
+  return { entries: data ?? [], loading: enabled && isPending, error: error ? error.message : null }
 }
 
 // ------------------------------------------------------------------ writes
@@ -412,4 +523,46 @@ export async function setRecurringActive(row: RecurringRow, active: boolean, act
 export async function signedFinanceFileUrl(path: string): Promise<string | null> {
   const { data } = await supabase.storage.from('buxgalteriya-files').createSignedUrl(path, 3600)
   return data?.signedUrl ?? null
+}
+
+export interface ObligationInput {
+  name: string
+  category_id: string | null
+  estimated_amount: number
+  due_date: string
+  period_month: string
+  source_account_id: string | null
+  recurrence: Recurrence
+  reminder_days_before: number
+  note: string | null
+}
+
+export async function saveObligation(input: ObligationInput, existing: ObligationRow | null, actor: string | undefined): Promise<void> {
+  if (existing) {
+    requireRow(await run(supabase.from('upcoming_obligations').update(input).eq('id', existing.id).select('id')))
+    await audit('upcoming_obligations', existing.id, actor, 'edit', existing, input)
+  } else {
+    await run(supabase.from('upcoming_obligations').insert(input))
+  }
+  invalidateFinance()
+}
+
+/** Not paying this occurrence. A recurring obligation rolls on to its next one (DB trigger, migration 0167). */
+export async function skipObligation(row: ObligationRow, reason: string, actor: string | undefined): Promise<void> {
+  if (!reason.trim()) throw new Error('Sababini yozing.')
+  requireRow(await run(supabase.from('upcoming_obligations').update({ status: 'skipped' }).eq('id', row.id).eq('status', 'pending').select('id')))
+  await audit('upcoming_obligations', row.id, actor, 'skip', { status: 'pending' }, { status: 'skipped', reason: reason.trim() })
+  invalidateFinance()
+}
+
+/** The DB re-checks the checklist and refuses a close it doesn't allow (migration 0167). */
+export async function closePeriod(month: string): Promise<void> {
+  await run(supabase.from('period_close_events').insert({ period_month: month, action: 'close' }))
+  invalidateFinance()
+}
+
+export async function reopenPeriod(month: string, reason: string): Promise<void> {
+  if (!reason.trim()) throw new Error('Qayta ochish sababini yozing.')
+  await run(supabase.from('period_close_events').insert({ period_month: month, action: 'reopen', reason: reason.trim() }))
+  invalidateFinance()
 }

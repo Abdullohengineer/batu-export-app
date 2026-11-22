@@ -203,12 +203,12 @@ export function XarajatPage() {
       {pending.length > 0 && !editing && (
         <Card tone="pending">
           <div className="text-sm font-semibold text-amber-800 dark:text-amber-400">Tasdiqlash kutilmoqda · {pending.length} ta</div>
-          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">Doimiy xarajatlar avtomatik yozildi. Summani tekshirib tasdiqlang — tasdiqlanmaguncha balans va hisobotlarga kirmaydi.</p>
+          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">Doimiy xarajatlar va kutilayotgan majburiyatlar muddati kelganda avtomatik yoziladi. Summani tekshirib tasdiqlang — tasdiqlanmaguncha balans va hisobotlarga kirmaydi.</p>
           <ul className="mt-2 space-y-1.5">
             {pending.map((e) => (
               <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className="text-slate-800 dark:text-slate-200">
-                  {dayLabel(e.payment_date)} · {nameOf.cp(e.counterparty_id)} · {nameOf.cat(e.category_id)} · {formatSom(e.amount)} so'm
+                  {dayLabel(e.payment_date)} · {e.counterparty_id ? nameOf.cp(e.counterparty_id) : e.note ?? '—'} · {nameOf.cat(e.category_id)} · {formatSom(e.amount)} so'm
                 </span>
                 <Button size="md" variant="secondary" onClick={() => startEdit(e)}>
                   Tasdiqlash

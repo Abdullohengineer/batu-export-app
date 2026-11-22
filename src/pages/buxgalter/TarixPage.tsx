@@ -12,6 +12,7 @@ import {
 import { useAccountBalances } from '../../lib/useAccountBalances'
 import { dayLabel, formatSom, formatSomShort, monthEnd, monthLabel, monthLabelShort, monthOf, monthOptions } from '../../lib/financeFormat'
 import { toExcelDate, EXCEL_DATE_FORMAT } from '../../lib/formatDate'
+import { PeriodAuditModal } from '../../components/finance/PeriodAuditModal'
 
 // Tarix (mockup artboard "History", decision 0250): every expense, cash-in
 // and transfer for one period, filterable by kind, category and account.
@@ -46,6 +47,7 @@ export function TarixPage() {
   const [kind, setKind] = useState<Kind>('all')
   const [categoryId, setCategoryId] = useState('')
   const [accountId, setAccountId] = useState('')
+  const [showAudit, setShowAudit] = useState(false)
 
   const { expenses, loading: l1 } = useExpenses(month)
   const { cashIns, loading: l2 } = useCashIns(month)
@@ -158,14 +160,23 @@ export function TarixPage() {
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Tarix</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">Barcha kirim-chiqim va o'tkazma yozuvlari</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void exportXlsx()}
-          disabled={rows.length === 0}
-          className="min-h-11 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-        >
-          ⬇ Eksport
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowAudit(true)}
+            className="min-h-11 rounded-full border border-slate-300 px-4 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+          >
+            Davr tarixi
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportXlsx()}
+            disabled={rows.length === 0}
+            className="min-h-11 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+          >
+            ⬇ Eksport
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -271,6 +282,7 @@ export function TarixPage() {
         </table>
       </div>
       <p className="text-xs text-slate-400">Xarajat va tushum "qaysi oy uchun" belgisi bo'yicha filtrlanadi; o'tkazmalar sanasi bo'yicha.</p>
+      {showAudit && <PeriodAuditModal month={month} onClose={() => setShowAudit(false)} />}
     </div>
   )
 }

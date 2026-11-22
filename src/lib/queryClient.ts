@@ -96,6 +96,10 @@ export const queryKeys = {
   finTransfers: (sinceMonth: string) => ['fin', 'transfers', sinceMonth] as const,
   finRecurring: () => ['fin', 'recurring'] as const,
   finMoykaKg: (ownerId: string, month: string) => ['fin', 'moyka_kg', ownerId, month] as const,
+  finObligations: () => ['fin', 'obligations'] as const,
+  finPeriodEvents: () => ['fin', 'period_events'] as const,
+  finCloseBlockers: (month: string) => ['fin', 'close_blockers', month] as const,
+  finPeriodAudit: (month: string) => ['fin', 'period_audit', month] as const,
   // Partiya + latest CHIQIM namligi per serial, for the CHIQIM request detail.
   // Serials sorted so the same set is one cache entry whatever the order.
   serialPartiyaMoisture: (serials: string[]) => ['serial_partiya_moisture', [...serials].sort()] as const,

@@ -84,6 +84,8 @@ export const queryKeys = {
   laboratorKirim: () => ['laborator_kirim'] as const,
   laboratorChiqim: () => ['laborator_chiqim'] as const,
   kirimTrips: () => ['kirim_trips'] as const,
+  // Buxgalteriya (decision 0249): current balance per money account.
+  accountBalances: (asOf: string) => ['account_balances', asOf] as const,
   // Partiya + latest CHIQIM namligi per serial, for the CHIQIM request detail.
   // Serials sorted so the same set is one cache entry whatever the order.
   serialPartiyaMoisture: (serials: string[]) => ['serial_partiya_moisture', [...serials].sort()] as const,

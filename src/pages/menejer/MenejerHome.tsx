@@ -21,6 +21,7 @@ export function MenejerHome() {
         { to: '/menejer/qoldiq', label: "Ombor qoldig'i" },
         { to: '/menejer/kutilmoqda', label: 'Kutilayotgan ishlar' },
         { to: '/menejer/mijoz-hisoboti', label: 'Mijoz hisoboti' },
+        { to: '/menejer/moliya', label: "Moliyaviy ko'rsatkichlar" },
         { to: '/menejer/hosildorlik', label: 'Hosildorlik' },
         { to: '/menejer/eski-zaxira', label: 'Eski zaxira hisob-kitobi' },
         { to: '/menejer/mijozlar', label: 'Mijozlar' },

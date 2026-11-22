@@ -7,7 +7,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading'
 import { StatusNote } from '../../components/ui/StatusNote'
 import { FormField, TextInput } from '../../components/ui/FormField'
 
-const ROLES: UserRole[] = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator', 'client']
+const ROLES: UserRole[] = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator', 'client', 'buxgalter']
 
 export function UsersAdminPage() {
   return (

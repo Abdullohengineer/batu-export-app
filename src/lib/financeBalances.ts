@@ -1,0 +1,62 @@
+// Buxgalteriya (docs/decisions/0249): account balance as of a date.
+// Pure function, no I/O. Balances are DATE-based (received_date /
+// transfer_date / payment_date), never period_month -- period_month drives
+// reports, the dates drive money actually moving (SPEC invariant 1).
+//
+// balance(account) = Σ cash_ins into it
+//                  + Σ transfers into it − Σ transfers out of it
+//                  − Σ confirmed expenses paid from it
+// Voided rows never count. A 'pending' expense (auto-posted, not yet
+// confirmed by the accountant) does not count until confirmed.
+// Amounts are bigint so'm, safe as JS numbers (< 2^53).
+
+export interface BalanceCashIn {
+  amount: number
+  received_date: string
+  destination_account_id: string
+  voided_at: string | null
+}
+
+export interface BalanceTransfer {
+  amount: number
+  transfer_date: string
+  source_account_id: string
+  destination_account_id: string
+  voided_at: string | null
+}
+
+export interface BalanceExpense {
+  amount: number
+  payment_date: string
+  source_account_id: string
+  status: 'pending' | 'confirmed'
+  voided_at: string | null
+}
+
+export interface BalanceInput {
+  accountIds: string[]
+  cashIns: BalanceCashIn[]
+  transfers: BalanceTransfer[]
+  expenses: BalanceExpense[]
+}
+
+/** asOf: 'YYYY-MM-DD', inclusive. Every account in accountIds gets an entry (0 if untouched). */
+export function computeAccountBalances(input: BalanceInput, asOf: string): Map<string, number> {
+  const out = new Map<string, number>(input.accountIds.map((id) => [id, 0]))
+  const add = (id: string, delta: number) => out.set(id, (out.get(id) ?? 0) + delta)
+
+  for (const c of input.cashIns) {
+    if (c.voided_at || c.received_date > asOf) continue
+    add(c.destination_account_id, Number(c.amount))
+  }
+  for (const t of input.transfers) {
+    if (t.voided_at || t.transfer_date > asOf) continue
+    add(t.source_account_id, -Number(t.amount))
+    add(t.destination_account_id, Number(t.amount))
+  }
+  for (const e of input.expenses) {
+    if (e.voided_at || e.status !== 'confirmed' || e.payment_date > asOf) continue
+    add(e.source_account_id, -Number(e.amount))
+  }
+  return out
+}

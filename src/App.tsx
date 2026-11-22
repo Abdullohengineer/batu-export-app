@@ -4,6 +4,10 @@ import { AuthProvider, useAuth } from './lib/AuthProvider'
 import { RoleRoute } from './routes/RoleRoute'
 import { LoginPage } from './pages/LoginPage'
 import { RahbarLayout } from './pages/rahbar/RahbarLayout'
+import { BuxgalterLayout } from './pages/buxgalter/BuxgalterLayout'
+import { BuxgalteriyaTabsLayout } from './pages/buxgalter/BuxgalteriyaTabsLayout'
+import { BuxgalteriyaPlaceholder } from './pages/buxgalter/BuxgalteriyaPlaceholder'
+import { MoliyaHome } from './pages/moliya/MoliyaHome'
 import { RahbarHome } from './pages/rahbar/RahbarHome'
 import { UsersAdminPage } from './pages/admin/UsersAdminPage'
 import { MenejerHome } from './pages/menejer/MenejerHome'
@@ -77,6 +81,7 @@ function AppRoutes() {
         <Route path="hisobotlar" element={<HisobotTab />} />
         <Route path="qoldiq" element={<StockOnHandTab />} />
         <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
+        <Route path="moliya" element={<MoliyaHome />} />
       </Route>
 
       <Route
@@ -99,6 +104,30 @@ function AppRoutes() {
         <Route path="diqqat-talab" element={<MenejerExceptionsTab />} />
         <Route path="sozlamalar" element={<MenejerSettingsTab />} />
         <Route path="foydalanuvchilar" element={<UsersAdminPage />} />
+        <Route path="moliya" element={<MoliyaHome />} />
+      </Route>
+
+      {/* Buxgalteriya (decision 0249): role home /buxgalter -> input tabs
+          under /buxgalter/kirim, read-only output under /buxgalter/moliya. */}
+      <Route
+        path="/buxgalter"
+        element={
+          <RoleRoute allow={['buxgalter']}>
+            <BuxgalterLayout />
+          </RoleRoute>
+        }
+      >
+        <Route index element={<Navigate to="/buxgalter/kirim" replace />} />
+        <Route path="kirim" element={<BuxgalteriyaTabsLayout />}>
+          <Route index element={<BuxgalteriyaPlaceholder title="Yangi xarajat" phase={2} />} />
+          <Route path="tushum" element={<BuxgalteriyaPlaceholder title="Yangi tushum" phase={2} />} />
+          <Route path="balans" element={<BuxgalteriyaPlaceholder title="Hisobdan hisobga o'tkazma" phase={2} />} />
+          <Route path="doimiy" element={<BuxgalteriyaPlaceholder title="Doimiy xarajatlar" phase={2} />} />
+          <Route path="kutilayotgan" element={<BuxgalteriyaPlaceholder title="Kutilayotgan majburiyatlar" phase={3} />} />
+          <Route path="oyni-yopish" element={<BuxgalteriyaPlaceholder title="Oyni yopish" phase={3} />} />
+          <Route path="tarix" element={<BuxgalteriyaPlaceholder title="Tarix" phase={2} />} />
+        </Route>
+        <Route path="moliya" element={<MoliyaHome />} />
       </Route>
       <Route
         path="/qorovul"

@@ -24,7 +24,8 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 // rejects secrets with the SUPABASE_ prefix (see docs/DECISIONS.md).
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 
-const ALLOWED_ROLES = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator', 'client']
+// 'buxgalter' added 2026-11-22 (Buxgalteriya, docs/decisions/0249).
+const ALLOWED_ROLES = ['rahbar', 'menejer', 'qorovul', 'ombor', 'laborator', 'client', 'buxgalter']
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },

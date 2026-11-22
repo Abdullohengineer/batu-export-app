@@ -60,3 +60,33 @@ export function computeAccountBalances(input: BalanceInput, asOf: string): Map<s
   }
   return out
 }
+
+/**
+ * Average monthly spend per source account over the `months` full months
+ * before `currentMonth` (by period_month, confirmed only). Divides by the
+ * number of those months that actually had spend from the account, so a
+ * newly used account isn't understated. Feeds the "~2.3 oy" cover hint.
+ */
+export function avgMonthlySpendByAccount(
+  expenses: { amount: number; period_month: string; source_account_id: string; status: string }[],
+  currentMonth: string,
+  months = 3,
+): Map<string, number> {
+  const [y, m] = currentMonth.split('-').map(Number)
+  const startIdx = y * 12 + (m - 1) - months
+  const endIdx = y * 12 + (m - 1) - 1
+  const totals = new Map<string, number>()
+  const monthsSeen = new Map<string, Set<string>>()
+  for (const e of expenses) {
+    if (e.status !== 'confirmed') continue
+    const [ey, em] = e.period_month.split('-').map(Number)
+    const idx = ey * 12 + (em - 1)
+    if (idx < startIdx || idx > endIdx) continue
+    totals.set(e.source_account_id, (totals.get(e.source_account_id) ?? 0) + Number(e.amount))
+    if (!monthsSeen.has(e.source_account_id)) monthsSeen.set(e.source_account_id, new Set())
+    monthsSeen.get(e.source_account_id)!.add(e.period_month)
+  }
+  const out = new Map<string, number>()
+  for (const [acc, total] of totals) out.set(acc, total / (monthsSeen.get(acc)?.size || 1))
+  return out
+}

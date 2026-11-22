@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { computeAccountBalances, type BalanceInput } from './financeBalances.ts'
+import { avgMonthlySpendByAccount, computeAccountBalances, type BalanceInput } from './financeBalances.ts'
 
 const BANK = 'bank'
 const KASSA = 'kassa'
@@ -71,4 +71,21 @@ test('accounts referenced but not listed still accumulate', () => {
     '2026-11-22',
   )
   assert.equal(b.get('other'), 7)
+})
+
+test('avgMonthlySpendByAccount: previous full months only, confirmed only, per active month', () => {
+  const avg = avgMonthlySpendByAccount(
+    [
+      { amount: 2_000_000, period_month: '2026-08-01', source_account_id: GAZ, status: 'confirmed' },
+      { amount: 2_200_000, period_month: '2026-10-01', source_account_id: GAZ, status: 'confirmed' },
+      { amount: 9_999_999, period_month: '2026-11-01', source_account_id: GAZ, status: 'confirmed' }, // current month: excluded
+      { amount: 5_000_000, period_month: '2026-07-01', source_account_id: GAZ, status: 'confirmed' }, // too old
+      { amount: 1_000_000, period_month: '2026-10-01', source_account_id: GAZ, status: 'pending' }, // not confirmed
+      { amount: 300_000, period_month: '2026-10-01', source_account_id: BANK, status: 'confirmed' },
+    ],
+    '2026-11-01',
+  )
+  assert.equal(avg.get(GAZ), 2_100_000) // (2.0M + 2.2M) / 2 months with spend
+  assert.equal(avg.get(BANK), 300_000)
+  assert.equal(avg.get(KASSA), undefined)
 })

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   addMonths,
+  dailyReserve,
   coverageMonths,
   dayLabel,
   daysBetween,
@@ -63,4 +64,11 @@ test('coverageMonths', () => {
   assert.equal(coverageMonths(4_200_000, 1_826_087)?.toFixed(1), '2.3')
   assert.equal(coverageMonths(100, 0), null)
   assert.equal(coverageMonths(-5, 10), 0)
+})
+
+test('dailyReserve matches the Kutilayotgan mockup', () => {
+  assert.equal(dailyReserve(15_000_000, 18), 833_000)
+  assert.equal(dailyReserve(5_000_000, 54), 93_000)
+  assert.equal(dailyReserve(38_000_000, 129), 295_000)
+  assert.equal(dailyReserve(1_000_000, 0), null)
 })

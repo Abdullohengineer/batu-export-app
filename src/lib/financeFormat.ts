@@ -113,3 +113,8 @@ export function coverageHint(a: AccountCardData): { text: string; low: boolean }
   return { text: `~${c.toFixed(1)} oy`, low: c < 1.5 }
 }
 
+/** "X so'm/kun ajrating" (Kutilayotgan): amount spread over the days left, to the nearest 1,000; null once due. */
+export function dailyReserve(amount: number, daysLeft: number): number | null {
+  if (daysLeft <= 0) return null
+  return Math.round(amount / daysLeft / 1000) * 1000
+}

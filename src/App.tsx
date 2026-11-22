@@ -6,13 +6,14 @@ import { LoginPage } from './pages/LoginPage'
 import { RahbarLayout } from './pages/rahbar/RahbarLayout'
 import { BuxgalterLayout } from './pages/buxgalter/BuxgalterLayout'
 import { BuxgalteriyaTabsLayout } from './pages/buxgalter/BuxgalteriyaTabsLayout'
-import { BuxgalteriyaPlaceholder } from './pages/buxgalter/BuxgalteriyaPlaceholder'
 import { MoliyaHome } from './pages/moliya/MoliyaHome'
 import { XarajatPage } from './pages/buxgalter/XarajatPage'
 import { TushumPage } from './pages/buxgalter/TushumPage'
 import { BalansPage } from './pages/buxgalter/BalansPage'
 import { DoimiyPage } from './pages/buxgalter/DoimiyPage'
 import { TarixPage } from './pages/buxgalter/TarixPage'
+import { KutilayotganPage } from './pages/buxgalter/KutilayotganPage'
+import { OyniYopishPage } from './pages/buxgalter/OyniYopishPage'
 import { RahbarHome } from './pages/rahbar/RahbarHome'
 import { UsersAdminPage } from './pages/admin/UsersAdminPage'
 import { MenejerHome } from './pages/menejer/MenejerHome'
@@ -130,8 +131,8 @@ function AppRoutes() {
           <Route path="tushum" element={<TushumPage />} />
           <Route path="balans" element={<BalansPage />} />
           <Route path="doimiy" element={<DoimiyPage />} />
-          <Route path="kutilayotgan" element={<BuxgalteriyaPlaceholder title="Kutilayotgan majburiyatlar" phase={3} />} />
-          <Route path="oyni-yopish" element={<BuxgalteriyaPlaceholder title="Oyni yopish" phase={3} />} />
+          <Route path="kutilayotgan" element={<KutilayotganPage />} />
+          <Route path="oyni-yopish" element={<OyniYopishPage />} />
           <Route path="tarix" element={<TarixPage />} />
         </Route>
         <Route path="moliya" element={<MoliyaHome />} />

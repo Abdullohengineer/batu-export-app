@@ -106,3 +106,39 @@ no DELETE policy anywhere. Seed: the 4 accounts, the "Global Export" customer
   - Moliya and its menu item work for Rahbar and Menejer;
   - Rahbar is refused the input routes, and Ombor is refused Moliya.
 - Build passes; 94/94 unit tests pass.
+
+## Applied live (2026-11-22, on the owner's go-ahead)
+
+- **Migrations:** `0164` and `0165` applied (versions `20261122182141`,
+  `20261122182221`).
+- **`admin-users` Edge Function:** redeployed as v16. The only change is
+  `buxgalter` in `ALLOWED_ROLES`; `verify_jwt` stays false (the function
+  does its own Menejer check), and the deployed v15 was compared first and
+  matched the repo apart from that line.
+- **Accountant account created** on the owner's instruction, directly in
+  the database because this environment can't call the function:
+  - auth user `998887028666@batu.local` (bcrypt password set by the owner)
+    plus its email identity, the same shape as every existing account,
+    with empty-string tokens;
+  - profile "Muborak", role `buxgalter`, phone `998887028666`;
+  - the password was checked against the stored hash.
+
+  ⚠️ The owner chose a 4-digit password, below Supabase's usual 6-character
+  minimum. It works for sign-in, but it's weak for an account that writes
+  the books; changing it via Foydalanuvchilar → reset is recommended.
+- **Buxgalter write path verified** as Muborak's real account, live DB,
+  rolled back, 15/15 checks passed:
+  - creates a category and a receiver inline; a case-insensitive duplicate
+    name is rejected;
+  - writes an expense with and without a category, a cash-in (October
+    period, November date) and a bank → gas transfer;
+  - edits and voids an expense;
+  - closes October, after which a cash-in into it is rejected;
+  - can't write `monthly_rates` or Ombor tables;
+  - can upload a receipt to `buxgalteriya-files`.
+
+  Afterwards the accounting tables were empty again (only the seeds
+  remained).
+- **Merge before first login:** the frontend (PR #186) must be on `main`
+  before Muborak signs in. Without the `/buxgalter` route tree, her role
+  home falls into the catch-all redirect back to itself.

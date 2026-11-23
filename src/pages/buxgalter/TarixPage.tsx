@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import ExcelJS from 'exceljs'
 import { todayInTashkent } from '../../lib/dateRange'
 import {
@@ -7,18 +8,22 @@ import {
   useCategories,
   useCounterparties,
   useExpenses,
+  usePeriodStatuses,
   useTransfers,
 } from '../../lib/useFinance'
 import { useAccountBalances } from '../../lib/useAccountBalances'
 import { dayLabel, formatSom, formatSomShort, monthEnd, monthLabel, monthLabelShort, monthOf, monthOptions } from '../../lib/financeFormat'
 import { toExcelDate, EXCEL_DATE_FORMAT } from '../../lib/formatDate'
 import { PeriodAuditModal } from '../../components/finance/PeriodAuditModal'
+import { IconButton } from '../../components/ui/IconButton'
+import { EditRowModal, VoidRowModal, type TarixSource } from './TarixRowModals'
 
 // Tarix (mockup artboard "History", decision 0250): every expense, cash-in
 // and transfer for one period, filterable by kind, category and account.
 // Expenses/cash-ins filter by period_month ("qaysi oy uchun"); transfers have
-// no period and filter by their date. Read-only -- also mounted for
-// rahbar/menejer under /…/moliya/tarix.
+// no period and filter by their date. The accountant gets ✎ / 🗑 per row
+// (TarixRowModals, decision 0253); the copies mounted for rahbar/menejer
+// under /…/moliya/tarix stay read-only.
 
 type Kind = 'all' | 'expense' | 'cash_in' | 'transfer'
 
@@ -34,6 +39,7 @@ interface LogRow {
   accountIds: string[]
   categoryId: string | null
   pending: boolean
+  source: TarixSource
 }
 
 const KIND_LABEL = { expense: '↓ Xarajat', cash_in: '↑ Tushum', transfer: '⇄ O‘tkazma' } as const
@@ -48,6 +54,11 @@ export function TarixPage() {
   const [categoryId, setCategoryId] = useState('')
   const [accountId, setAccountId] = useState('')
   const [showAudit, setShowAudit] = useState(false)
+  const [editing, setEditing] = useState<TarixSource | null>(null)
+  const [voiding, setVoiding] = useState<TarixSource | null>(null)
+  // Row actions are the accountant's only; the Rahbar/Menejer copies stay read-only.
+  const canEdit = useLocation().pathname.startsWith('/buxgalter')
+  const statuses = usePeriodStatuses()
 
   const { expenses, loading: l1 } = useExpenses(month)
   const { cashIns, loading: l2 } = useCashIns(month)
@@ -76,6 +87,7 @@ export function TarixPage() {
         accountIds: [e.source_account_id],
         categoryId: e.category_id,
         pending: e.status === 'pending',
+        source: { kind: 'expense', row: e },
       })
     }
     for (const c of cashIns) {
@@ -92,6 +104,7 @@ export function TarixPage() {
         accountIds: [c.destination_account_id],
         categoryId: null,
         pending: false,
+        source: { kind: 'cash_in', row: c },
       })
     }
     for (const t of transfers) {
@@ -109,6 +122,7 @@ export function TarixPage() {
         accountIds: [t.source_account_id, t.destination_account_id],
         categoryId: null,
         pending: false,
+        source: { kind: 'transfer', row: t },
       })
     }
     return out
@@ -247,12 +261,13 @@ export function TarixPage() {
               <th className="px-3 py-2">Davr</th>
               <th className="px-3 py-2 text-right">Summa</th>
               <th className="px-3 py-2">Hisob</th>
+              {canEdit && <th className="sticky right-0 bg-slate-50 px-3 py-2 text-right shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.15)] dark:bg-slate-900">Amallar</th>}
             </tr>
           </thead>
           <tbody>
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-slate-400">
+                <td colSpan={canEdit ? 8 : 7} className="px-3 py-6 text-center text-slate-400">
                   Bu davrda yozuv yo'q.
                 </td>
               </tr>
@@ -276,6 +291,24 @@ export function TarixPage() {
                   {formatSom(Math.abs(r.amount))}
                 </td>
                 <td className="px-3 py-2">{r.account}</td>
+                {canEdit && (
+                  <td className="sticky right-0 bg-white px-1 py-0.5 text-right whitespace-nowrap shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.15)] dark:bg-slate-950">
+                    {r.period && statuses.get(r.period) === 'closed' ? (
+                      <span className="px-2 text-slate-400" title="Davr yopilgan — o'zgartirish uchun avval qayta oching" aria-label="Davr yopilgan">
+                        🔒
+                      </span>
+                    ) : (
+                      <>
+                        <IconButton label="Tahrirlash" onClick={() => setEditing(r.source)}>
+                          <PencilIcon />
+                        </IconButton>
+                        <IconButton label="O'chirish" tone="danger" onClick={() => setVoiding(r.source)}>
+                          <TrashIcon />
+                        </IconButton>
+                      </>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -283,6 +316,28 @@ export function TarixPage() {
       </div>
       <p className="text-xs text-slate-400">Xarajat va tushum "qaysi oy uchun" belgisi bo'yicha filtrlanadi; o'tkazmalar sanasi bo'yicha.</p>
       {showAudit && <PeriodAuditModal month={month} onClose={() => setShowAudit(false)} />}
+      {editing && <EditRowModal source={editing} onClose={() => setEditing(null)} />}
+      {voiding && <VoidRowModal source={voiding} onClose={() => setVoiding(null)} />}
     </div>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
   )
 }

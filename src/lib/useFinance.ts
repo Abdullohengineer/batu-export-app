@@ -584,3 +584,20 @@ export async function reopenPeriod(month: string, reason: string): Promise<void>
   await run(supabase.from('period_close_events').insert({ period_month: month, action: 'reopen', reason: reason.trim() }))
   invalidateFinance()
 }
+
+/**
+ * In-place edit of a cash-in or transfer (Tarix ✎, 2026-11-23). Same shape as
+ * updateExpense: RLS "0 rows" is an error, the changed fields' before/after
+ * go to audit_log as 'edit'. A closed period still refuses it in the DB.
+ */
+export async function updateFinanceRow(
+  table: 'cash_ins' | 'transfers',
+  before: { id: string } & Record<string, unknown>,
+  patch: Record<string, unknown>,
+  actor: string | undefined,
+): Promise<void> {
+  requireRow(await run(supabase.from(table).update(patch).eq('id', before.id).select('id')))
+  const changedBefore = Object.fromEntries(Object.keys(patch).map((k) => [k, before[k]]))
+  await audit(table, before.id, actor, 'edit', changedBefore, patch)
+  invalidateFinance()
+}

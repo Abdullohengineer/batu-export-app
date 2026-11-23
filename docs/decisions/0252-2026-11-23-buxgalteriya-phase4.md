@@ -115,3 +115,11 @@ same month shows the same numbers everywhere. Everything is grouped by
     under `/rahbar`, and Tarix is reachable.
 - **Checks:** build passes, oxlint is clean (only pre-existing warnings),
   and the RPC wrapper check is OK.
+
+## Rates for Aug–Oct 2026 (migration 0168, applied live)
+
+The owner asked (2026-11-23) for August, September and October 2026 to use
+the November rates: moyka 7,468.75 and rezka 4,133.93 so'm/kg. Added via
+admin SQL, like November; `set_by` is "Abdulloh (via admin, 2026-11-23)".
+Those months' Daromad now follows the accrual definition (kg × rate), no
+longer the cash fallback.

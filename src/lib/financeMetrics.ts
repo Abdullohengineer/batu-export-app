@@ -18,26 +18,15 @@ export interface MetricCashIn {
   service_type: string
 }
 
-export interface PeriodIncome {
-  income: number
-  /** 'rate' = Moyka kg × moyka rate (+ non-Moyka cash-ins); 'cash' = no rate for the month, so the cash-ins themselves */
-  basis: 'rate' | 'cash'
-}
-
 /**
- * Daromad for a period. Brief: earnings = Moyka output kg × that month's
- * moyka rate -- accrued, so the current month shows earnings before Global
- * Export pays (a month in arrears). Rezka / other income has no accrual
- * source, so its cash-ins are added as received. A month with no moyka rate
- * falls back to all of its cash-ins.
+ * Daromad for a period = the tushum (cash-ins) actually entered for it, all
+ * services. Owner, 2026-11-23: earnings and sof foyda count only entered
+ * tushum, never production × rate. null = nothing entered yet, so the
+ * screens show "—" instead of a made-up profit or loss.
  */
-export function periodIncome(month: string, kg: number | null, rate: number | undefined, cashIns: MetricCashIn[]): PeriodIncome {
+export function periodIncome(month: string, cashIns: MetricCashIn[]): number | null {
   const own = cashIns.filter((c) => c.period_month === month)
-  if (rate && kg !== null) {
-    const other = own.filter((c) => c.service_type !== 'moyka').reduce((s, c) => s + c.amount, 0)
-    return { income: Math.round(kg * rate) + other, basis: 'rate' }
-  }
-  return { income: own.reduce((s, c) => s + c.amount, 0), basis: 'cash' }
+  return own.length ? own.reduce((s, c) => s + c.amount, 0) : null
 }
 
 /** Confirmed expenses of one period. Pending auto-posts never count. */
@@ -76,9 +65,10 @@ export interface Forecast {
 }
 
 /**
- * Keyingi oy prognozi at the current month's pace (owner's choice,
- * 2026-11-23): this month's Moyka kg and confirmed expenses so far, scaled to
- * a full month; income at the latest moyka rate.
+ * Joriy oy prognozi (owner, 2026-11-23): the month still in progress,
+ * projected to its end at the pace so far -- this month's Moyka kg and
+ * confirmed expenses scaled to a full month, expected income at the latest
+ * moyka rate. A forecast, not earnings: real Daromad is entered tushum only.
  */
 export function forecastFromPace(kgSoFar: number, expenseSoFar: number, dayOfMonth: number, daysInMonth: number, rate: number | null): Forecast {
   const scale = daysInMonth / Math.max(1, dayOfMonth)

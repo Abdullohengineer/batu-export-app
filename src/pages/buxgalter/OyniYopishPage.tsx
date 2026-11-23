@@ -8,9 +8,7 @@ import {
   useCloseBlockers,
   useCounterparties,
   useExpenses,
-  useMoykaKgSeries,
   useMoykaOutputKg,
-  useMonthlyRates,
   usePeriodEvents,
   usePeriodStatuses,
   type CashInRow,
@@ -35,20 +33,20 @@ import { StatusPill } from '../../components/ui/StatusPill'
 const HISTORY_MONTHS = 12
 
 interface Totals {
-  income: number
+  /** entered tushum; null = none yet */
+  income: number | null
   expense: number
   recurringCount: number
   recurringSum: number
 }
 
 // Daromad is the shared definition (financeMetrics.periodIncome, decision
-// 0252): Moyka kg × moyka rate (+ non-Moyka cash-ins), or the cash-ins when
-// the month has no rate -- the same number Moliyaviy ko'rsatkichlar shows.
-function totalsFor(month: string, expenses: ExpenseRow[], cashIns: CashInRow[], kg: number | null, rate: number | undefined): Totals {
+// 0252): entered tushum only -- the same number Moliyaviy ko'rsatkichlar shows.
+function totalsFor(month: string, expenses: ExpenseRow[], cashIns: CashInRow[]): Totals {
   const ex = periodExpenses(month, expenses)
   const rec = ex.filter((e) => e.recurring_expense_id)
   return {
-    income: periodIncome(month, kg, rate, cashIns).income,
+    income: periodIncome(month, cashIns),
     expense: ex.reduce((s, e) => s + e.amount, 0),
     recurringCount: rec.length,
     recurringSum: rec.reduce((s, e) => s + e.amount, 0),
@@ -93,9 +91,7 @@ export function OyniYopishPage() {
   }, [expenses, cashIns, statuses, currentMonth])
 
   const closedMonths = useMemo(() => [...statuses].filter(([, st]) => st === 'closed').map(([m]) => m).sort().reverse(), [statuses])
-  const rates = useMonthlyRates()
-  const { kg: kgByMonth } = useMoykaKgSeries(ownerId, [...openMonths, ...closedMonths, currentMonth])
-  const tot = (m: string) => totalsFor(m, expenses, cashIns, kgByMonth.get(m) ?? null, rates.get(`${m}:moyka`))
+  const tot = (m: string) => totalsFor(m, expenses, cashIns)
 
   async function doReopen() {
     if (!reopening) return
@@ -142,8 +138,8 @@ export function OyniYopishPage() {
             <StatusPill tone="info">Joriy davr</StatusPill>
           </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            {daysLeft} kun qoldi · hozircha xarajat {formatSomShort(cur.expense)}, tushum {formatSomShort(cur.income)}
-            {cur.income === 0 && ` (Global Export odatda ${monthName(addMonths(currentMonth, 1))} boshida to'laydi)`}
+            {daysLeft} kun qoldi · hozircha xarajat {formatSomShort(cur.expense)}, tushum {formatSomShort(cur.income ?? 0)}
+            {cur.income === null && ` (Global Export odatda ${monthName(addMonths(currentMonth, 1))} boshida to'laydi)`}
           </p>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Yopishga hali erta — odatda 5-7 {monthName(addMonths(currentMonth, 1))}'da</p>
         </Card>
@@ -177,9 +173,9 @@ export function OyniYopishPage() {
                     <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
                       {ev ? `${dayLabel(tashkentDateString(new Date(ev.at)))} ${tashkentDateString(new Date(ev.at)).slice(0, 4)} · ${ev.actor ? names[ev.actor] ?? '—' : '—'}` : '—'}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{formatSomShort(t.income)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{t.income === null ? '—' : formatSomShort(t.income)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatSomShort(t.expense)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{signed(t.income - t.expense)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{t.income === null ? '—' : signed(t.income - t.expense)}</td>
                     <td className="px-3 py-2 text-right">
                       {isReopening ? (
                         <div className="ml-auto w-64 space-y-2 text-left">
@@ -257,7 +253,7 @@ function OpenPeriodCard({
   const missingExtra =
     (by('recurring_missing')?.detail ?? []).reduce((s, d) => s + Number(d.amount ?? 0), 0) +
     (by('pending')?.detail ?? []).reduce((s, d) => s + Number(d.amount ?? 0), 0)
-  const profit = totals.income - totals.expense
+  const profit = totals.income === null ? null : totals.income - totals.expense
   const name = monthName(month)
 
   async function doClose() {
@@ -287,12 +283,12 @@ function OpenPeriodCard({
 
       <div className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Hozirgi raqamlar (vaqtincha)</div>
       <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Figure label="Daromad" value={formatSomShort(totals.income)} />
+        <Figure label="Daromad" value={totals.income === null ? 'kiritilmagan' : formatSomShort(totals.income)} />
         <Figure label="Xarajat" value={formatSomShort(totals.expense)} />
-        <Figure label="Sof foyda" value={signed(profit)} />
+        <Figure label="Sof foyda" value={profit === null ? '—' : signed(profit)} />
         <Figure label="1 kg tannarxi" value={kg && kg > 0 ? `${formatSom(totals.expense / kg)} so'm` : '—'} />
       </div>
-      {missingExtra > 0 && (
+      {missingExtra > 0 && profit !== null && (
         <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
           ⚠ Kiritilmagan va tasdiqlanmagan xarajatlar qo'shilsa xarajat ~{formatSomShort(missingExtra)} ga oshadi → sof foyda ~{signed(profit - missingExtra)}
         </p>

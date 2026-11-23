@@ -902,7 +902,7 @@ Was Rahbar's only write surface (v1.21). As of v1.22 this entire section — Soz
 
 ---
 
-## 6.5 Role: BUXGALTER (accountant) + Moliyaviy ko'rsatkichlar 🟡 (NEW, v1.73 — Phases 1–3 of 4 applied, v1.75)
+## 6.5 Role: BUXGALTER (accountant) + Moliyaviy ko'rsatkichlar 🟢 (NEW, v1.73 — all 4 phases applied, v1.76)
 Accounting module, built in four phases (see docs/decisions/0249 for the brief, owner decisions and the schema).
 - **Buxgalter** (new `user_role` value) — sole writer of the accounting tables; sees only *Buxgalteriya* (input: Xarajat, Tushum, Balans to'ldirish, Doimiy xarajatlar, Kutilayotgan, Oyni yopish, Tarix) and *Moliyaviy ko'rsatkichlar*. Routes `/buxgalter/kirim/*`, `/buxgalter/moliya`.
 - **Rahbar / Menejer** — read-only *Moliyaviy ko'rsatkichlar* (`/rahbar/moliya`, `/menejer/moliya`); no write on any accounting table (§2.12 unchanged: monthly rates are set by the owner via admin SQL, not by a Rahbar write path).
@@ -912,6 +912,7 @@ Accounting module, built in four phases (see docs/decisions/0249 for the brief, 
 - Auto-posted recurring / upcoming entries arrive `pending` and count only once the accountant confirms them.
 - **Phase 2 (v1.74):** input screens Xarajat, Tushum (expected = Moyka output kg × moyka rate, no receivables), Balans to'ldirish, Doimiy xarajatlar, Tarix (read-only copy for Rahbar/Menejer). Daily `pg_cron` job posts due recurring expenses as `pending` (docs/decisions/0250).
 - **Phase 3 (v1.75):** *Kutilayotgan* — future obligations; on the due date the daily job posts each as a `pending` expense; confirming it marks the obligation paid, voiding it marks it skipped, and a monthly/quarterly/yearly obligation rolls on to its next occurrence. *Oyni yopish* — 🔒 **the checklist is one DB function, `period_close_blockers(month)`**, used by the screen and enforced by a trigger on `period_close_events`. A close is refused while there are missing recurring entries, unconfirmed auto-posts, no Global Export cash-in, or uncategorized expenses; open obligations are shown but don't block. The current or a future month can't be closed. ~~Rezka gate~~ cut by the owner (2026-11-22). Reopen needs a reason. *Davr tarixi* modal (from Oyni yopish and Tarix): close/reopen events plus edits, voids, confirms and skips from `audit_log`, which the finance roles can now read for the finance tables only (docs/decisions/0251).
+- **Phase 4 (v1.76):** *Moliyaviy ko'rsatkichlar* Overview (period picker, tiles, 6-month chart, xarajatlar tarkibi, balanslar, kutilayotgan + zahira, next-month forecast) and *CategoryDetail*. 🔒 **Daromad = Moyka output kg × that month's moyka rate (+ non-Moyka cash-ins); a month with no rate falls back to its cash-ins.** This one definition (`src/lib/financeMetrics.ts`) is shared by Overview, CategoryDetail and Oyni yopish. Zahira = pending obligations only; the forecast uses the current month's pace (owner, 2026-11-23). See docs/decisions/0252.
 
 ## 7. Open questions ❓
 1. ~~Owner role~~ — 🔒 **RESOLVED: designed as Rahbar** (§6).
@@ -963,6 +964,7 @@ Accounting module, built in four phases (see docs/decisions/0249 for the brief, 
 ## 9. Changelog
 | Version | Date | Change |
 |---|---|---|
+| 1.76 | 2026-11-23 | 🔒 **Buxgalteriya Phase 4 (§6.5).** Moliyaviy ko'rsatkichlar Overview + CategoryDetail; shared period figures (`financeMetrics.ts`); Oyni yopish Daromad switched to the same accrual definition. No migration. See `docs/decisions/0252`. |
 | 1.75 | 2026-11-22 | 🔒 **Buxgalteriya Phase 3 (§6.5).** Kutilayotgan (obligations auto-post + roll-forward), Oyni yopish (DB-enforced checklist `period_close_blockers`, reopen with reason), Davr tarixi audit modal; `audit_log` finance-table read for Buxgalter/Rahbar/Menejer. Migration `0167`. See `docs/decisions/0251`. |
 | 1.74 | 2026-11-22 | 🔒 **Buxgalteriya Phase 2 (§6.5).** Input screens Xarajat / Tushum / Balans to'ldirish / Doimiy xarajatlar / Tarix; inline combo creation; edit + void with audit_log; recurring auto-post job (`0166`, pg_cron 05:05 Tashkent, pending until confirmed). See `docs/decisions/0250`. |
 | 1.73 | 2026-11-22 | 🔒 **Buxgalteriya Phase 1 — new §6.5.** New `buxgalter` role (`0164`); accounting schema, RLS, seed (4 accounts, Global Export customer, Nov 2026 rates moyka 7,468.75 / rezka 4,133.93), closed-period freeze trigger, append-only `period_close_events`, private `buxgalteriya-files` bucket (`0165`). Routes `/buxgalter/*` + `moliya` under rahbar/menejer; pure date-based balance calculator. Owner's "egasi" mapped to `rahbar` (§2.10). See `docs/decisions/0249`. |

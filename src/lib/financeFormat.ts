@@ -103,6 +103,8 @@ export interface AccountCardData {
   balance: number
   /** average monthly spend from this account (for the "~2.3 oy" hint); 0 = unknown */
   avgMonthlySpend?: number
+  /** balance at the end of last month, when known */
+  prevMonthBalance?: number
 }
 
 /** "~2.3 oy", with low = under ~1.5 months of cover. */

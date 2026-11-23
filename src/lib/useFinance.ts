@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import { run, callRpc } from './rpc'
 import { queryClient, queryKeys } from './queryClient'
@@ -227,35 +227,53 @@ export function useRecurring() {
  * Hisobot engine (report_totals, MOYKADAN direction), not a new calculation
  * (brief: "pull monthly_kg from existing Hisobot data, don't duplicate").
  */
+async function fetchMoykaKg(ownerId: string, month: string, signal: AbortSignal): Promise<number> {
+  const rows = await callRpc<{ total_kg_from_moyka: number | string }[]>(
+    'report_totals',
+    {
+      p_directions: ['moyka_output'],
+      p_from: month,
+      p_to: monthEnd(month),
+      p_owner_id: ownerId,
+      p_type_id: null,
+      p_calibre_id: null,
+      p_serial: null,
+      p_barcode2: null,
+      p_plate: null,
+      p_driver: null,
+      p_wash_cycle: null,
+      p_lab_verdict: null,
+      p_status: null,
+      p_partiya_no: null,
+    },
+    signal,
+  )
+  return Number(rows?.[0]?.total_kg_from_moyka ?? 0)
+}
+
 export function useMoykaOutputKg(ownerId: string | null, month: string) {
   const { data, isPending } = useQuery({
     queryKey: queryKeys.finMoykaKg(ownerId ?? '', month),
     enabled: !!ownerId,
-    queryFn: async ({ signal }) => {
-      const rows = await callRpc<{ total_kg_from_moyka: number | string }[]>(
-        'report_totals',
-        {
-          p_directions: ['moyka_output'],
-          p_from: month,
-          p_to: monthEnd(month),
-          p_owner_id: ownerId,
-          p_type_id: null,
-          p_calibre_id: null,
-          p_serial: null,
-          p_barcode2: null,
-          p_plate: null,
-          p_driver: null,
-          p_wash_cycle: null,
-          p_lab_verdict: null,
-          p_status: null,
-          p_partiya_no: null,
-        },
-        signal,
-      )
-      return Number(rows?.[0]?.total_kg_from_moyka ?? 0)
-    },
+    queryFn: ({ signal }) => fetchMoykaKg(ownerId!, month, signal),
   })
   return { kg: data ?? null, loading: !!ownerId && isPending }
+}
+
+/** Moyka output kg for several months (same cache entries as useMoykaOutputKg). month → kg; a month still loading is absent. */
+export function useMoykaKgSeries(ownerId: string | null, months: string[]) {
+  const results = useQueries({
+    queries: months.map((month) => ({
+      queryKey: queryKeys.finMoykaKg(ownerId ?? '', month),
+      enabled: !!ownerId,
+      queryFn: ({ signal }: { signal: AbortSignal }) => fetchMoykaKg(ownerId!, month, signal),
+    })),
+  })
+  const kg = new Map<string, number>()
+  results.forEach((r, i) => {
+    if (r.data !== undefined) kg.set(months[i], r.data)
+  })
+  return { kg, loading: !!ownerId && results.some((r) => r.isPending) }
 }
 
 export type Recurrence = 'monthly' | 'quarterly' | 'yearly' | 'one_off'

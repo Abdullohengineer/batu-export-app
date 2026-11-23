@@ -21,6 +21,13 @@ export interface AccountRow {
 
 export interface AccountWithBalance extends AccountRow {
   balance: number
+  /** balance at the end of last month (Moliya: "+6% o'tgan oyga") */
+  prevMonthBalance: number
+}
+
+function lastDayOfPreviousMonth(date: string): string {
+  const [y, m] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, 0)).toISOString().slice(0, 10)
 }
 
 export function useAccountBalances() {
@@ -61,7 +68,14 @@ export function useAccountBalances() {
         },
         asOf,
       )
-      return accountRows.map((a) => ({ ...a, balance: balances.get(a.id) ?? 0 }))
+      const input = {
+        accountIds: accountRows.map((a) => a.id),
+        cashIns: (cashIns as BalanceCashIn[] | null) ?? [],
+        transfers: (transfers as BalanceTransfer[] | null) ?? [],
+        expenses: (expenses as BalanceExpense[] | null) ?? [],
+      }
+      const prev = computeAccountBalances(input, lastDayOfPreviousMonth(asOf))
+      return accountRows.map((a) => ({ ...a, balance: balances.get(a.id) ?? 0, prevMonthBalance: prev.get(a.id) ?? 0 }))
     },
   })
   return { accounts: data ?? [], loading: isPending, error: error ? error.message : null }

@@ -7,6 +7,7 @@ import { RahbarLayout } from './pages/rahbar/RahbarLayout'
 import { BuxgalterLayout } from './pages/buxgalter/BuxgalterLayout'
 import { BuxgalteriyaTabsLayout } from './pages/buxgalter/BuxgalteriyaTabsLayout'
 import { MoliyaHome } from './pages/moliya/MoliyaHome'
+import { CategoryDetail } from './pages/moliya/CategoryDetail'
 import { XarajatPage } from './pages/buxgalter/XarajatPage'
 import { TushumPage } from './pages/buxgalter/TushumPage'
 import { BalansPage } from './pages/buxgalter/BalansPage'
@@ -88,6 +89,7 @@ function AppRoutes() {
         <Route path="qoldiq" element={<StockOnHandTab />} />
         <Route path="mijoz-hisoboti" element={<ClientReportTab />} />
         <Route path="moliya" element={<MoliyaHome />} />
+        <Route path="moliya/kategoriya/:categoryId" element={<CategoryDetail />} />
         <Route path="moliya/tarix" element={<TarixPage />} />
       </Route>
 
@@ -112,6 +114,7 @@ function AppRoutes() {
         <Route path="sozlamalar" element={<MenejerSettingsTab />} />
         <Route path="foydalanuvchilar" element={<UsersAdminPage />} />
         <Route path="moliya" element={<MoliyaHome />} />
+        <Route path="moliya/kategoriya/:categoryId" element={<CategoryDetail />} />
         <Route path="moliya/tarix" element={<TarixPage />} />
       </Route>
 
@@ -136,6 +139,7 @@ function AppRoutes() {
           <Route path="tarix" element={<TarixPage />} />
         </Route>
         <Route path="moliya" element={<MoliyaHome />} />
+        <Route path="moliya/kategoriya/:categoryId" element={<CategoryDetail />} />
       </Route>
       <Route
         path="/qorovul"

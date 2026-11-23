@@ -8,7 +8,9 @@ import {
   useCloseBlockers,
   useCounterparties,
   useExpenses,
+  useMoykaKgSeries,
   useMoykaOutputKg,
+  useMonthlyRates,
   usePeriodEvents,
   usePeriodStatuses,
   type CashInRow,
@@ -16,6 +18,7 @@ import {
   type ExpenseRow,
 } from '../../lib/useFinance'
 import { useProfileNames } from '../../lib/useProfileNames'
+import { periodExpenses, periodIncome } from '../../lib/financeMetrics'
 import { addMonths, dayLabel, daysBetween, formatSom, formatSomShort, monthEnd, monthLabel, monthOf } from '../../lib/financeFormat'
 import { PeriodAuditModal } from '../../components/finance/PeriodAuditModal'
 import { Button } from '../../components/ui/Button'
@@ -38,11 +41,14 @@ interface Totals {
   recurringSum: number
 }
 
-function totalsFor(month: string, expenses: ExpenseRow[], cashIns: CashInRow[]): Totals {
-  const ex = expenses.filter((e) => e.period_month === month && e.status === 'confirmed')
+// Daromad is the shared definition (financeMetrics.periodIncome, decision
+// 0252): Moyka kg × moyka rate (+ non-Moyka cash-ins), or the cash-ins when
+// the month has no rate -- the same number Moliyaviy ko'rsatkichlar shows.
+function totalsFor(month: string, expenses: ExpenseRow[], cashIns: CashInRow[], kg: number | null, rate: number | undefined): Totals {
+  const ex = periodExpenses(month, expenses)
   const rec = ex.filter((e) => e.recurring_expense_id)
   return {
-    income: cashIns.filter((c) => c.period_month === month).reduce((s, c) => s + c.amount, 0),
+    income: periodIncome(month, kg, rate, cashIns).income,
     expense: ex.reduce((s, e) => s + e.amount, 0),
     recurringCount: rec.length,
     recurringSum: rec.reduce((s, e) => s + e.amount, 0),
@@ -87,6 +93,9 @@ export function OyniYopishPage() {
   }, [expenses, cashIns, statuses, currentMonth])
 
   const closedMonths = useMemo(() => [...statuses].filter(([, st]) => st === 'closed').map(([m]) => m).sort().reverse(), [statuses])
+  const rates = useMonthlyRates()
+  const { kg: kgByMonth } = useMoykaKgSeries(ownerId, [...openMonths, ...closedMonths, currentMonth])
+  const tot = (m: string) => totalsFor(m, expenses, cashIns, kgByMonth.get(m) ?? null, rates.get(`${m}:moyka`))
 
   async function doReopen() {
     if (!reopening) return
@@ -102,7 +111,7 @@ export function OyniYopishPage() {
     }
   }
 
-  const cur = totalsFor(currentMonth, expenses, cashIns)
+  const cur = tot(currentMonth)
   const daysLeft = daysBetween(today, monthEnd(currentMonth))
 
   return (
@@ -122,7 +131,7 @@ export function OyniYopishPage() {
             key={m}
             month={m}
             reopened={statuses.get(m) === 'reopened'}
-            totals={totalsFor(m, expenses, cashIns)}
+            totals={tot(m)}
             ownerId={ownerId}
             onAudit={() => setAuditMonth(m)}
           />
@@ -159,7 +168,7 @@ export function OyniYopishPage() {
             </thead>
             <tbody>
               {closedMonths.map((m) => {
-                const t = totalsFor(m, expenses, cashIns)
+                const t = tot(m)
                 const ev = events.find((e) => e.period_month === m && e.action === 'close')
                 const isReopening = reopening?.month === m
                 return (

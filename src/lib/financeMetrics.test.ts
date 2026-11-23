@@ -13,11 +13,11 @@ const ex = (amount: number, period_month: string, status: 'pending' | 'confirmed
   status,
 })
 
-test('periodIncome: kg × rate plus non-moyka cash-ins; falls back to cash without a rate', () => {
+test('periodIncome = entered tushum only; null when none', () => {
   const rows = [ci(45_000_000, '2026-11-01'), ci(2_000_000, '2026-11-01', 'rezka'), ci(9, '2026-10-01')]
-  assert.deepEqual(periodIncome('2026-11-01', 12_500, 3_864, rows), { income: 48_300_000 + 2_000_000, basis: 'rate' })
-  assert.deepEqual(periodIncome('2026-11-01', null, undefined, rows), { income: 47_000_000, basis: 'cash' })
-  assert.deepEqual(periodIncome('2026-11-01', 74_530, 7_468.75, []), { income: 556_645_938, basis: 'rate' })
+  assert.equal(periodIncome('2026-11-01', rows), 47_000_000)
+  assert.equal(periodIncome('2026-10-01', rows), 9)
+  assert.equal(periodIncome('2026-12-01', rows), null)
 })
 
 test('periodExpenses counts confirmed only, in the period', () => {

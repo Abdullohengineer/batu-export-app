@@ -123,3 +123,36 @@ the November rates: moyka 7,468.75 and rezka 4,133.93 so'm/kg. Added via
 admin SQL, like November; `set_by` is "Abdulloh (via admin, 2026-11-23)".
 Those months' Daromad now follows the accrual definition (kg × rate), no
 longer the cash fallback.
+
+## Owner corrections, 2026-11-23 (same PR)
+
+1. **Daromad and sof foyda count only entered tushum.** Production × rate
+   no longer counts as earnings, so the accrual definition above (the
+   "Daromad" bullet and the "Rates for Aug–Oct" note) is **superseded**.
+   - `periodIncome(month, cashIns)` returns the period's entered cash-ins,
+     all services, or **null when none is entered**.
+   - With null, the Overview tile shows sof foyda as "—" with "Sof foyda …
+     tushum kiritilgach hisoblanadi" and "Tushum: kiritilmagan".
+   - The chart series is renamed **Tushum**; a month with nothing entered
+     has no bar and shows "—".
+   - Oyni yopish shows Daromad "kiritilmagan" and Sof foyda "—" in that
+     case, and its "⚠ … sof foyda ~" line is hidden.
+   - The Aug–Oct rates stay in place: Tushum's expected amount and the
+     forecast use them.
+2. **The forecast is for the current month (the one still in progress),**
+   not the next one: "Joriy oy prognozi · Noyabr 2026".
+   - Moyka kg and confirmed expenses so far are projected to the end of the
+     month; expected income is projected kg × the latest moyka rate.
+   - The three figures are labelled "Kutilgan tushum", "Xarajat" and
+     "Taxminiy natija", with "taxmin, haqiqiy daromad emas". That way "sof
+     foyda" never appears on a production-based number.
+
+### Re-verification
+- **Unit tests:** 107/107 (`periodIncome` test rewritten).
+- **UI suites** (fake backend, 390×844): Phase 4 31/31, Phase 3 36/36.
+  These also confirm the earlier ≈0% and active-month-average fixes. The
+  seeded November has no tushum. Results:
+  - sof foyda shows "—", with no 556,645,938 / 558.65M anywhere;
+  - October: tushum 47.6M − xarajat 29.4M = +18,200,000;
+  - Oyni yopish shows October Daromad 47.6M;
+  - the forecast reads "Joriy oy prognozi · Noyabr 2026".

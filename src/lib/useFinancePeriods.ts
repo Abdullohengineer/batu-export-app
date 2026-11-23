@@ -29,10 +29,11 @@ export function usePeriodParam(): [string, (m: string) => void, string] {
 
 export interface PeriodFigures {
   month: string
-  income: number
-  incomeBasis: 'rate' | 'cash'
+  /** entered tushum for the period; null = none entered yet */
+  income: number | null
   expense: number
-  profit: number
+  /** null until tushum is entered */
+  profit: number | null
   kg: number | null
   costPerKg: number | null
   rate: number | undefined
@@ -58,9 +59,9 @@ export function useFinancePeriods(month: string) {
     for (const m of kgMonths) {
       const k = kg.has(m) ? kg.get(m)! : null
       const rate = rates.get(`${m}:moyka`)
-      const inc = periodIncome(m, k, rate, cashIns)
+      const income = periodIncome(m, cashIns)
       const expense = sumAmount(periodExpenses(m, expenses))
-      out.set(m, { month: m, income: inc.income, incomeBasis: inc.basis, expense, profit: inc.income - expense, kg: k, costPerKg: costPerKg(expense, k), rate })
+      out.set(m, { month: m, income, expense, profit: income === null ? null : income - expense, kg: k, costPerKg: costPerKg(expense, k), rate })
     }
     return out
   }, [kgMonths, kg, rates, cashIns, expenses])

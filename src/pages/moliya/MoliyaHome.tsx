@@ -29,7 +29,7 @@ import { StatusNote } from '../../components/ui/StatusNote'
 
 type ChartTab = 'both' | 'expense' | 'cost' | 'profit' | 'types'
 const TABS: { key: ChartTab; label: string }[] = [
-  { key: 'both', label: 'Daromad va xarajat' },
+  { key: 'both', label: 'Tushum va xarajat' },
   { key: 'expense', label: 'Faqat xarajatlar' },
   { key: 'cost', label: '1 kg tannarxi' },
   { key: 'profit', label: 'Sof foyda' },
@@ -93,7 +93,7 @@ export function MoliyaHome() {
   const series: BarSeries[] =
     tab === 'both'
       ? [
-          { label: 'Daromad', slot: 0, values: months.map((m) => val(m, 'income')) },
+          { label: 'Tushum', slot: 0, values: months.map((m) => val(m, 'income')) },
           { label: 'Xarajat', slot: 1, values: months.map((m) => val(m, 'expense')) },
         ]
       : tab === 'expense'
@@ -112,7 +112,7 @@ export function MoliyaHome() {
   const today = todayInTashkent()
   const obligationTotal = sumAmount(obligations.map((o) => ({ amount: o.estimated_amount })))
 
-  // ---- forecast at the current month's pace (owner, 2026-11-23)
+  // ---- Joriy oy prognozi: the month in progress, projected to its end at its pace so far (owner, 2026-11-23)
   const { expenses: recent } = useExpenses(addMonths(current, -6))
   const { kg: kgNow } = useMoykaOutputKg(ownerId, current)
   const latestRate = useMemo(() => {
@@ -163,14 +163,15 @@ export function MoliyaHome() {
           }
         >
           <div className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-            {f ? `${f.profit > 0 ? '+' : f.profit < 0 ? '−' : ''}${formatSom(Math.abs(f.profit))}` : '—'} <span className="text-sm font-normal text-slate-500">so'm</span>
+            {f?.profit != null ? `${f.profit > 0 ? '+' : f.profit < 0 ? '−' : ''}${formatSom(Math.abs(f.profit))}` : '—'}{' '}
+            {f?.profit != null && <span className="text-sm font-normal text-slate-500">so'm</span>}
           </div>
           <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-600 dark:text-slate-300">
-            <span>Daromad: {f ? formatSomShort(f.income) : '—'}</span>
+            <span>Tushum: {f?.income != null ? formatSomShort(f.income) : 'kiritilmagan'}</span>
             <span>Xarajat: {f ? formatSomShort(f.expense) : '—'}</span>
           </div>
-          {f && f.incomeBasis === 'cash' && (
-            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{name} uchun Moyka stavkasi belgilanmagan — daromad tushumlar bo'yicha.</div>
+          {f && f.income === null && (
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Sof foyda {name} uchun tushum kiritilgach hisoblanadi.</div>
           )}
         </Tile>
         <Tile
@@ -361,17 +362,17 @@ export function MoliyaHome() {
 
           {/* ---------------- forecast */}
           <Card>
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">📈 Keyingi oy prognozi · {monthLabel(addMonths(current, 1))}</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">📈 Joriy oy prognozi · {monthLabel(current)}</div>
             {forecast ? (
               <>
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  Joriy sur'atda — {formatSom(forecast.kg)} kg/oy{forecast.rate ? `, stavka ${formatSom(forecast.rate)} so'm/kg` : ', stavka belgilanmagan'}
+                  Oy oxirigacha joriy sur'atda — {formatSom(forecast.kg)} kg{forecast.rate ? `, stavka ${formatSom(forecast.rate)} so'm/kg` : ', stavka belgilanmagan'}
                 </p>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                   {[
-                    ['Daromad', forecast.income],
+                    ['Kutilgan tushum', forecast.income],
                     ['Xarajat', forecast.expense],
-                    ['Sof foyda', forecast.profit],
+                    ['Taxminiy natija', forecast.profit],
                   ].map(([label, v]) => (
                     <div key={label as string} className="rounded-md bg-slate-50 px-2 py-2 dark:bg-slate-800/60">
                       <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
@@ -380,7 +381,7 @@ export function MoliyaHome() {
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  {monthLabel(current).split(' ')[0]}ning {day} kunlik ko'rsatkichi oy oxirigacha cho'zilgan; oy boshida taxmin kamroq aniq.
+                  {day} kunlik ishlab chiqarish va xarajat oy oxirigacha cho'zilgan — taxmin, haqiqiy daromad emas. Oy boshida kamroq aniq.
                 </p>
               </>
             ) : (

@@ -111,7 +111,7 @@ export function CategoryDetail() {
         </Tile>
         <Tile label="O'tgan oyga">
           {/* more spend than last month is the bad direction for an expense category */}
-          <span className={change === null || Math.round(change) === 0 ? 'text-[var(--text-primary)]' : change > 0 ? 'text-[var(--accent-warning)]' : 'text-[var(--accent-income)]'}>
+          <span className={change === null || Math.round(change) === 0 ? 'text-[var(--text-primary)]' : change > 0 ? 'text-[var(--accent-critical)]' : 'text-[var(--accent-income)]'}>
             {change === null ? '—' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(Math.round(change))}%`}
           </span>
           <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
@@ -229,9 +229,9 @@ export function CategoryDetail() {
         </div>
       </Panel>
 
-      <div className="rounded-[var(--radius)] border border-[rgb(244_167_95/0.3)] bg-[rgb(244_167_95/0.06)] px-5 py-4">
+      <div className="rounded-[var(--radius)] border border-[rgb(245_180_92/0.3)] bg-[rgb(245_180_92/0.06)] px-5 py-4">
         <p className="text-xs leading-5 text-[var(--text-secondary)]">
-          <span className="font-semibold text-[var(--accent-utility)]">ⓘ Diqqat:</span> "To'lov sanasi" va "Davr" boshqa-boshqa. To'lov keyingi oyda qilingan bo'lsa ham, "Davr" ustuni qaysi
+          <span className="font-semibold text-[var(--accent-warning)]">ⓘ Diqqat:</span> "To'lov sanasi" va "Davr" boshqa-boshqa. To'lov keyingi oyda qilingan bo'lsa ham, "Davr" ustuni qaysi
           oyga hisoblanishini aniqlaydi — hisobotlar shuni oladi, to'lov sanasini emas.
         </p>
       </div>

@@ -16,6 +16,8 @@ export interface BarSeries {
   label: string
   /** CSS colour, normally a finance accent var */
   color: string
+  /** bars below zero in this colour (sof foyda: negative = critical) */
+  negativeColor?: string
   values: (number | null)[]
 }
 
@@ -145,15 +147,31 @@ export function MonthBars({ title, months, monthLabels, series, variant = 'bars'
           <defs>
             {series.map((s, k) => (
               <linearGradient key={k} id={`${uid}-g${k}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={s.color} stopOpacity={line ? 0.35 : 1} />
+                <stop offset="0%" stopColor={s.color} stopOpacity={line ? 0.3 : 1} />
                 <stop offset="100%" stopColor={s.color} stopOpacity={line ? 0 : 0.4} />
               </linearGradient>
             ))}
+            {series.map((s, k) =>
+              s.negativeColor ? (
+                <linearGradient key={`n${k}`} id={`${uid}-n${k}`} x1="0" y1="1" x2="0" y2="0">
+                  <stop offset="0%" stopColor={s.negativeColor} stopOpacity={1} />
+                  <stop offset="100%" stopColor={s.negativeColor} stopOpacity={0.4} />
+                </linearGradient>
+              ) : null,
+            )}
           </defs>
           {ticks.map((t) => (
             <g key={t}>
-              <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke={t === 0 ? 'var(--border-strong)' : 'var(--border)'} strokeWidth={1} />
-              <text x={padL - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize={11} fill="var(--text-muted)">
+              <line
+                x1={padL}
+                x2={width - padR}
+                y1={y(t)}
+                y2={y(t)}
+                stroke={t === 0 ? 'var(--border-strong)' : 'var(--border)'}
+                strokeWidth={1}
+                strokeDasharray={t === 0 ? undefined : '2 4'}
+              />
+              <text x={padL - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize={11} fill="var(--text-secondary)">
                 {format(t)}
               </text>
             </g>
@@ -184,7 +202,7 @@ export function MonthBars({ title, months, monthLabels, series, variant = 'bars'
                     } else {
                       d = barPath(x0 + k * (barW + 4), barW, y(0), y(v))
                     }
-                    return <path key={s.label} d={d} fill={`url(#${uid}-g${k})`} />
+                    return <path key={s.label} d={d} fill={`url(#${uid}-${v < 0 && s.negativeColor ? 'n' : 'g'}${k})`} />
                   })}
                 </g>
               )
@@ -195,13 +213,19 @@ export function MonthBars({ title, months, monthLabels, series, variant = 'bars'
               {series.map((s, k) => (
                 <path key={`a${k}`} d={areaPath(s)} fill={`url(#${uid}-g${k})`} />
               ))}
-              <line x1={tipX} x2={tipX} y1={padT} y2={y(bottom)} stroke="var(--text-muted)" strokeWidth={1} strokeDasharray="3 4" />
+              <line x1={tipX} x2={tipX} y1={padT} y2={y(bottom)} stroke="var(--border-strong)" strokeWidth={1.5} strokeDasharray="4 4" />
               {series.map((s, k) => (
-                <path key={`l${k}`} d={linePath(s)} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                <path key={`l${k}`} d={linePath(s)} fill="none" stroke={s.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
               ))}
               {series.map((s, k) =>
                 pts(s).map((p, i) =>
-                  p ? <circle key={`p${k}-${i}`} cx={p[0]} cy={p[1]} r={i === shown ? 5 : 3.5} fill="var(--bg)" stroke={s.color} strokeWidth={2} /> : null,
+                  p ? (
+                    i === shown ? (
+                      <circle key={`p${k}-${i}`} cx={p[0]} cy={p[1]} r={6} fill={s.color} stroke="var(--surface)" strokeWidth={2} />
+                    ) : (
+                      <circle key={`p${k}-${i}`} cx={p[0]} cy={p[1]} r={4} fill="var(--surface)" stroke={s.color} strokeWidth={2} />
+                    )
+                  ) : null,
                 ),
               )}
             </>
@@ -215,12 +239,12 @@ export function MonthBars({ title, months, monthLabels, series, variant = 'bars'
                 textAnchor={line && i === 0 ? 'start' : line && i === months.length - 1 ? 'end' : 'middle'}
                 fontSize={11}
                 fontWeight={i === selectedIndex ? 700 : 400}
-                fill={i === selectedIndex ? 'var(--text-primary)' : 'var(--text-muted)'}
+                fill={i === selectedIndex ? 'var(--text-primary)' : 'var(--text-secondary)'}
               >
                 {xLabel(i)}
               </text>
               {showValuesUnderLabels && (
-                <text x={cxOf(i)} y={H - 7} textAnchor="middle" fontSize={10} fontWeight={i === selectedIndex ? 700 : 400} fill={i === selectedIndex ? 'var(--text-primary)' : 'var(--text-muted)'}>
+                <text x={cxOf(i)} y={H - 7} textAnchor="middle" fontSize={10} fontWeight={i === selectedIndex ? 700 : 400} fill={i === selectedIndex ? 'var(--text-primary)' : 'var(--text-secondary)'}>
                   {series[0].values[i] === null ? '' : format(series[0].values[i]!)}
                 </text>
               )}

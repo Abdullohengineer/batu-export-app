@@ -285,7 +285,7 @@ export function TarixPage() {
                   <span className="inline-flex items-center gap-3">
                     <RowIcon
                       name={r.kind === 'transfer' ? r.purpose : r.who === '—' ? r.purpose : r.who}
-                      color={r.kind === 'cash_in' ? 'var(--accent-income)' : r.kind === 'transfer' ? 'var(--accent-utility)' : colorFor(r.categoryId)}
+                      color={r.kind === 'cash_in' ? 'var(--accent-income)' : r.kind === 'transfer' ? 'var(--text-secondary)' : colorFor(r.categoryId)}
                     />
                     {r.who}
                   </span>

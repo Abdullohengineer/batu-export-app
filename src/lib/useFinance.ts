@@ -1,9 +1,8 @@
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import { run, callRpc } from './rpc'
 import { queryClient, queryKeys } from './queryClient'
 import { compressImage } from './imageCompress'
-import { monthEnd } from './financeFormat'
 
 // Buxgalteriya data layer (decisions 0249/0250). Reads are React Query hooks
 // under the 'fin' key prefix; writes are plain async functions that throw on
@@ -227,53 +226,43 @@ export function useRecurring() {
  * Hisobot engine (report_totals, MOYKADAN direction), not a new calculation
  * (brief: "pull monthly_kg from existing Hisobot data, don't duplicate").
  */
-async function fetchMoykaKg(ownerId: string, month: string, signal: AbortSignal): Promise<number> {
-  const rows = await callRpc<{ total_kg_from_moyka: number | string }[]>(
-    'report_totals',
-    {
-      p_directions: ['moyka_output'],
-      p_from: month,
-      p_to: monthEnd(month),
-      p_owner_id: ownerId,
-      p_type_id: null,
-      p_calibre_id: null,
-      p_serial: null,
-      p_barcode2: null,
-      p_plate: null,
-      p_driver: null,
-      p_wash_cycle: null,
-      p_lab_verdict: null,
-      p_status: null,
-      p_partiya_no: null,
-    },
+/**
+ * Moyka output kg per calendar month for one owner, `fromMonth`..`toMonth`,
+ * in ONE call (moyka_output_kg_by_month, migration 0170). Same number as the
+ * Hisobot engine's report_totals.total_kg_from_moyka for each month -- but
+ * without its per-serial bundles, which made ~7 parallel report_totals calls
+ * hit the statement timeout and left "1 kg tannarxi" blank (decision 0255).
+ */
+async function fetchMoykaKgRange(ownerId: string, fromMonth: string, toMonth: string, signal: AbortSignal): Promise<Record<string, number>> {
+  const rows = await callRpc<{ month: string; kg: number | string }[]>(
+    'moyka_output_kg_by_month',
+    { p_owner_id: ownerId, p_from_month: fromMonth, p_to_month: toMonth },
     signal,
   )
-  return Number(rows?.[0]?.total_kg_from_moyka ?? 0)
+  return Object.fromEntries((rows ?? []).map((r) => [r.month, Number(r.kg)]))
 }
 
 export function useMoykaOutputKg(ownerId: string | null, month: string) {
   const { data, isPending } = useQuery({
-    queryKey: queryKeys.finMoykaKg(ownerId ?? '', month),
+    queryKey: queryKeys.finMoykaKg(ownerId ?? '', month, month),
     enabled: !!ownerId,
-    queryFn: ({ signal }) => fetchMoykaKg(ownerId!, month, signal),
+    queryFn: ({ signal }) => fetchMoykaKgRange(ownerId!, month, month, signal),
   })
-  return { kg: data ?? null, loading: !!ownerId && isPending }
+  return { kg: data ? (data[month] ?? 0) : null, loading: !!ownerId && isPending }
 }
 
-/** Moyka output kg for several months (same cache entries as useMoykaOutputKg). month → kg; a month still loading is absent. */
+/** Moyka output kg for a run of months, one request. month → kg; empty while loading. */
 export function useMoykaKgSeries(ownerId: string | null, months: string[]) {
-  const results = useQueries({
-    queries: months.map((month) => ({
-      queryKey: queryKeys.finMoykaKg(ownerId ?? '', month),
-      enabled: !!ownerId,
-      queryFn: ({ signal }: { signal: AbortSignal }) => fetchMoykaKg(ownerId!, month, signal),
-    })),
+  const from = months.reduce((a, b) => (a < b ? a : b), months[0] ?? '')
+  const to = months.reduce((a, b) => (a > b ? a : b), months[0] ?? '')
+  const { data, isPending } = useQuery({
+    queryKey: queryKeys.finMoykaKg(ownerId ?? '', from, to),
+    enabled: !!ownerId && months.length > 0,
+    queryFn: ({ signal }) => fetchMoykaKgRange(ownerId!, from, to, signal),
   })
   const kg = new Map<string, number>()
-  results.forEach((r, i) => {
-    if (r.data !== undefined) kg.set(months[i], r.data)
-  })
-  return { kg, loading: !!ownerId && results.some((r) => r.isPending) }
+  for (const m of months) if (data) kg.set(m, data[m] ?? 0)
+  return { kg, loading: !!ownerId && isPending }
 }
 
 export type Recurrence = 'monthly' | 'quarterly' | 'yearly' | 'one_off'

@@ -964,6 +964,7 @@ Accounting module, built in four phases (see docs/decisions/0249 for the brief, 
 ## 9. Changelog
 | Version | Date | Change |
 |---|---|---|
+| 1.79 | 2026-11-25 | **Fix: 1 kg tannarxi blank (§6.5).** Moyka output kg is now fetched in one light call per range, `moyka_output_kg_by_month` (`0170`), giving the same number as `report_totals`. The finance screens no longer fire ~7 parallel `report_totals` calls that hit the statement timeout. See `docs/decisions/0255`. |
 | 1.78 | 2026-11-25 | **Finance history import (§6.5).** New account kind `external` (inactive; opening balances and non-P&L money move as transfers) and `import_batch` on entries (`0169`). Aug–Oct 2026 imported from the owner's template; bank, gaz and elektr balances reconcile with the statements at every month end. See `docs/decisions/0254`. |
 | 1.77 | 2026-11-23 | **Tarix row actions (§6.5).** The accountant's Tarix gets ✎ Tahrirlash (in-place edit of expenses, cash-ins and transfers, audited) and 🗑 O'chirish (= void with a reason, never DELETE). Closed periods show 🔒; the Rahbar/Menejer copies stay read-only. Supersedes 0250's "cash-ins/transfers: void + re-entry only". See `docs/decisions/0253`. |
 | 1.76 | 2026-11-23 | 🔒 **Buxgalteriya Phase 4 (§6.5).** Moliyaviy ko'rsatkichlar Overview + CategoryDetail; shared period figures (`financeMetrics.ts`). Daromad and sof foyda = entered tushum only, "—" until entered; the forecast covers the current month; Oyni yopish uses the same definition. Aug–Oct 2026 rates = November (`0168`). No migration. See `docs/decisions/0252`. |

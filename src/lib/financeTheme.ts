@@ -3,7 +3,7 @@
 // under [data-theme="dark-finance"] in src/index.css.
 
 /** Slice / bar / icon colours, in the brief's order: expense, income, utility, warning, then greys. */
-export const FIN_PALETTE = ['var(--accent-expense)', 'var(--accent-income)', 'var(--accent-utility)', 'var(--accent-warning)', '#5c5f6b', '#3a3d4a']
+export const FIN_PALETTE = ['var(--accent-expense)', 'var(--accent-income)', 'var(--accent-warning)', 'var(--accent-critical)', 'var(--text-muted)', 'var(--border-strong)']
 
 /** A stable palette colour for an id (category icons in entry rows). */
 export function colorFor(id: string | null | undefined): string {
@@ -22,5 +22,5 @@ export function initials(name: string): string {
 /** Semantic colour for a signed number: negative pink, positive teal, zero/neutral primary. */
 export function signClass(v: number | null | undefined): string {
   if (v == null || v === 0) return 'text-[var(--text-primary)]'
-  return v < 0 ? 'text-[var(--accent-warning)]' : 'text-[var(--accent-income)]'
+  return v < 0 ? 'text-[var(--accent-critical)]' : 'text-[var(--accent-income)]'
 }

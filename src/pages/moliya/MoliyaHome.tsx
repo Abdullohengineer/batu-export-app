@@ -45,7 +45,7 @@ function Delta({ pct, goodWhenUp }: { pct: number | null; goodWhenUp: boolean })
   if (Math.round(pct) === 0) return <Pill tone="neutral">≈0% o'tgan oyga</Pill>
   const good = pct > 0 === goodWhenUp
   return (
-    <Pill tone={good ? 'done' : 'warning'}>
+    <Pill tone={good ? 'done' : 'critical'}>
       {pct > 0 ? '+' : '−'}
       {Math.abs(Math.round(pct))}% o'tgan oyga
     </Pill>
@@ -102,9 +102,9 @@ export function MoliyaHome() {
       : tab === 'expense'
         ? [{ label: 'Xarajat', color: 'var(--accent-expense)', values: months.map((m) => val(m, 'expense')) }]
         : tab === 'cost'
-          ? [{ label: '1 kg tannarxi', color: 'var(--accent-utility)', values: months.map((m) => val(m, 'costPerKg')) }]
+          ? [{ label: '1 kg tannarxi', color: 'var(--accent-expense)', values: months.map((m) => val(m, 'costPerKg')) }]
           : tab === 'profit'
-            ? [{ label: 'Sof foyda', color: 'var(--accent-income)', values: months.map((m) => val(m, 'profit')) }]
+            ? [{ label: 'Sof foyda', color: 'var(--accent-income)', negativeColor: 'var(--accent-critical)', values: months.map((m) => val(m, 'profit')) }]
             : TYPE_ORDER.map((t, i) => ({
                 label: EXPENSE_TYPE_LABEL[t],
                 color: FIN_PALETTE[i],
@@ -222,7 +222,7 @@ export function MoliyaHome() {
         <Panel>
           <div className="flex items-baseline justify-between">
             <h2 className={h2}>Xarajatlar tarkibi · {monthLabelShort(month)}</h2>
-            <Link to={tarixHref} className="text-xs font-medium text-[var(--accent-expense)] hover:underline">
+            <Link to={tarixHref} className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline">
               Batafsil tarix ›
             </Link>
           </div>
@@ -277,9 +277,10 @@ export function MoliyaHome() {
               {accounts.map((a) => {
                 const hint = coverageHint(a)
                 const runway = a.kind === 'utility' && a.avgMonthlySpend ? Math.max(0, a.balance) / a.avgMonthlySpend : null
-                const runwayColor = runway === null ? '' : runway >= 3 ? 'var(--accent-success)' : runway >= 1 ? 'var(--accent-utility)' : 'var(--accent-warning)'
+                const runwayColor = runway === null ? '' : runway >= 3 ? 'var(--accent-income)' : runway >= 1 ? 'var(--accent-warning)' : 'var(--accent-critical)'
                 const pct = a.kind === 'bank' ? pctChange(a.balance, a.prevMonthBalance ?? null) : null
-                const dot = a.kind === 'bank' ? 'var(--accent-expense)' : a.kind === 'kassa' ? 'var(--accent-utility)' : runwayColor || 'var(--accent-utility)'
+                // utility prepay balances are always the warning accent; bank / kassa carry no accent meaning
+                const dot = a.kind === 'utility' ? 'var(--accent-warning)' : 'var(--text-secondary)'
                 return (
                   <div key={a.id} className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] px-3.5 py-3">
                     <div className="flex items-center justify-between gap-2">
@@ -296,7 +297,7 @@ export function MoliyaHome() {
                         </span>
                       )}
                     </div>
-                    <div className={`mt-1.5 text-lg font-semibold tabular-nums ${a.balance < 0 ? 'text-[var(--accent-warning)]' : 'text-[var(--text-primary)]'}`}>
+                    <div className={`mt-1.5 text-lg font-semibold tabular-nums ${a.balance < 0 ? 'text-[var(--accent-critical)]' : 'text-[var(--text-primary)]'}`}>
                       {formatCompact(a.balance)} <span className="text-xs font-normal text-[var(--text-muted)]">so'm</span>
                     </div>
                     {runway !== null ? (
@@ -319,7 +320,7 @@ export function MoliyaHome() {
             <div className="flex items-baseline justify-between">
               <h2 className={h2}>Kutilayotgan majburiyatlar</h2>
               {isBux && (
-                <Link to="/buxgalter/kirim/kutilayotgan" className="text-xs font-medium text-[var(--accent-income)] hover:underline">
+                <Link to="/buxgalter/kirim/kutilayotgan" className="text-xs font-medium text-[var(--text-primary)] hover:underline">
                   + Qo'shish
                 </Link>
               )}
@@ -333,7 +334,7 @@ export function MoliyaHome() {
                   <li key={o.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-0.5 rounded-[10px] bg-[var(--bg)] px-3 py-2.5">
                     <span className="truncate text-sm font-medium text-[var(--text-primary)]">{o.name}</span>
                     <span className="text-right text-sm font-semibold tabular-nums text-[var(--text-primary)]">~{formatCompact(o.estimated_amount)}</span>
-                    <span className={`text-[11px] ${days < 0 ? 'text-[var(--accent-warning)]' : 'text-[var(--text-muted)]'}`}>
+                    <span className={`text-[11px] ${days < 0 ? 'text-[var(--accent-critical)]' : 'text-[var(--text-muted)]'}`}>
                       {dayLabel(o.due_date)}
                       {o.due_date.slice(0, 4) !== today.slice(0, 4) ? ` ${o.due_date.slice(0, 4)}` : ''} · {days < 0 ? `${-days} kun o'tdi` : days === 0 ? 'bugun' : `${days} kun qoldi`}
                     </span>
@@ -343,7 +344,7 @@ export function MoliyaHome() {
               })}
             </ul>
             {obligations.length > 0 && (
-              <div className="mt-3 rounded-[10px] border border-[rgb(79_211_196/0.3)] bg-[rgb(79_211_196/0.08)] px-3.5 py-3">
+              <div className="mt-3 rounded-[10px] border border-[rgb(45_212_191/0.3)] bg-[rgb(45_212_191/0.08)] px-3.5 py-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.8px] text-[var(--accent-income)]">Zahira tavsiyasi</div>
                 <p className="mt-1 text-sm text-[var(--text-primary)]">
                   Hisobingizda kamida <span className="font-semibold tabular-nums text-[var(--accent-income)]">{formatSom(obligationTotal)} so'm</span> turishi kerak.
@@ -353,7 +354,7 @@ export function MoliyaHome() {
                   {cashTotal >= obligationTotal ? (
                     <span className="font-medium text-[var(--accent-income)]">yetarli ✓</span>
                   ) : (
-                    <span className="font-medium text-[var(--accent-warning)]">{formatCompact(obligationTotal - cashTotal)} yetishmaydi ⚠</span>
+                    <span className="font-medium text-[var(--accent-critical)]">{formatCompact(obligationTotal - cashTotal)} yetishmaydi ⚠</span>
                   )}
                 </p>
               </div>

@@ -46,15 +46,15 @@ export function Panel({ children, className = '' }: { children: ReactNode; class
   return <section className={`rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6 ${className}`}>{children}</section>
 }
 
-export type PillTone = 'open' | 'done' | 'warning' | 'neutral'
+export type PillTone = 'open' | 'done' | 'critical' | 'neutral'
 const PILL: Record<PillTone, string> = {
-  open: 'bg-[rgb(244_167_95/0.12)] text-[var(--accent-utility)]',
-  done: 'bg-[rgb(79_211_196/0.12)] text-[var(--accent-income)]',
-  warning: 'bg-[rgb(244_127_181/0.12)] text-[var(--accent-warning)]',
+  open: 'bg-[rgb(245_180_92/0.12)] text-[var(--accent-warning)]',
+  done: 'bg-[rgb(45_212_191/0.12)] text-[var(--accent-income)]',
+  critical: 'bg-[rgb(251_113_133/0.12)] text-[var(--accent-critical)]',
   neutral: 'bg-[var(--surface-elev)] text-[var(--text-secondary)]',
 }
 
-/** Status pill: ochiq (orange), tugallangan (teal), warning (pink). */
+/** Status pill: ochiq (warning orange), tugallangan (income teal), critical (pink). */
 export function Pill({ tone, children }: { tone: PillTone; children: ReactNode }) {
   return <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-medium ${PILL[tone]}`}>{children}</span>
 }

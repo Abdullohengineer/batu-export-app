@@ -5,22 +5,18 @@ import { EXPENSE_TYPE_LABEL, useCategories, useCounterparties } from '../../lib/
 import { useAccountBalances } from '../../lib/useAccountBalances'
 import { useFinancePeriods, usePeriodParam, CHART_MONTHS } from '../../lib/useFinancePeriods'
 import { groupSum, pctChange, periodExpenses, sumAmount } from '../../lib/financeMetrics'
-import { addMonths, dayLabel, formatSom, formatSomShort, monthLabel, monthLabelShort } from '../../lib/financeFormat'
+import { addMonths, dayLabel, formatCompact, formatSom, monthLabel, monthLabelShort } from '../../lib/financeFormat'
 import { toExcelDate, EXCEL_DATE_FORMAT } from '../../lib/formatDate'
 import { MonthBars } from '../../components/finance/MonthBars'
 import { PeriodPicker } from '../../components/finance/PeriodPicker'
-import { Card } from '../../components/ui/Card'
+import { Panel, RowIcon, Tile } from '../../components/finance/FinanceUI'
+import { FIN_PALETTE, colorFor } from '../../lib/financeTheme'
 import { StatusNote } from '../../components/ui/StatusNote'
 
 // Moliyaviy ko'rsatkichlar → one expense category (mockup artboard
 // "CategoryDetail", decision 0252): period total, 6-month average, change,
 // share; 6-month trend; receivers; every entry of the period. `none` =
 // uncategorized expenses. Confirmed entries only, grouped by period_month.
-
-function initials(name: string): string {
-  const w = name.replace(/["«»]/g, '').trim().split(/\s+/)
-  return ((w[0]?.[0] ?? '') + (w[1]?.[0] ?? '')).toUpperCase() || '—'
-}
 
 export function CategoryDetail() {
   const { categoryId = 'none' } = useParams()
@@ -83,150 +79,162 @@ export function CategoryDetail() {
   const name = monthLabel(month).split(' ')[0]
   const backHref = `${roleBase}/moliya${month === current ? '' : `?m=${month.slice(0, 7)}`}`
 
+  const h2 = 'text-[15px] font-semibold text-[var(--text-primary)]'
+  const catColor = colorFor(catId)
+  const delta = total - prevTotal
+
   return (
-    <div className="space-y-4">
-      <nav className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" aria-label="Yo'l">
-        <Link to={backHref} className="underline">
+    <div className="space-y-6">
+      <nav className="text-[11px] font-medium uppercase tracking-[0.8px] text-[var(--text-muted)]" aria-label="Yo'l">
+        <Link to={backHref} className="hover:text-[var(--text-secondary)] hover:underline">
           Moliyaviy ko'rsatkichlar
         </Link>{' '}
-        / Xarajatlar / <span className="text-slate-900 dark:text-slate-100">{title}</span>
+        / Xarajatlar / <span className="text-[var(--text-secondary)]">{title}</span>
       </nav>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h1>
+      <div className="-mt-3 flex flex-wrap items-end justify-between gap-4">
+        <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-[-0.5px] text-[var(--text-primary)]">
+          <span aria-hidden className="h-3 w-3 rounded-[4px]" style={{ background: catColor }} />
+          {title}
+        </h1>
         <PeriodPicker value={month} onChange={setMonth} current={current} />
       </div>
       {error && <StatusNote tone="problem">{error}</StatusNote>}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card padding="compact">
-          <div className="text-xs text-slate-500 dark:text-slate-400">{name} jami</div>
-          <div className="text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">{formatSomShort(total)}</div>
-          <div className="text-xs text-slate-500">so'm</div>
-        </Card>
-        <Card padding="compact">
-          <div className="text-xs text-slate-500 dark:text-slate-400">6 oy o'rtacha</div>
-          <div className="text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">{formatSomShort(avg)}</div>
-          <div className="text-xs text-slate-500">so'm/oy</div>
-        </Card>
-        <Card padding="compact">
-          <div className="text-xs text-slate-500 dark:text-slate-400">O'tgan oyga</div>
-          <div className="text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Tile label={`${name} jami`}>
+          {formatCompact(total)}
+          <span className="ml-1 text-sm font-normal text-[var(--text-muted)]">so'm</span>
+        </Tile>
+        <Tile label="6 oy o'rtacha">
+          {formatCompact(avg)}
+          <span className="ml-1 text-sm font-normal text-[var(--text-muted)]">so'm/oy</span>
+        </Tile>
+        <Tile label="O'tgan oyga">
+          {/* more spend than last month is the bad direction for an expense category */}
+          <span className={change === null || Math.round(change) === 0 ? 'text-[var(--text-primary)]' : change > 0 ? 'text-[var(--accent-warning)]' : 'text-[var(--accent-income)]'}>
             {change === null ? '—' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(Math.round(change))}%`}
-          </div>
-          <div className="text-xs text-slate-500">
-            {total - prevTotal === 0 ? 'o‘zgarishsiz' : `${total > prevTotal ? '↑' : '↓'} ${formatSomShort(Math.abs(total - prevTotal))}`}
-          </div>
-        </Card>
-        <Card padding="compact">
-          <div className="text-xs text-slate-500 dark:text-slate-400">Jamidagi ulushi</div>
-          <div className="text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">{share.toFixed(1)}%</div>
-          <div className="text-xs text-slate-500">xarajatning</div>
-        </Card>
+          </span>
+          <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
+            {delta === 0 ? 'o‘zgarishsiz' : `${delta > 0 ? '↑' : '↓'} ${formatCompact(Math.abs(delta))}`}
+          </span>
+        </Tile>
+        <Tile label="Jamidagi ulushi">
+          <span style={{ color: catColor }}>{share.toFixed(1)}%</span>
+          <span className="ml-1 text-xs font-normal text-[var(--text-muted)]">xarajatning</span>
+        </Tile>
       </div>
 
-      <Card>
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Oylik o'zgarish — {title}</h2>
-        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">So'nggi 6 oy · "Qaysi oy uchun" belgisi bo'yicha</p>
-        <MonthBars
-          title={`Oylik o'zgarish — ${title}`}
-          months={months}
-          monthLabels={months.map((m) => monthLabel(m).split(' ')[0])}
-          series={[{ label: title, slot: 1, values: series }]}
-          format={formatSomShort}
-          selectedIndex={months.length - 1}
-        />
-      </Card>
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <Panel>
+          <h2 className={h2}>Oylik o'zgarish — {title}</h2>
+          <p className="mb-3 text-xs text-[var(--text-muted)]">So'nggi 6 oy · "Qaysi oy uchun" belgisi bo'yicha</p>
+          <MonthBars
+            title={`Oylik o'zgarish — ${title}`}
+            months={months}
+            monthLabels={months.map((m) => monthLabel(m).split(' ')[0])}
+            series={[{ label: title, color: catColor, values: series }]}
+            format={formatCompact}
+            selectedIndex={months.length - 1}
+            showValuesUnderLabels
+          />
+        </Panel>
 
-      <Card>
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Qabul qiluvchilar</h2>
-          <span className="text-xs text-slate-500">{monthLabel(month)}</span>
-        </div>
-        {!loading && receivers.length === 0 && <p className="py-2 text-sm text-slate-400">Bu davrda yozuv yo'q.</p>}
-        <ul className="mt-1 divide-y divide-slate-100 dark:divide-slate-800">
-          {receivers.map((r) => (
-            <li key={r.key} className="flex items-center justify-between gap-3 py-2">
-              <div className="min-w-0">
-                <div className="truncate text-sm text-slate-900 dark:text-slate-100">{r.name}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {accName.get(r.last.source_account_id) ?? '—'} · {dayLabel(r.last.payment_date)} · {EXPENSE_TYPE_LABEL[r.last.expense_type].split(' — ')[0]}
-                </div>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="text-sm font-medium tabular-nums text-slate-900 dark:text-slate-100">{formatSomShort(r.amount)}</div>
-                <div className="text-xs tabular-nums text-slate-500">{total ? Math.round((r.amount / total) * 100) : 0}%</div>
-              </div>
-            </li>
-          ))}
-        </ul>
-        {isBux && receivers.length > 0 && <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">💡 Doimiy summalarni "Doimiy xarajatlar" bo'limida o'zgartirish mumkin.</p>}
-      </Card>
+        <Panel>
+          <h2 className={h2}>Qabul qiluvchilar</h2>
+          <p className="text-xs text-[var(--text-muted)]">{monthLabel(month)}</p>
+          {!loading && receivers.length === 0 && <p className="py-2 text-sm text-[var(--text-muted)]">Bu davrda yozuv yo'q.</p>}
+          <ul className="mt-3 space-y-3.5">
+            {receivers.map((r, i) => {
+              const pct = total ? (r.amount / total) * 100 : 0
+              const c = FIN_PALETTE[i % 4]
+              return (
+                <li key={r.key}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="truncate text-sm font-medium text-[var(--text-primary)]">{r.name}</span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--text-primary)]">
+                      {formatCompact(r.amount)} <span className="text-[11px] font-normal text-[var(--text-muted)]">{Math.round(pct)}%</span>
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-[var(--border)]">
+                    <div className="h-1.5 rounded-full" style={{ width: `${Math.max(2, pct)}%`, background: c }} />
+                  </div>
+                  <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+                    {accName.get(r.last.source_account_id) ?? '—'} · {dayLabel(r.last.payment_date)} · {EXPENSE_TYPE_LABEL[r.last.expense_type].split(' — ')[0]}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          {isBux && receivers.length > 0 && (
+            <p className="mt-4 rounded-[var(--radius-sm)] bg-[var(--bg)] px-3 py-2 text-[11px] text-[var(--text-muted)]">💡 Doimiy summalarni "Doimiy xarajatlar" bo'limida o'zgartirish mumkin.</p>
+          )}
+        </Panel>
+      </div>
 
-      <Card>
+      <Panel>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{monthLabel(month)} — barcha yozuvlar</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">"Qaysi oy uchun" = {monthLabel(month)} bo'yicha filtrlangan</p>
+            <h2 className={h2}>{monthLabel(month)} — barcha yozuvlar</h2>
+            <p className="text-xs text-[var(--text-muted)]">"Qaysi oy uchun" = {monthLabel(month)} bo'yicha filtrlangan</p>
           </div>
           <button
             type="button"
             onClick={() => void exportXlsx()}
             disabled={rows.length === 0}
-            className="min-h-11 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+            className="min-h-10 rounded-full border border-[var(--border-strong)] bg-[var(--surface-elev)] px-4 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-income)] disabled:opacity-50"
           >
             ⬇ Eksport
           </button>
         </div>
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[680px] border-separate border-spacing-0 text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                <th className="px-2 py-2">To'lov sanasi</th>
-                <th className="px-2 py-2">Qabul qiluvchi</th>
-                <th className="px-2 py-2">Turi</th>
-                <th className="px-2 py-2 text-right">Summa</th>
-                <th className="px-2 py-2">Hisobdan</th>
-                <th className="px-2 py-2">Davr</th>
+              <tr className="text-left text-[11px] font-medium uppercase tracking-[0.8px] text-[var(--text-muted)]">
+                <th className="border-b border-[var(--border)] py-2.5 pr-4 font-medium">To'lov sanasi</th>
+                <th className="border-b border-[var(--border)] py-2.5 pr-4 font-medium">Qabul qiluvchi</th>
+                <th className="border-b border-[var(--border)] py-2.5 pr-4 font-medium">Turi</th>
+                <th className="border-b border-[var(--border)] py-2.5 pr-4 text-right font-medium">Summa</th>
+                <th className="border-b border-[var(--border)] py-2.5 pr-4 font-medium">Hisobdan</th>
+                <th className="border-b border-[var(--border)] py-2.5 font-medium">Davr</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((e) => {
                 const n = who(e.counterparty_id, e.note)
+                const cell = 'border-b border-[var(--border)] py-3.5 pr-4'
                 return (
-                  <tr key={e.id} className="border-b border-slate-100 dark:border-slate-800">
-                    <td className="px-2 py-2 whitespace-nowrap">{dayLabel(e.payment_date)}</td>
-                    <td className="px-2 py-2">
-                      <span className="inline-flex items-center gap-2">
-                        <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                          {initials(n)}
-                        </span>
-                        <span className="text-slate-900 dark:text-slate-100">{n}</span>
+                  <tr key={e.id} className="transition-colors hover:bg-[var(--surface-elev)]">
+                    <td className={`${cell} whitespace-nowrap text-[var(--text-secondary)]`}>{dayLabel(e.payment_date)}</td>
+                    <td className={cell}>
+                      <span className="inline-flex items-center gap-3">
+                        <RowIcon name={n} color={catColor} />
+                        <span className="text-[var(--text-primary)]">{n}</span>
                       </span>
                     </td>
-                    <td className="px-2 py-2">{EXPENSE_TYPE_LABEL[e.expense_type]}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">−{formatSom(e.amount)}</td>
-                    <td className="px-2 py-2">{accName.get(e.source_account_id) ?? '—'}</td>
-                    <td className="px-2 py-2 whitespace-nowrap">{monthLabelShort(e.period_month)}</td>
+                    <td className={`${cell} text-[var(--text-secondary)]`}>{EXPENSE_TYPE_LABEL[e.expense_type]}</td>
+                    <td className={`${cell} text-right font-medium tabular-nums text-[var(--text-primary)]`}>−{formatSom(e.amount)}</td>
+                    <td className={`${cell} text-[var(--text-secondary)]`}>{accName.get(e.source_account_id) ?? '—'}</td>
+                    <td className="whitespace-nowrap border-b border-[var(--border)] py-3.5 text-[var(--text-secondary)]">{monthLabelShort(e.period_month)}</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
-        <div className="mt-2 flex flex-wrap justify-between gap-2 text-sm">
-          <span className="text-slate-500">
+        <div className="mt-3 flex flex-wrap justify-between gap-2 text-sm">
+          <span className="text-[var(--text-muted)]">
             {rows.length} yozuv · {monthLabel(month)} davri
           </span>
-          <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">Jami: {formatSom(total)} so'm</span>
+          <span className="font-semibold tabular-nums text-[var(--text-primary)]">Jami: {formatSom(total)} so'm</span>
         </div>
-      </Card>
+      </Panel>
 
-      <Card tone="info">
-        <p className="text-sm text-slate-700 dark:text-slate-300">
-          ⓘ <span className="font-semibold">Diqqat:</span> "To'lov sanasi" va "Davr" boshqa-boshqa. To'lov keyingi oyda qilingan bo'lsa ham, "Davr" ustuni qaysi oyga hisoblanishini aniqlaydi —
-          hisobotlar shuni oladi, to'lov sanasini emas.
+      <div className="rounded-[var(--radius)] border border-[rgb(244_167_95/0.3)] bg-[rgb(244_167_95/0.06)] px-5 py-4">
+        <p className="text-xs leading-5 text-[var(--text-secondary)]">
+          <span className="font-semibold text-[var(--accent-utility)]">ⓘ Diqqat:</span> "To'lov sanasi" va "Davr" boshqa-boshqa. To'lov keyingi oyda qilingan bo'lsa ham, "Davr" ustuni qaysi
+          oyga hisoblanishini aniqlaydi — hisobotlar shuni oladi, to'lov sanasini emas.
         </p>
-      </Card>
+      </div>
     </div>
   )
 }

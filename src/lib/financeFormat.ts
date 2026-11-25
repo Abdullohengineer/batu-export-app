@@ -120,3 +120,11 @@ export function dailyReserve(amount: number, daysLeft: number): number | null {
   if (daysLeft <= 0) return null
   return Math.round(amount / daysLeft / 1000) * 1000
 }
+
+const COMPACT = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 })
+
+/** Tiles and chart axes (decision 0256): 8479103 → "8.48M", 833000 → "833K", −2.9e8 → "−290M". Full precision stays in tables. */
+export function formatCompact(v: number): string {
+  const s = COMPACT.format(Math.abs(v))
+  return v < 0 ? `−${s}` : s
+}

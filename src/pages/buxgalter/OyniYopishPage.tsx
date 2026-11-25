@@ -17,6 +17,7 @@ import {
 } from '../../lib/useFinance'
 import { useProfileNames } from '../../lib/useProfileNames'
 import { periodExpenses, periodIncome } from '../../lib/financeMetrics'
+import { signClass } from '../../lib/financeTheme'
 import { addMonths, dayLabel, daysBetween, formatSom, formatSomShort, monthEnd, monthLabel, monthOf } from '../../lib/financeFormat'
 import { PeriodAuditModal } from '../../components/finance/PeriodAuditModal'
 import { Button } from '../../components/ui/Button'
@@ -175,7 +176,7 @@ export function OyniYopishPage() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{t.income === null ? '—' : formatSomShort(t.income)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatSomShort(t.expense)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{t.income === null ? '—' : signed(t.income - t.expense)}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${t.income === null ? '' : signClass(t.income - t.expense)}`}>{t.income === null ? '—' : signed(t.income - t.expense)}</td>
                     <td className="px-3 py-2 text-right">
                       {isReopening ? (
                         <div className="ml-auto w-64 space-y-2 text-left">
@@ -285,7 +286,7 @@ function OpenPeriodCard({
       <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Figure label="Daromad" value={totals.income === null ? 'kiritilmagan' : formatSomShort(totals.income)} />
         <Figure label="Xarajat" value={formatSomShort(totals.expense)} />
-        <Figure label="Sof foyda" value={profit === null ? '—' : signed(profit)} />
+        <Figure label="Sof foyda" value={profit === null ? '—' : signed(profit)} valueClass={profit === null ? '' : signClass(profit)} />
         <Figure label="1 kg tannarxi" value={kg && kg > 0 ? `${formatSom(totals.expense / kg)} so'm` : '—'} />
       </div>
       {missingExtra > 0 && profit !== null && (
@@ -324,11 +325,11 @@ function OpenPeriodCard({
   )
 }
 
-function Figure({ label, value }: { label: string; value: string }) {
+function Figure({ label, value, valueClass = '' }: { label: string; value: string; valueClass?: string }) {
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
-      <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{value}</div>
+    <div className="rounded-[10px] bg-slate-50 px-3 py-2.5 dark:bg-slate-950">
+      <div className="text-[11px] uppercase tracking-[0.8px] text-slate-500 dark:text-slate-400">{label}</div>
+      <div className={`text-lg font-semibold tabular-nums ${valueClass || 'text-slate-900 dark:text-slate-100'}`}>{value}</div>
     </div>
   )
 }

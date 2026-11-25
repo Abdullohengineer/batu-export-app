@@ -7,3 +7,116 @@
 body {
   margin: 0;
 }
+
+/* ------------------------------------------------------------------
+   Dark finance theme (2026-11-25, docs/decisions/0256). Scoped to
+   [data-theme="dark-finance"], which AppNavShell sets for /buxgalter/*
+   and every /<role>/moliya/* route. Everything else keeps following the
+   OS setting exactly as before.
+   1. The `dark:` variant also matches inside the scope, so every existing
+      dark: style switches on there without touching components.
+   2. Inside the scope Tailwind's palette/radius variables are remapped to
+      the finance tokens, so the same utilities paint the mockup colours.
+   ------------------------------------------------------------------ */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    @slot;
+  }
+  &:where([data-theme='dark-finance'], [data-theme='dark-finance'] *) {
+    @slot;
+  }
+}
+
+[data-theme='dark-finance'] {
+  color-scheme: dark;
+  /* finance tokens */
+  --bg: #0b0d14;
+  --surface: #14161f;
+  --surface-elev: #1a1d28;
+  --border: #1c1f2a;
+  --border-strong: #252835;
+  --text-primary: #f5f5f7;
+  --text-secondary: #8c8e99;
+  --text-muted: #5c5f6b;
+  --accent-income: #4fd3c4;
+  --accent-expense: #8b6fff;
+  --accent-utility: #f4a75f;
+  --accent-warning: #f47fb5;
+  --accent-success: #5fe0a5;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+
+  /* Tailwind palette remapped onto the tokens (dark: utilities read these) */
+  --color-slate-50: var(--surface-elev);
+  --color-slate-100: var(--text-primary);
+  --color-slate-200: #e2e3e8;
+  --color-slate-300: #c4c6cf;
+  --color-slate-400: var(--text-secondary);
+  --color-slate-500: #6e717d;
+  --color-slate-600: var(--text-muted);
+  --color-slate-700: var(--border-strong);
+  --color-slate-800: var(--border);
+  --color-slate-900: var(--surface);
+  --color-slate-950: var(--bg);
+  --color-emerald-300: var(--accent-income);
+  --color-emerald-400: var(--accent-income);
+  --color-emerald-500: var(--accent-income);
+  --color-emerald-700: var(--accent-income);
+  --color-emerald-800: rgb(79 211 196 / 0.35);
+  --color-emerald-900: rgb(79 211 196 / 0.35);
+  --color-emerald-950: rgb(79 211 196 / 0.4);
+  --color-teal-400: var(--accent-income);
+  --color-teal-700: var(--accent-income);
+  --color-amber-400: var(--accent-utility);
+  --color-amber-700: var(--accent-utility);
+  --color-amber-900: rgb(244 167 95 / 0.35);
+  --color-amber-950: rgb(244 167 95 / 0.4);
+  --color-red-400: var(--accent-warning);
+  --color-red-600: var(--accent-warning);
+  --color-red-900: rgb(244 127 181 / 0.35);
+  --color-red-950: rgb(244 127 181 / 0.4);
+  --color-blue-400: var(--accent-income);
+  --color-blue-900: rgb(79 211 196 / 0.3);
+  --color-blue-950: rgb(79 211 196 / 0.3);
+  --radius-md: var(--radius-sm);
+  --radius-lg: var(--radius);
+
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer components {
+  /* Base Card has no background of its own; in the finance scope a neutral
+     card is a surface. Tinted cards keep their tint (utilities win). */
+  [data-theme='dark-finance'] .ui-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+  }
+}
+
+/* Inverted "selected / primary" pattern (dark:bg-slate-100 + dark:text-slate-900:
+   primary Button, selected ChoicePills, Tarix kind pills) → the mockup's violet
+   (decision 0256). Unlayered + scoped, so it wins over the shared utilities only
+   inside the finance theme. */
+[data-theme='dark-finance'] .dark\:bg-slate-100 {
+  background: linear-gradient(135deg, #8b6fff, #6b4fd9);
+  border-color: var(--accent-expense);
+}
+[data-theme='dark-finance'] .dark\:text-slate-900 {
+  color: #fff;
+}
+[data-theme='dark-finance'] .dark\:border-slate-100 {
+  border-color: var(--accent-expense);
+}
+/* Active nav item: elevated surface + violet marker, not a solid block. */
+[data-theme='dark-finance'] nav a[aria-current='page'] {
+  background: var(--surface-elev);
+  color: var(--text-primary);
+  box-shadow: inset 0 -2px 0 var(--accent-expense);
+}
+/* the side / drawer nav is vertical: marker on the left instead */
+[data-theme='dark-finance'] nav.flex-col a[aria-current='page'] {
+  box-shadow: inset 3px 0 0 var(--accent-expense);
+}

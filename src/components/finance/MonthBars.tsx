@@ -1,26 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
-// Monthly bar chart for Moliyaviy ko'rsatkichlar (decision 0252). Plain SVG
-// (the app has no chart library). Grouped or stacked bars over months, one
-// zero baseline (negative values go below it), thin bars with a 4px rounded
-// data end, 2px surface gaps, recessive grid. Hover / tap a month to read its
-// values in the readout line; the selected period is highlighted. Identity
-// is never colour alone: legend for ≥ 2 series + values in the readout, and a
-// screen-reader table. Palette: the dataviz reference categorical slots 1–4,
-// validated light + dark (validate_palette.js, 2026-11-23).
-
-const SLOT_FILL = [
-  'fill-[#2a78d6] dark:fill-[#3987e5]',
-  'fill-[#eb6834] dark:fill-[#d95926]',
-  'fill-[#1baf7a] dark:fill-[#199e70]',
-  'fill-[#eda100] dark:fill-[#c98500]',
-]
-const SLOT_BG = ['bg-[#2a78d6] dark:bg-[#3987e5]', 'bg-[#eb6834] dark:bg-[#d95926]', 'bg-[#1baf7a] dark:bg-[#199e70]', 'bg-[#eda100] dark:bg-[#c98500]']
+// Monthly chart for Moliyaviy ko'rsatkichlar (decisions 0252, 0256). Plain
+// SVG (the app has no chart library). One zero baseline, one y-scale.
+//   variant 'line'    dual line with gradient areas, hollow points, a dashed
+//                     guide + tooltip card at the active month (Overview)
+//   variant 'bars'    grouped bars with a top→bottom gradient; months other
+//                     than the selected one at 60% (CategoryDetail, Overview tabs)
+//   variant 'stacked' stacked bars (expense types)
+// Hover / tap a month column to read it. Colours are the finance accent
+// tokens, passed by the caller in the brief's fixed order. A legend is shown
+// for ≥ 2 series, values are always written out (readout or tooltip), and a
+// screen-reader table mirrors the chart.
 
 export interface BarSeries {
   label: string
-  /** categorical slot 0–3, fixed per entity (never by rank) */
-  slot: number
+  /** CSS colour, normally a finance accent var */
+  color: string
   values: (number | null)[]
 }
 
@@ -29,9 +24,11 @@ interface Props {
   months: string[]
   monthLabels: string[]
   series: BarSeries[]
-  stacked?: boolean
+  variant?: 'line' | 'bars' | 'stacked'
   format: (v: number) => string
   selectedIndex: number
+  /** small value under each month label (CategoryDetail) */
+  showValuesUnderLabels?: boolean
 }
 
 function niceStep(range: number): number {
@@ -47,15 +44,13 @@ function barPath(x: number, w: number, y0: number, y1: number): string {
   const h = Math.abs(y1 - y0)
   if (h < 0.5) return ''
   const r = Math.min(4, w / 2, h)
-  if (y1 < y0) {
-    // positive: rounded top
-    return `M${x},${y0}V${top + r}Q${x},${top} ${x + r},${top}H${x + w - r}Q${x + w},${top} ${x + w},${top + r}V${y0}Z`
-  }
+  if (y1 < y0) return `M${x},${y0}V${top + r}Q${x},${top} ${x + r},${top}H${x + w - r}Q${x + w},${top} ${x + w},${top + r}V${y0}Z`
   const bottom = top + h
   return `M${x},${y0}V${bottom - r}Q${x},${bottom} ${x + r},${bottom}H${x + w - r}Q${x + w},${bottom} ${x + w},${bottom - r}V${y0}Z`
 }
 
-export function MonthBars({ title, months, monthLabels, series, stacked = false, format, selectedIndex }: Props) {
+export function MonthBars({ title, months, monthLabels, series, variant = 'bars', format, selectedIndex, showValuesUnderLabels = false }: Props) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(600)
   const [active, setActive] = useState<number | null>(null)
@@ -68,14 +63,16 @@ export function MonthBars({ title, months, monthLabels, series, stacked = false,
     return () => ro.disconnect()
   }, [])
 
-  const H = 200
-  const padL = 44
-  const padB = 22
-  const padT = 8
-  const plotW = width - padL - 4
+  const stacked = variant === 'stacked'
+  const line = variant === 'line'
+  const H = line ? 230 : 210
+  const padL = 46
+  const padR = line ? 12 : 4
+  const padB = showValuesUnderLabels ? 38 : 24
+  const padT = line ? 14 : 8
+  const plotW = width - padL - padR
   const plotH = H - padB - padT
 
-  // value domain, always including 0
   let lo = 0
   let hi = 0
   months.forEach((_, i) => {
@@ -107,84 +104,163 @@ export function MonthBars({ title, months, monthLabels, series, stacked = false,
   for (let t = bottom; t <= top + step / 2; t += step) ticks.push(t)
 
   const band = plotW / months.length
-  const groupW = Math.min(band * 0.64, stacked ? 36 : 22 * series.length + 2 * (series.length - 1))
-  const barW = stacked ? groupW : (groupW - 2 * (series.length - 1)) / series.length
+  const cxOf = (i: number) => padL + (line ? (months.length === 1 ? plotW / 2 : (plotW * i) / (months.length - 1)) : band * i + band / 2)
+  const groupW = Math.min(band * 0.62, stacked ? 40 : 26 * series.length + 4 * (series.length - 1))
+  const barW = stacked ? groupW : (groupW - 4 * (series.length - 1)) / series.length
   const shown = active ?? selectedIndex
+  // narrow (phone) charts: 3-letter month names so neighbouring labels don't collide
+  const xLabel = (i: number) => (plotW / months.length < 64 ? monthLabels[i].slice(0, monthLabels[i].startsWith('Iy') ? 4 : 3) : monthLabels[i])
+
+  // line geometry
+  const pts = (s: BarSeries) => s.values.map((v, i) => (v === null ? null : ([cxOf(i), y(v)] as const)))
+  const linePath = (s: BarSeries) =>
+    pts(s)
+      .map((p, i, arr) => (p ? `${i === 0 || !arr[i - 1] ? 'M' : 'L'}${p[0]},${p[1]}` : ''))
+      .join('')
+  const areaPath = (s: BarSeries) => {
+    const ps = pts(s).filter(Boolean) as (readonly [number, number])[]
+    if (ps.length < 2) return ''
+    return `M${ps[0][0]},${y(0)}${ps.map((p) => `L${p[0]},${p[1]}`).join('')}L${ps[ps.length - 1][0]},${y(0)}Z`
+  }
+  const tipX = cxOf(shown)
+  const tipW = 132
+  const tipLeft = Math.min(Math.max(tipX - tipW / 2, padL), width - padR - tipW)
 
   return (
     <div>
-      <div className="mb-2 flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-300" aria-live="polite">
-        <span className="font-medium text-slate-900 dark:text-slate-100">{monthLabels[shown]}:</span>
-        {series.map((s) => (
-          <span key={s.label} className="inline-flex items-center gap-1">
-            {series.length > 1 && <span aria-hidden className={`inline-block h-2.5 w-2.5 rounded-sm ${SLOT_BG[s.slot]}`} />}
-            {series.length > 1 && `${s.label} `}
-            <span className="tabular-nums text-slate-900 dark:text-slate-100">{s.values[shown] === null ? '—' : format(s.values[shown]!)}</span>
-          </span>
-        ))}
-      </div>
-      <div ref={ref} className="w-full">
+      {!line && (
+        <div className="mb-2 flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]" aria-live="polite">
+          <span className="font-medium text-[var(--text-primary)]">{monthLabels[shown]}:</span>
+          {series.map((s) => (
+            <span key={s.label} className="inline-flex items-center gap-1">
+              {series.length > 1 && <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />}
+              {series.length > 1 && `${s.label} `}
+              <span className="tabular-nums text-[var(--text-primary)]">{s.values[shown] === null ? '—' : format(s.values[shown]!)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <div ref={ref} className="relative w-full">
         <svg width={width} height={H} role="img" aria-label={title} className="block select-none">
+          <defs>
+            {series.map((s, k) => (
+              <linearGradient key={k} id={`${uid}-g${k}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={s.color} stopOpacity={line ? 0.35 : 1} />
+                <stop offset="100%" stopColor={s.color} stopOpacity={line ? 0 : 0.4} />
+              </linearGradient>
+            ))}
+          </defs>
           {ticks.map((t) => (
             <g key={t}>
-              <line x1={padL} x2={width - 4} y1={y(t)} y2={y(t)} className={t === 0 ? 'stroke-slate-400 dark:stroke-slate-500' : 'stroke-slate-200 dark:stroke-slate-800'} strokeWidth={1} />
-              <text x={padL - 6} y={y(t)} dy="0.32em" textAnchor="end" className="fill-slate-500 text-[10px] dark:fill-slate-400">
+              <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke={t === 0 ? 'var(--border-strong)' : 'var(--border)'} strokeWidth={1} />
+              <text x={padL - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize={11} fill="var(--text-muted)">
                 {format(t)}
               </text>
             </g>
           ))}
-          {months.map((m, i) => {
-            const cx = padL + band * i + band / 2
-            const x0 = cx - groupW / 2
-            let pos = 0
-            let neg = 0
-            const isOn = i === shown
-            return (
-              <g key={m}>
-                {i === selectedIndex && <rect x={padL + band * i + 2} y={padT} width={band - 4} height={plotH} rx={4} className="fill-slate-100 dark:fill-slate-800/60" />}
-                {series.map((s, k) => {
-                  const v = s.values[i]
-                  if (v === null || v === 0) return null
-                  let d: string
-                  if (stacked) {
-                    const base = v >= 0 ? pos : neg
-                    const end = base + v
-                    if (v >= 0) pos = end
-                    else neg = end
-                    // 2px surface gap between stacked segments
-                    const y0 = y(base) + (base === 0 ? 0 : v >= 0 ? -1 : 1)
-                    const y1 = y(end) + (v >= 0 ? 1 : -1)
-                    const isEnd = series.slice(k + 1).every((o) => !o.values[i] || Math.sign(o.values[i]!) !== Math.sign(v))
-                    d = isEnd ? barPath(x0, barW, y0, y(end)) : `M${x0},${y0}H${x0 + barW}V${y1}H${x0}Z`
-                  } else {
-                    d = barPath(x0 + k * (barW + 2), barW, y(0), y(v))
-                  }
-                  return <path key={s.label} d={d} className={`${SLOT_FILL[s.slot]} ${isOn ? '' : 'opacity-80'}`} />
-                })}
-                <text x={cx} y={H - 6} textAnchor="middle" className={`text-[11px] ${isOn ? 'fill-slate-900 font-medium dark:fill-slate-100' : 'fill-slate-500 dark:fill-slate-400'}`}>
-                  {monthLabels[i]}
+
+          {!line &&
+            months.map((m, i) => {
+              const cx = cxOf(i)
+              const x0 = cx - groupW / 2
+              let pos = 0
+              let neg = 0
+              const dim = i !== shown
+              return (
+                <g key={m} opacity={dim ? 0.6 : 1} style={{ transition: 'opacity 120ms' }}>
+                  {series.map((s, k) => {
+                    const v = s.values[i]
+                    if (v === null || v === 0) return null
+                    let d: string
+                    if (stacked) {
+                      const base = v >= 0 ? pos : neg
+                      const end = base + v
+                      if (v >= 0) pos = end
+                      else neg = end
+                      const y0 = y(base) + (base === 0 ? 0 : v >= 0 ? -1 : 1)
+                      const y1 = y(end) + (v >= 0 ? 1 : -1)
+                      const isEnd = series.slice(k + 1).every((o) => !o.values[i] || Math.sign(o.values[i]!) !== Math.sign(v))
+                      d = isEnd ? barPath(x0, barW, y0, y(end)) : `M${x0},${y0}H${x0 + barW}V${y1}H${x0}Z`
+                    } else {
+                      d = barPath(x0 + k * (barW + 4), barW, y(0), y(v))
+                    }
+                    return <path key={s.label} d={d} fill={`url(#${uid}-g${k})`} />
+                  })}
+                </g>
+              )
+            })}
+
+          {line && (
+            <>
+              {series.map((s, k) => (
+                <path key={`a${k}`} d={areaPath(s)} fill={`url(#${uid}-g${k})`} />
+              ))}
+              <line x1={tipX} x2={tipX} y1={padT} y2={y(bottom)} stroke="var(--text-muted)" strokeWidth={1} strokeDasharray="3 4" />
+              {series.map((s, k) => (
+                <path key={`l${k}`} d={linePath(s)} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+              ))}
+              {series.map((s, k) =>
+                pts(s).map((p, i) =>
+                  p ? <circle key={`p${k}-${i}`} cx={p[0]} cy={p[1]} r={i === shown ? 5 : 3.5} fill="var(--bg)" stroke={s.color} strokeWidth={2} /> : null,
+                ),
+              )}
+            </>
+          )}
+
+          {months.map((m, i) => (
+            <g key={`x${m}`}>
+              <text
+                x={cxOf(i)}
+                y={H - (showValuesUnderLabels ? 22 : 6)}
+                textAnchor={line && i === 0 ? 'start' : line && i === months.length - 1 ? 'end' : 'middle'}
+                fontSize={11}
+                fontWeight={i === selectedIndex ? 700 : 400}
+                fill={i === selectedIndex ? 'var(--text-primary)' : 'var(--text-muted)'}
+              >
+                {xLabel(i)}
+              </text>
+              {showValuesUnderLabels && (
+                <text x={cxOf(i)} y={H - 7} textAnchor="middle" fontSize={10} fontWeight={i === selectedIndex ? 700 : 400} fill={i === selectedIndex ? 'var(--text-primary)' : 'var(--text-muted)'}>
+                  {series[0].values[i] === null ? '' : format(series[0].values[i]!)}
                 </text>
-                {/* hit target: the whole month column */}
-                <rect
-                  x={padL + band * i}
-                  y={0}
-                  width={band}
-                  height={H}
-                  fill="transparent"
-                  onPointerEnter={() => setActive(i)}
-                  onPointerLeave={() => setActive(null)}
-                  onClick={() => setActive(i)}
-                />
-              </g>
-            )
-          })}
+              )}
+              <rect
+                x={line ? cxOf(i) - plotW / Math.max(1, months.length - 1) / 2 : padL + band * i}
+                y={0}
+                width={line ? plotW / Math.max(1, months.length - 1) : band}
+                height={H}
+                fill="transparent"
+                onPointerEnter={() => setActive(i)}
+                onPointerLeave={() => setActive(null)}
+                onClick={() => setActive(i)}
+              />
+            </g>
+          ))}
         </svg>
+        {line && (
+          <div
+            aria-live="polite"
+            className="pointer-events-none absolute rounded-[10px] border border-[var(--border-strong)] bg-[var(--surface-elev)] px-3 py-2 text-[11px] leading-5 shadow-lg"
+            style={{ left: tipLeft, top: 0, width: tipW }}
+          >
+            <div className="font-semibold text-[var(--text-primary)]">{monthLabels[shown]}</div>
+            {series.map((s) => (
+              <div key={s.label} className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1 text-[var(--text-secondary)]">
+                  <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
+                  {s.label}
+                </span>
+                <span className="font-medium tabular-nums text-[var(--text-primary)]">{s.values[shown] === null ? '—' : format(s.values[shown]!)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {series.length > 1 && (
-        <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
+        <div className="mt-2 flex flex-wrap gap-4 text-xs text-[var(--text-secondary)]">
           {series.map((s) => (
-            <span key={s.label} className="inline-flex items-center gap-1">
-              <span aria-hidden className={`inline-block h-2.5 w-2.5 rounded-sm ${SLOT_BG[s.slot]}`} />
+            <span key={s.label} className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
               {s.label}
             </span>
           ))}

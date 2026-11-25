@@ -66,12 +66,12 @@ export function TarixPage() {
   const { categories } = useCategories()
   const { counterparties: receivers } = useCounterparties('receiver')
   const { counterparties: customers } = useCounterparties('customer')
-  const { accounts } = useAccountBalances()
+  const { accounts, names: accountNames } = useAccountBalances()
 
   const rows = useMemo<LogRow[]>(() => {
     const cp = new Map([...receivers, ...customers].map((c) => [c.id, c.name]))
     const cat = new Map(categories.map((c) => [c.id, c.name_uz]))
-    const acc = new Map(accounts.map((a) => [a.id, a.name_uz]))
+    const acc = new Map(Object.entries(accountNames))
     const out: LogRow[] = []
     for (const e of expenses) {
       if (e.period_month !== month) continue
@@ -130,7 +130,7 @@ export function TarixPage() {
       .filter((r) => !categoryId || r.categoryId === categoryId)
       .filter((r) => !accountId || r.accountIds.includes(accountId))
       .sort((a, b) => (a.date === b.date ? a.key.localeCompare(b.key) : b.date.localeCompare(a.date)))
-  }, [expenses, cashIns, transfers, month, kind, categoryId, accountId, receivers, customers, categories, accounts])
+  }, [expenses, cashIns, transfers, month, kind, categoryId, accountId, receivers, customers, categories, accountNames])
 
   const outTotal = rows.filter((r) => r.kind === 'expense' && !r.pending).reduce((s, r) => s - r.amount, 0)
   const inTotal = rows.filter((r) => r.kind === 'cash_in').reduce((s, r) => s + r.amount, 0)

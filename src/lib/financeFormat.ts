@@ -128,3 +128,8 @@ export function formatCompact(v: number): string {
   const s = COMPACT.format(Math.abs(v))
   return v < 0 ? `−${s}` : s
 }
+
+/** Per-kg figures (tannarxi, marja, rate 7,468.75) are fractional: two decimals, "348.05". */
+export function formatPerKg(v: number): string {
+  return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}

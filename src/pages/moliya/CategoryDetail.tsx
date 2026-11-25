@@ -102,11 +102,11 @@ export function CategoryDetail() {
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Tile label={`${name} jami`}>
-          {formatCompact(total)}
+          {formatSom(total)}
           <span className="ml-1 text-sm font-normal text-[var(--text-muted)]">so'm</span>
         </Tile>
         <Tile label="6 oy o'rtacha">
-          {formatCompact(avg)}
+          {formatSom(avg)}
           <span className="ml-1 text-sm font-normal text-[var(--text-muted)]">so'm/oy</span>
         </Tile>
         <Tile label="O'tgan oyga">
@@ -115,7 +115,7 @@ export function CategoryDetail() {
             {change === null ? '—' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(Math.round(change))}%`}
           </span>
           <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
-            {delta === 0 ? 'o‘zgarishsiz' : `${delta > 0 ? '↑' : '↓'} ${formatCompact(Math.abs(delta))}`}
+            {delta === 0 ? 'o‘zgarishsiz' : `${delta > 0 ? '↑' : '↓'} ${formatSom(Math.abs(delta))}`}
           </span>
         </Tile>
         <Tile label="Jamidagi ulushi">

@@ -30,14 +30,15 @@ body {
 [data-theme='dark-finance'] {
   color-scheme: dark;
   /* finance tokens */
-  --bg: #0b0f14;
-  --surface: #151b24;
-  --surface-elev: #202a36;
-  --border: #1f2733;
-  --border-strong: #2b3340;
-  --text-primary: #f4f7fb;
-  --text-secondary: #a7b0be;
-  --text-muted: #778394;
+  --bg: #111827;
+  --sidebar: #0f172a;
+  --surface: #1e293b;
+  --surface-elev: #263449;
+  --border: #334155;
+  --border-strong: #475569;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
   --accent-income: #2dd4bf;
   --accent-expense: #a78bfa;
   --accent-warning: #f5b45c;
@@ -49,8 +50,8 @@ body {
   /* Tailwind palette remapped onto the tokens (dark: utilities read these) */
   --color-slate-50: var(--surface-elev);
   --color-slate-100: var(--text-primary);
-  --color-slate-200: #e3e8ef;
-  --color-slate-300: #c7cfda;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: var(--text-secondary);
   --color-slate-400: var(--text-secondary);
   --color-slate-500: var(--text-muted);
   --color-slate-600: var(--text-muted);
@@ -111,6 +112,13 @@ body {
 [data-theme='dark-finance'] .dark\:border-slate-100 {
   border-color: var(--accent-expense);
 }
+/* Sidebar, mobile header and drawer: slightly darker than the content. */
+[data-theme='dark-finance'] aside,
+[data-theme='dark-finance'] > div > header,
+[data-theme='dark-finance'] [aria-label='Navigatsiya menyusi'] > div:last-child {
+  background: var(--sidebar);
+}
+
 /* Active nav item: elevated surface + violet marker, not a solid block. */
 [data-theme='dark-finance'] nav a[aria-current='page'] {
   background: var(--surface-elev);

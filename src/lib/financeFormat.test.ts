@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   addMonths,
   dailyReserve,
+  formatCompact,
   coverageMonths,
   dayLabel,
   daysBetween,
@@ -71,4 +72,12 @@ test('dailyReserve matches the Kutilayotgan mockup', () => {
   assert.equal(dailyReserve(5_000_000, 54), 93_000)
   assert.equal(dailyReserve(38_000_000, 129), 295_000)
   assert.equal(dailyReserve(1_000_000, 0), null)
+})
+
+test('formatCompact (Intl compact, typographic minus)', () => {
+  assert.equal(formatCompact(8_479_103), '8.48M')
+  assert.equal(formatCompact(833_000), '833K')
+  assert.equal(formatCompact(-231_393_313), '−231.39M')
+  assert.equal(formatCompact(1_081_393_313), '1.08B')
+  assert.equal(formatCompact(0), '0')
 })

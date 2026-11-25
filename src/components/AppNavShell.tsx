@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthProvider'
 import { IconButton } from './ui/IconButton'
@@ -75,9 +75,16 @@ export function AppNavShell({
   logoutLabel?: string
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Dark finance theme (decision 0256): the accountant's whole area and every
+  // role's Moliyaviy ko'rsatkichlar pages. Nothing else changes.
+  const { pathname } = useLocation()
+  const finance = pathname.startsWith('/buxgalter') || /^\/[a-z]+\/moliya(\/|$)/.test(pathname)
 
   return (
-    <div className="min-h-svh bg-slate-50 dark:bg-slate-900 lg:flex">
+    <div
+      data-theme={finance ? 'dark-finance' : undefined}
+      className={`min-h-svh lg:flex ${finance ? 'bg-[var(--bg)]' : 'bg-slate-50 dark:bg-slate-900'}`}
+    >
       {/* Desktop sidebar -- persistent, never toggled. `hidden lg:flex` means
           this is the ONLY place these nav links exist in the DOM at a
           desktop viewport (Playwright's own default viewport is desktop-

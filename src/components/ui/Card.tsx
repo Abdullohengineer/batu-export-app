@@ -15,7 +15,7 @@ export function Card({ tone = 'neutral', padding = 'normal', className, children
   return (
     <div
       className={[
-        'rounded-md border',
+        'ui-card rounded-md border',
         padding === 'compact' ? 'p-2' : 'p-3',
         t.border,
         t.bg,

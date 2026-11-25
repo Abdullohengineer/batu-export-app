@@ -12,14 +12,16 @@ import {
   dayLabel,
   daysBetween,
   daysInMonth,
+  formatCompact,
   formatSom,
-  formatSomShort,
   monthLabel,
   monthLabelShort,
 } from '../../lib/financeFormat'
 import { MonthBars, type BarSeries } from '../../components/finance/MonthBars'
 import { PeriodPicker } from '../../components/finance/PeriodPicker'
-import { Card } from '../../components/ui/Card'
+import { Donut } from '../../components/finance/Donut'
+import { Panel, Pill, Signed, Stat, Tile, ViewPills } from '../../components/finance/FinanceUI'
+import { FIN_PALETTE, signClass } from '../../lib/financeTheme'
 import { StatusNote } from '../../components/ui/StatusNote'
 
 // Moliyaviy ko'rsatkichlar — Umumiy ko'rinish (mockup artboard "Overview",
@@ -37,26 +39,20 @@ const TABS: { key: ChartTab; label: string }[] = [
 ]
 const TYPE_ORDER: ExpenseType[] = ['recurring_required', 'recurring_optional', 'one_off', 'unexpected']
 
+/** "−85% o'tgan oyga" as a pill: good change teal, bad change pink (mockup). */
 function Delta({ pct, goodWhenUp }: { pct: number | null; goodWhenUp: boolean }) {
   if (pct === null) return null
-  if (Math.round(pct) === 0) return <span className="text-xs font-medium text-slate-500">≈0% o'tgan oyga</span>
+  if (Math.round(pct) === 0) return <Pill tone="neutral">≈0% o'tgan oyga</Pill>
   const good = pct > 0 === goodWhenUp
   return (
-    <span className={`text-xs font-medium ${good === null ? 'text-slate-500' : good ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-      {pct > 0 ? '+' : pct < 0 ? '−' : ''}
+    <Pill tone={good ? 'done' : 'warning'}>
+      {pct > 0 ? '+' : '−'}
       {Math.abs(Math.round(pct))}% o'tgan oyga
-    </span>
+    </Pill>
   )
 }
 
-function Tile({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <Card>
-      <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="mt-1">{children}</div>
-    </Card>
-  )
-}
+const SOM = <span className="ml-1 text-sm font-normal text-[var(--text-muted)]">so'm</span>
 
 export function MoliyaHome() {
   const { pathname } = useLocation()
@@ -83,6 +79,13 @@ export function MoliyaHome() {
   const catName = useMemo(() => new Map(categories.map((c) => [c.id, c.name_uz])), [categories])
   const composition = useMemo(() => groupSum(periodExpenses(month, expenses), (e) => e.category_id ?? 'none'), [month, expenses])
   const compTotal = sumAmount(composition)
+  const slices = useMemo(() => {
+    const top = composition.length > 5 ? composition.slice(0, 4) : composition
+    const rest = composition.length > 5 ? composition.slice(4) : []
+    const out = top.map((c, i) => ({ key: c.key, amount: c.amount, color: FIN_PALETTE[i], name: c.key === 'none' ? 'Kategoriyasiz' : catName.get(c.key) ?? '—', link: true }))
+    if (rest.length) out.push({ key: 'boshqa', amount: sumAmount(rest), color: FIN_PALETTE[4], name: `Boshqa (${rest.length} ta)`, link: false })
+    return out
+  }, [composition, catName])
 
   // ---- chart
   const labels = months.map((m) => monthLabel(m).split(' ')[0])
@@ -93,18 +96,18 @@ export function MoliyaHome() {
   const series: BarSeries[] =
     tab === 'both'
       ? [
-          { label: 'Tushum', slot: 0, values: months.map((m) => val(m, 'income')) },
-          { label: 'Xarajat', slot: 1, values: months.map((m) => val(m, 'expense')) },
+          { label: 'Tushum', color: 'var(--accent-income)', values: months.map((m) => val(m, 'income')) },
+          { label: 'Xarajat', color: 'var(--accent-expense)', values: months.map((m) => val(m, 'expense')) },
         ]
       : tab === 'expense'
-        ? [{ label: 'Xarajat', slot: 1, values: months.map((m) => val(m, 'expense')) }]
+        ? [{ label: 'Xarajat', color: 'var(--accent-expense)', values: months.map((m) => val(m, 'expense')) }]
         : tab === 'cost'
-          ? [{ label: '1 kg tannarxi', slot: 0, values: months.map((m) => val(m, 'costPerKg')) }]
+          ? [{ label: '1 kg tannarxi', color: 'var(--accent-utility)', values: months.map((m) => val(m, 'costPerKg')) }]
           : tab === 'profit'
-            ? [{ label: 'Sof foyda', slot: 0, values: months.map((m) => val(m, 'profit')) }]
+            ? [{ label: 'Sof foyda', color: 'var(--accent-income)', values: months.map((m) => val(m, 'profit')) }]
             : TYPE_ORDER.map((t, i) => ({
                 label: EXPENSE_TYPE_LABEL[t],
-                slot: i,
+                color: FIN_PALETTE[i],
                 values: months.map((m) => sumAmount(periodExpenses(m, expenses).filter((e) => e.expense_type === t))),
               }))
 
@@ -126,271 +129,271 @@ export function MoliyaHome() {
   const day = Number(today.slice(8, 10))
   const forecast = kgNow === null ? null : forecastFromPace(kgNow, sumAmount(periodExpenses(current, recent)), day, daysInMonth(current), latestRate)
 
+  const catHref = (key: string) => `${roleBase}/moliya/kategoriya/${key}${month === current ? '' : `?m=${month.slice(0, 7)}`}`
+  const h2 = 'text-[15px] font-semibold text-[var(--text-primary)]'
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Moliyaviy ko'rsatkichlar</div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Umumiy ko'rinish</h1>
+          <div className="text-[11px] font-medium uppercase tracking-[0.8px] text-[var(--text-secondary)]">Moliyaviy ko'rsatkichlar</div>
+          <h1 className="text-2xl font-semibold tracking-[-0.5px] text-[var(--text-primary)]">Umumiy ko'rinish</h1>
         </div>
         <PeriodPicker value={month} onChange={setMonth} current={current} />
       </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="-mt-3 text-xs text-[var(--text-muted)]">
         💡 Barcha ko'rsatkichlar tanlangan davrga tegishli yozuvlarga asoslanadi — to'lov sanasi emas, "qaysi oy uchun" belgisi bo'yicha. Balanslar esa hamisha joriy qoldiqni ko'rsatadi.
       </p>
       {error && <StatusNote tone="problem">{error}</StatusNote>}
 
       {/* ---------------- KPI tiles */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <Tile label={<span>Umumiy pul qoldiq · naqd + bank · joriy</span>}>
-          <div className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-            {formatSom(cashTotal)} <span className="text-sm font-normal text-slate-500">so'm</span>
-          </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-600 dark:text-slate-300">
-            {cash.map((a) => (
-              <span key={a.id}>
-                {a.kind === 'bank' ? 'Bank' : 'Kassa'}: <span className="tabular-nums">{formatSomShort(a.balance)}</span>
-              </span>
-            ))}
-          </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Tile
+          label="Umumiy pul qoldiq"
+          aside={<span className="text-[11px] text-[var(--text-muted)]">naqd + bank · joriy</span>}
+          footer={cash.map((a) => (
+            <Stat key={a.id} label={a.kind === 'bank' ? 'Bank' : 'Kassa'}>
+              {formatCompact(a.balance)}
+            </Stat>
+          ))}
+        >
+          {formatCompact(cashTotal)}
+          {SOM}
         </Tile>
         <Tile
-          label={
+          label={`${name} sof foyda`}
+          aside={<Delta pct={pctChange(f?.profit ?? null, prev?.profit ?? null)} goodWhenUp />}
+          footer={
             <>
-              <span>{name} sof foyda</span>
-              <Delta pct={pctChange(f?.profit ?? null, prev?.profit ?? null)} goodWhenUp />
+              <Stat label="Tushum">{f?.income != null ? <span className="text-[var(--accent-income)]">{formatCompact(f.income)}</span> : 'kiritilmagan'}</Stat>
+              <Stat label="Xarajat">{f ? <span className="text-[var(--accent-expense)]">{formatCompact(f.expense)}</span> : '—'}</Stat>
+              {f && f.income === null && <span className="basis-full">Sof foyda {name} uchun tushum kiritilgach hisoblanadi.</span>}
             </>
           }
         >
-          <div className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-            {f?.profit != null ? `${f.profit > 0 ? '+' : f.profit < 0 ? '−' : ''}${formatSom(Math.abs(f.profit))}` : '—'}{' '}
-            {f?.profit != null && <span className="text-sm font-normal text-slate-500">so'm</span>}
-          </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-600 dark:text-slate-300">
-            <span>Tushum: {f?.income != null ? formatSomShort(f.income) : 'kiritilmagan'}</span>
-            <span>Xarajat: {f ? formatSomShort(f.expense) : '—'}</span>
-          </div>
-          {f && f.income === null && (
-            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Sof foyda {name} uchun tushum kiritilgach hisoblanadi.</div>
+          {f?.profit != null ? (
+            <>
+              <Signed value={f.profit} />
+              {SOM}
+            </>
+          ) : (
+            <span className="text-[var(--text-muted)]">—</span>
           )}
         </Tile>
         <Tile
-          label={
-            <>
-              <span>1 kg tannarxi</span>
-              <Delta pct={pctChange(f?.costPerKg ?? null, prev?.costPerKg ?? null)} goodWhenUp={false} />
-            </>
+          label="1 kg tannarxi"
+          aside={<Delta pct={pctChange(f?.costPerKg ?? null, prev?.costPerKg ?? null)} goodWhenUp={false} />}
+          footer={
+            <span>
+              {name} xarajati ({f ? formatCompact(f.expense) : '—'}) ÷ Moykadan chiqdi ({f?.kg != null ? `${formatSom(f.kg)} kg` : '…'}).
+              {f?.rate && f.costPerKg != null && (
+                <>
+                  {' '}
+                  Stavkadan ({formatSom(f.rate)}) — <span className={`font-medium ${signClass(f.rate - f.costPerKg)}`}>{formatSom(f.rate - f.costPerKg)} so'm/kg marja</span>
+                </>
+              )}
+            </span>
           }
         >
-          <div className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-            {f?.costPerKg != null ? formatSom(f.costPerKg) : '—'} <span className="text-sm font-normal text-slate-500">so'm/kg</span>
-          </div>
-          <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-            {name} xarajati ({f ? formatSomShort(f.expense) : '—'}) ÷ Moykadan chiqdi ({f?.kg != null ? `${formatSom(f.kg)} kg` : '…'}).
-            {f?.rate && f.costPerKg != null && (
-              <>
-                {' '}
-                Stavkadan ({formatSom(f.rate)}) —{' '}
-                <span className={f.rate - f.costPerKg >= 0 ? 'font-medium text-emerald-700 dark:text-emerald-400' : 'font-medium text-red-600 dark:text-red-400'}>
-                  {formatSom(f.rate - f.costPerKg)} so'm/kg marja
-                </span>
-              </>
-            )}
-          </div>
+          {f?.costPerKg != null ? formatSom(f.costPerKg) : <span className="text-[var(--text-muted)]">—</span>}
+          <span className="ml-1 text-sm font-normal text-[var(--text-muted)]">so'm/kg</span>
         </Tile>
       </div>
 
       {/* ---------------- chart */}
-      <Card>
-        <div className="-mx-1 flex gap-1 overflow-x-auto pb-1" role="tablist" aria-label="Grafik">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              className={`min-h-9 shrink-0 rounded-full px-3 text-xs font-medium ${
-                tab === t.key ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+      <Panel>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ViewPills value={tab} options={TABS} onChange={setTab} label="Grafik" />
         </div>
-        <p className="mb-2 mt-1 text-xs text-slate-500 dark:text-slate-400">So'nggi 6 oy · "Qaysi oy uchun" belgisiga ko'ra guruhlangan</p>
+        <p className="mb-3 mt-2 text-xs text-[var(--text-muted)]">So'nggi 6 oy · "Qaysi oy uchun" belgisiga ko'ra guruhlangan</p>
         <MonthBars
           title={TABS.find((t) => t.key === tab)!.label}
           months={months}
           monthLabels={labels}
           series={series}
-          stacked={tab === 'types'}
-          format={tab === 'cost' ? (v) => formatSom(v) : formatSomShort}
+          variant={tab === 'both' ? 'line' : tab === 'types' ? 'stacked' : 'bars'}
+          format={tab === 'cost' ? (v) => formatSom(v) : formatCompact}
           selectedIndex={months.length - 1}
         />
-      </Card>
+      </Panel>
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        {/* ---------------- composition */}
-        <Card>
+        {/* ---------------- composition (donut) */}
+        <Panel>
           <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Xarajatlar tarkibi · {monthLabelShort(month)}</h2>
-            <Link to={tarixHref} className="text-xs font-medium text-slate-600 underline dark:text-slate-300">
+            <h2 className={h2}>Xarajatlar tarkibi · {monthLabelShort(month)}</h2>
+            <Link to={tarixHref} className="text-xs font-medium text-[var(--accent-expense)] hover:underline">
               Batafsil tarix ›
             </Link>
           </div>
-          <div className="mt-2 flex items-baseline justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Jami</span>
-            <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{formatSomShort(compTotal)}</span>
-          </div>
-          {!loading && composition.length === 0 && <p className="py-3 text-sm text-slate-400">Bu davrda tasdiqlangan xarajat yo'q.</p>}
-          <ul>
-            {composition.map((c) => {
-              const share = compTotal ? (c.amount / compTotal) * 100 : 0
-              return (
-                <li key={c.key}>
-                  <Link
-                    to={`${roleBase}/moliya/kategoriya/${c.key}${month === current ? '' : `?m=${month.slice(0, 7)}`}`}
-                    className="flex items-center gap-3 border-b border-slate-100 py-2 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm text-slate-900 dark:text-slate-100">{c.key === 'none' ? 'Kategoriyasiz' : catName.get(c.key) ?? '—'}</div>
-                      <div className="mt-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800">
-                        <div className="h-1.5 rounded-full bg-[#eb6834] dark:bg-[#d95926]" style={{ width: `${Math.max(2, share)}%` }} />
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium tabular-nums text-slate-900 dark:text-slate-100">{formatSomShort(c.amount)}</div>
-                      <div className="text-xs tabular-nums text-slate-500">{share.toFixed(1)}%</div>
-                    </div>
-                    <span aria-hidden className="text-slate-400">
-                      ›
-                    </span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">💡 Istalgan qatorni bosib, kategoriya sahifasiga o'ting — oylik tendentsiya, qabul qiluvchilar va barcha yozuvlar.</p>
-        </Card>
+          {!loading && composition.length === 0 && <p className="py-3 text-sm text-[var(--text-muted)]">Bu davrda tasdiqlangan xarajat yo'q.</p>}
+          {composition.length > 0 && (
+            <div className="mt-4 flex flex-col items-center gap-5 sm:flex-row sm:items-start">
+              <Donut slices={slices.map((x) => ({ key: x.key, value: x.amount, color: x.color }))} centerLabel="JAMI" centerValue={formatCompact(compTotal)} />
+              <ul className="w-full min-w-0 flex-1 space-y-1">
+                {slices.map((c) => {
+                  const share = compTotal ? (c.amount / compTotal) * 100 : 0
+                  const body = (
+                    <>
+                      <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.color }} />
+                      <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-primary)]">{c.name}</span>
+                      <span className="text-right">
+                        <span className="block text-sm font-semibold tabular-nums text-[var(--text-primary)]">{formatCompact(c.amount)}</span>
+                        <span className="block text-[11px] tabular-nums text-[var(--text-muted)]">{share.toFixed(1)}%</span>
+                      </span>
+                      <span aria-hidden className={`w-3 text-[var(--text-muted)] ${c.link ? '' : 'invisible'}`}>
+                        ›
+                      </span>
+                    </>
+                  )
+                  return (
+                    <li key={c.key}>
+                      {c.link ? (
+                        <Link to={catHref(c.key)} className="flex items-center gap-3 rounded-[var(--radius-sm)] px-2 py-2 transition-colors hover:bg-[var(--surface-elev)]">
+                          {body}
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-3 px-2 py-2">{body}</div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+          <p className="mt-4 rounded-[var(--radius-sm)] bg-[var(--bg)] px-3 py-2 text-[11px] text-[var(--text-muted)]">
+            💡 Istalgan qatorni bosib, kategoriya sahifasiga o'ting — oylik tendentsiya, qabul qiluvchilar va barcha yozuvlar.
+          </p>
+        </Panel>
 
         <div className="space-y-4">
-          {/* ---------------- balances */}
-          <Card>
+          {/* ---------------- balances: 2×2 mini tiles */}
+          <Panel>
             <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Balanslar</h2>
-              <span className="text-xs text-slate-500">joriy qoldiq</span>
+              <h2 className={h2}>Balanslar</h2>
+              <span className="text-xs text-[var(--text-muted)]">joriy qoldiq</span>
             </div>
-            <ul className="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="mt-3 grid grid-cols-2 gap-3">
               {accounts.map((a) => {
                 const hint = coverageHint(a)
-                const prevBal = a.prevMonthBalance ?? null
-                const pct = a.kind === 'bank' ? pctChange(a.balance, prevBal) : null
+                const runway = a.kind === 'utility' && a.avgMonthlySpend ? Math.max(0, a.balance) / a.avgMonthlySpend : null
+                const runwayColor = runway === null ? '' : runway >= 3 ? 'var(--accent-success)' : runway >= 1 ? 'var(--accent-utility)' : 'var(--accent-warning)'
+                const pct = a.kind === 'bank' ? pctChange(a.balance, a.prevMonthBalance ?? null) : null
+                const dot = a.kind === 'bank' ? 'var(--accent-expense)' : a.kind === 'kassa' ? 'var(--accent-utility)' : runwayColor || 'var(--accent-utility)'
                 return (
-                  <li key={a.id} className="flex items-center justify-between gap-3 py-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm text-slate-900 dark:text-slate-100">
-                        {a.name_uz}
-                        {hint?.low && ' ⚠'}
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        {hint ? (
-                          <span className={hint.low ? 'text-amber-700 dark:text-amber-400' : ''}>{hint.text}</span>
-                        ) : a.kind === 'kassa' && a.avgMonthlySpend ? (
-                          `oyiga ~${formatSomShort(a.avgMonthlySpend)} aylanma`
-                        ) : pct !== null ? (
-                          <Delta pct={pct} goodWhenUp />
-                        ) : null}
-                      </div>
+                  <div key={a.id} className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] px-3.5 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
+                        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: dot }} />
+                        <span className="truncate">
+                          {a.name_uz}
+                          {hint?.low && ' ⚠'}
+                        </span>
+                      </span>
+                      {hint && (
+                        <span className="shrink-0 text-[11px] font-medium tabular-nums" style={{ color: runwayColor }}>
+                          {hint.text}
+                        </span>
+                      )}
                     </div>
-                    <div className="shrink-0 text-sm font-medium tabular-nums text-slate-900 dark:text-slate-100">{formatSomShort(a.balance)} so'm</div>
-                  </li>
+                    <div className={`mt-1.5 text-lg font-semibold tabular-nums ${a.balance < 0 ? 'text-[var(--accent-warning)]' : 'text-[var(--text-primary)]'}`}>
+                      {formatCompact(a.balance)} <span className="text-xs font-normal text-[var(--text-muted)]">so'm</span>
+                    </div>
+                    {runway !== null ? (
+                      <div className="mt-2 h-1 rounded-full bg-[var(--border)]">
+                        <div className="h-1 rounded-full" style={{ width: `${Math.min(100, (runway / 3) * 100)}%`, background: runwayColor }} />
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+                        {a.kind === 'kassa' && a.avgMonthlySpend ? `oyiga ~${formatCompact(a.avgMonthlySpend)} aylanma` : pct !== null ? <Delta pct={pct} goodWhenUp /> : ' '}
+                      </div>
+                    )}
+                  </div>
                 )
               })}
-            </ul>
-          </Card>
+            </div>
+          </Panel>
 
           {/* ---------------- obligations + reserve */}
-          <Card>
+          <Panel>
             <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Kutilayotgan majburiyatlar</h2>
+              <h2 className={h2}>Kutilayotgan majburiyatlar</h2>
               {isBux && (
-                <Link to="/buxgalter/kirim/kutilayotgan" className="text-xs font-medium text-slate-600 underline dark:text-slate-300">
+                <Link to="/buxgalter/kirim/kutilayotgan" className="text-xs font-medium text-[var(--accent-income)] hover:underline">
                   + Qo'shish
                 </Link>
               )}
             </div>
-            {obligations.length === 0 && <p className="py-2 text-sm text-slate-400">Kutilayotgan majburiyat yo'q.</p>}
-            <ul className="mt-1 divide-y divide-slate-100 dark:divide-slate-800">
+            {obligations.length === 0 && <p className="py-2 text-sm text-[var(--text-muted)]">Kutilayotgan majburiyat yo'q.</p>}
+            <ul className="mt-3 space-y-2">
               {obligations.slice(0, 5).map((o) => {
                 const days = daysBetween(today, o.due_date)
                 const per = dailyReserve(o.estimated_amount, days)
                 return (
-                  <li key={o.id} className="flex items-center justify-between gap-3 py-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm text-slate-900 dark:text-slate-100">{o.name}</div>
-                      <div className={`text-xs ${days < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                        {dayLabel(o.due_date)}
-                        {o.due_date.slice(0, 4) !== today.slice(0, 4) ? ` ${o.due_date.slice(0, 4)}` : ''} · {days < 0 ? `${-days} kun o'tdi` : days === 0 ? 'bugun' : `${days} kun qoldi`}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="text-sm font-medium tabular-nums text-slate-900 dark:text-slate-100">~{formatSomShort(o.estimated_amount)}</div>
-                      {per !== null && <div className="text-xs tabular-nums text-slate-500">{formatSomShort(per)}/kun</div>}
-                    </div>
+                  <li key={o.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-0.5 rounded-[10px] bg-[var(--bg)] px-3 py-2.5">
+                    <span className="truncate text-sm font-medium text-[var(--text-primary)]">{o.name}</span>
+                    <span className="text-right text-sm font-semibold tabular-nums text-[var(--text-primary)]">~{formatCompact(o.estimated_amount)}</span>
+                    <span className={`text-[11px] ${days < 0 ? 'text-[var(--accent-warning)]' : 'text-[var(--text-muted)]'}`}>
+                      {dayLabel(o.due_date)}
+                      {o.due_date.slice(0, 4) !== today.slice(0, 4) ? ` ${o.due_date.slice(0, 4)}` : ''} · {days < 0 ? `${-days} kun o'tdi` : days === 0 ? 'bugun' : `${days} kun qoldi`}
+                    </span>
+                    <span className="justify-self-end">{per !== null && <Pill tone="neutral">{formatCompact(per)}/kun</Pill>}</span>
                   </li>
                 )
               })}
             </ul>
             {obligations.length > 0 && (
-              <div className="mt-3 rounded-md bg-slate-50 p-3 dark:bg-slate-800/60">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Zahira tavsiyasi</div>
-                <p className="mt-1 text-sm text-slate-900 dark:text-slate-100">
-                  Hisobingizda kamida <span className="font-semibold tabular-nums">{formatSom(obligationTotal)} so'm</span> turishi kerak.
+              <div className="mt-3 rounded-[10px] border border-[rgb(79_211_196/0.3)] bg-[rgb(79_211_196/0.08)] px-3.5 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.8px] text-[var(--accent-income)]">Zahira tavsiyasi</div>
+                <p className="mt-1 text-sm text-[var(--text-primary)]">
+                  Hisobingizda kamida <span className="font-semibold tabular-nums text-[var(--accent-income)]">{formatSom(obligationTotal)} so'm</span> turishi kerak.
                 </p>
-                <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
-                  Kutilayotgan majburiyatlar jami. Hozirda (naqd + bank): {formatSomShort(cashTotal)} —{' '}
+                <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
+                  Kutilayotgan majburiyatlar jami. Hozirda (naqd + bank): {formatCompact(cashTotal)} —{' '}
                   {cashTotal >= obligationTotal ? (
-                    <span className="font-medium text-emerald-700 dark:text-emerald-400">yetarli ✓</span>
+                    <span className="font-medium text-[var(--accent-income)]">yetarli ✓</span>
                   ) : (
-                    <span className="font-medium text-red-600 dark:text-red-400">{formatSomShort(obligationTotal - cashTotal)} yetishmaydi ⚠</span>
+                    <span className="font-medium text-[var(--accent-warning)]">{formatCompact(obligationTotal - cashTotal)} yetishmaydi ⚠</span>
                   )}
                 </p>
               </div>
             )}
-          </Card>
+          </Panel>
 
           {/* ---------------- forecast */}
-          <Card>
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">📈 Joriy oy prognozi · {monthLabel(current)}</div>
+          <Panel>
+            <div className={h2}>📈 Joriy oy prognozi · {monthLabel(current)}</div>
             {forecast ? (
               <>
-                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                   Oy oxirigacha joriy sur'atda — {formatSom(forecast.kg)} kg{forecast.rate ? `, stavka ${formatSom(forecast.rate)} so'm/kg` : ', stavka belgilanmagan'}
                 </p>
-                <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-                  {[
-                    ['Kutilgan tushum', forecast.income],
-                    ['Xarajat', forecast.expense],
-                    ['Taxminiy natija', forecast.profit],
-                  ].map(([label, v]) => (
-                    <div key={label as string} className="rounded-md bg-slate-50 px-2 py-2 dark:bg-slate-800/60">
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
-                      <div className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{v === null ? '—' : `~${formatSomShort(v as number)}`}</div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      ['Kutilgan tushum', forecast.income, 'var(--accent-income)'],
+                      ['Xarajat', forecast.expense, 'var(--accent-expense)'],
+                      ['Taxminiy natija', forecast.profit, null],
+                    ] as const
+                  ).map(([label, v, color]) => (
+                    <div key={label} className="rounded-[10px] bg-[var(--bg)] px-3 py-2.5">
+                      <div className="text-[11px] text-[var(--text-muted)]">{label}</div>
+                      <div className={`text-base font-semibold tabular-nums ${color ? '' : signClass(v)}`} style={color ? { color } : undefined}>
+                        {v === null ? '—' : `~${formatCompact(v)}`}
+                      </div>
                     </div>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-2 text-[11px] text-[var(--text-muted)]">
                   {day} kunlik ishlab chiqarish va xarajat oy oxirigacha cho'zilgan — taxmin, haqiqiy daromad emas. Oy boshida kamroq aniq.
                 </p>
               </>
             ) : (
-              <p className="mt-1 text-sm text-slate-400">Yuklanmoqda…</p>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">Yuklanmoqda…</p>
             )}
-          </Card>
+          </Panel>
         </div>
       </div>
     </div>
   )
 }
-

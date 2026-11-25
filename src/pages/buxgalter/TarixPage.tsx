@@ -16,6 +16,8 @@ import { dayLabel, formatSom, formatSomShort, monthEnd, monthLabel, monthLabelSh
 import { toExcelDate, EXCEL_DATE_FORMAT } from '../../lib/formatDate'
 import { PeriodAuditModal } from '../../components/finance/PeriodAuditModal'
 import { IconButton } from '../../components/ui/IconButton'
+import { RowIcon } from '../../components/finance/FinanceUI'
+import { colorFor } from '../../lib/financeTheme'
 import { EditRowModal, VoidRowModal, type TarixSource } from './TarixRowModals'
 
 // Tarix (mockup artboard "History", decision 0250): every expense, cash-in
@@ -273,13 +275,21 @@ export function TarixPage() {
               </tr>
             )}
             {rows.map((r) => (
-              <tr key={r.key} className="border-b border-slate-100 dark:border-slate-800">
+              <tr key={r.key} className="border-b border-slate-100 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40 [&>td]:py-3.5">
                 <td className="px-3 py-2 whitespace-nowrap">{dayLabel(r.date)}</td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   {KIND_LABEL[r.kind]}
                   {r.pending && <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">(tasdiqlanmagan)</span>}
                 </td>
-                <td className="px-3 py-2 text-slate-900 dark:text-slate-100">{r.who}</td>
+                <td className="px-3 py-2 text-slate-900 dark:text-slate-100">
+                  <span className="inline-flex items-center gap-3">
+                    <RowIcon
+                      name={r.kind === 'transfer' ? r.purpose : r.who === '—' ? r.purpose : r.who}
+                      color={r.kind === 'cash_in' ? 'var(--accent-income)' : r.kind === 'transfer' ? 'var(--accent-utility)' : colorFor(r.categoryId)}
+                    />
+                    {r.who}
+                  </span>
+                </td>
                 <td className="px-3 py-2">{r.purpose}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{r.period ? monthLabelShort(r.period) : '—'}</td>
                 <td

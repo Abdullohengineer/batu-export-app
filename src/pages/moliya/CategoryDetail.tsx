@@ -31,12 +31,12 @@ export function CategoryDetail() {
   const { months, expenses, loading, error } = useFinancePeriods(month)
   const { categories } = useCategories()
   const { counterparties } = useCounterparties('receiver')
-  const { accounts } = useAccountBalances()
+  const { names: accountNames } = useAccountBalances()
 
   const catId = categoryId === 'none' ? null : categoryId
   const title = catId ? categories.find((c) => c.id === catId)?.name_uz ?? '…' : 'Kategoriyasiz'
   const cpName = useMemo(() => new Map(counterparties.map((c) => [c.id, c.name])), [counterparties])
-  const accName = useMemo(() => new Map(accounts.map((a) => [a.id, a.name_uz])), [accounts])
+  const accName = useMemo(() => new Map(Object.entries(accountNames)), [accountNames])
 
   const inCat = (m: string) => periodExpenses(m, expenses).filter((e) => e.category_id === catId)
   const rows = inCat(month).sort((a, b) => (a.payment_date === b.payment_date ? b.created_at.localeCompare(a.created_at) : b.payment_date.localeCompare(a.payment_date)))

@@ -964,6 +964,7 @@ Accounting module, built in four phases (see docs/decisions/0249 for the brief, 
 ## 9. Changelog
 | Version | Date | Change |
 |---|---|---|
+| 1.82 | 2026-11-25 | **Slate finance palette + full amounts (§6.5).** Lighter blue-slate tokens and a darker sidebar (AA everywhere). Top tiles show full so'm, and per-kg values show 2 decimals; tiyin isn't stored. See `docs/decisions/0258`. |
 | 1.81 | 2026-11-25 | **Finance palette refinement (§6.5).** New tokens; accents renamed to income / expense / warning (orange) / critical (pink), one per meaning; a WCAG-checked three-level text scale; chart gridline, label and marker refinements. The reported chart-scale "bug" was investigated: October's real 1.08B sets the axis, chart values equal tile values, and a regression check was added. See `docs/decisions/0257`. |
 | 1.80 | 2026-11-25 | **Dark finance theme (§6.5, aesthetics only).** `/buxgalter/*` and `/<role>/moliya/*` render in the mockup's dark theme, via `data-theme="dark-finance"` + scoped tokens. Adds compact numbers, the period chip, a donut, 2×2 balances with runway bars, a line/area chart and gradient bars. No route, query or table changes. See `docs/decisions/0256`. |
 | 1.79 | 2026-11-25 | **Fix: 1 kg tannarxi blank (§6.5).** Moyka output kg is now fetched in one light call per range, `moyka_output_kg_by_month` (`0170`), giving the same number as `report_totals`. The finance screens no longer fire ~7 parallel `report_totals` calls that hit the statement timeout. See `docs/decisions/0255`. |

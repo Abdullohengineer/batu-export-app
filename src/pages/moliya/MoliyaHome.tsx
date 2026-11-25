@@ -13,6 +13,7 @@ import {
   daysBetween,
   daysInMonth,
   formatCompact,
+  formatPerKg,
   formatSom,
   monthLabel,
   monthLabelShort,
@@ -153,11 +154,11 @@ export function MoliyaHome() {
           aside={<span className="text-[11px] text-[var(--text-muted)]">naqd + bank · joriy</span>}
           footer={cash.map((a) => (
             <Stat key={a.id} label={a.kind === 'bank' ? 'Bank' : 'Kassa'}>
-              {formatCompact(a.balance)}
+              {formatSom(a.balance)}
             </Stat>
           ))}
         >
-          {formatCompact(cashTotal)}
+          {formatSom(cashTotal)}
           {SOM}
         </Tile>
         <Tile
@@ -165,15 +166,15 @@ export function MoliyaHome() {
           aside={<Delta pct={pctChange(f?.profit ?? null, prev?.profit ?? null)} goodWhenUp />}
           footer={
             <>
-              <Stat label="Tushum">{f?.income != null ? <span className="text-[var(--accent-income)]">{formatCompact(f.income)}</span> : 'kiritilmagan'}</Stat>
-              <Stat label="Xarajat">{f ? <span className="text-[var(--accent-expense)]">{formatCompact(f.expense)}</span> : '—'}</Stat>
+              <Stat label="Tushum">{f?.income != null ? <span className="text-[var(--accent-income)]">{formatSom(f.income)}</span> : 'kiritilmagan'}</Stat>
+              <Stat label="Xarajat">{f ? <span className="text-[var(--accent-expense)]">{formatSom(f.expense)}</span> : '—'}</Stat>
               {f && f.income === null && <span className="basis-full">Sof foyda {name} uchun tushum kiritilgach hisoblanadi.</span>}
             </>
           }
         >
           {f?.profit != null ? (
             <>
-              <Signed value={f.profit} />
+              <Signed value={f.profit} compact={false} />
               {SOM}
             </>
           ) : (
@@ -185,17 +186,17 @@ export function MoliyaHome() {
           aside={<Delta pct={pctChange(f?.costPerKg ?? null, prev?.costPerKg ?? null)} goodWhenUp={false} />}
           footer={
             <span>
-              {name} xarajati ({f ? formatCompact(f.expense) : '—'}) ÷ Moykadan chiqdi ({f?.kg != null ? `${formatSom(f.kg)} kg` : '…'}).
+              {name} xarajati ({f ? formatSom(f.expense) : '—'}) ÷ Moykadan chiqdi ({f?.kg != null ? `${formatSom(f.kg)} kg` : '…'}).
               {f?.rate && f.costPerKg != null && (
                 <>
                   {' '}
-                  Stavkadan ({formatSom(f.rate)}) — <span className={`font-medium ${signClass(f.rate - f.costPerKg)}`}>{formatSom(f.rate - f.costPerKg)} so'm/kg marja</span>
+                  Stavkadan ({formatPerKg(f.rate)}) — <span className={`font-medium ${signClass(f.rate - f.costPerKg)}`}>{formatPerKg(f.rate - f.costPerKg)} so'm/kg marja</span>
                 </>
               )}
             </span>
           }
         >
-          {f?.costPerKg != null ? formatSom(f.costPerKg) : <span className="text-[var(--text-muted)]">—</span>}
+          {f?.costPerKg != null ? formatPerKg(f.costPerKg) : <span className="text-[var(--text-muted)]">—</span>}
           <span className="ml-1 text-sm font-normal text-[var(--text-muted)]">so'm/kg</span>
         </Tile>
       </div>

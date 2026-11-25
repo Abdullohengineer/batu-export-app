@@ -18,7 +18,7 @@ import {
 import { useProfileNames } from '../../lib/useProfileNames'
 import { periodExpenses, periodIncome } from '../../lib/financeMetrics'
 import { signClass } from '../../lib/financeTheme'
-import { addMonths, dayLabel, daysBetween, formatSom, formatSomShort, monthEnd, monthLabel, monthOf } from '../../lib/financeFormat'
+import { addMonths, dayLabel, daysBetween, formatPerKg, formatSom, formatSomShort, monthEnd, monthLabel, monthOf } from '../../lib/financeFormat'
 import { PeriodAuditModal } from '../../components/finance/PeriodAuditModal'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -284,10 +284,10 @@ function OpenPeriodCard({
 
       <div className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Hozirgi raqamlar (vaqtincha)</div>
       <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Figure label="Daromad" value={totals.income === null ? 'kiritilmagan' : formatSomShort(totals.income)} />
-        <Figure label="Xarajat" value={formatSomShort(totals.expense)} />
-        <Figure label="Sof foyda" value={profit === null ? '—' : signed(profit)} valueClass={profit === null ? '' : signClass(profit)} />
-        <Figure label="1 kg tannarxi" value={kg && kg > 0 ? `${formatSom(totals.expense / kg)} so'm` : '—'} />
+        <Figure label="Daromad" value={totals.income === null ? 'kiritilmagan' : formatSom(totals.income)} />
+        <Figure label="Xarajat" value={formatSom(totals.expense)} />
+        <Figure label="Sof foyda" value={profit === null ? '—' : `${profit > 0 ? '+' : profit < 0 ? '−' : ''}${formatSom(Math.abs(profit))}`} valueClass={profit === null ? '' : signClass(profit)} />
+        <Figure label="1 kg tannarxi" value={kg && kg > 0 ? `${formatPerKg(totals.expense / kg)} so'm` : '—'} />
       </div>
       {missingExtra > 0 && profit !== null && (
         <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
